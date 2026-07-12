@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrustPrompt</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid #2a2a2a;
+      flex-shrink: 0;
+    }
+    .header svg { flex-shrink: 0; }
+    .header-text h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .header-text p {
+      font-size: 11px;
+      color: #666;
+      margin-top: 1px;
+    }
+
+    /* ── Overall status banner ── */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 16px 0;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #2a2a2a;
+      border: 1.5px solid #333;
+      transition: border-color 0.3s, background 0.3s;
+      flex-shrink: 0;
+    }
+    .status-banner.safe    { border-color: #388E3C; background: #1b2e1c; }
+    .status-banner.low     { border-color: #F9A825; background: #2e2a14; }
+    .status-banner.medium  { border-color: #F57C00; background: #2e2114; }
+    .status-banner.high    { border-color: #D32F2F; background: #2e1414; }
+    .status-banner.scanning{ border-color: #555;    background: #222; }
+    .status-banner.idle    { border-color: #333;    background: #2a2a2a; }
+
+    .status-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.safe     { background: #388E3C; }
+    .status-dot.low      { background: #F9A825; }
+    .status-dot.medium   { background: #F57C00; }
+    .status-dot.high     { background: #D32F2F; }
+    .status-dot.scanning { background: #9E9E9E; }
+    .status-dot.idle     { background: #555; }
+
+    .status-label {
+      flex: 1;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #ccc;
+    }
+    .status-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      text-transform: uppercase;
+    }
+    .status-badge.safe    { background: #388E3C; color: #fff; }
+    .status-badge.low     { background: #F9A825; color: #000; }
+    .status-badge.medium  { background: #F57C00; color: #fff; }
+    .status-badge.high    { background: #D32F2F; color: #fff; }
+    .status-badge.scanning{ background: #555;    color: #ccc; }
+    .status-badge.idle    { background: #333;    color: #888; }
+
+    /* ── Findings section ── */
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: #555;
+      padding: 14px 16px 6px;
+      flex-shrink: 0;
+    }
+
+    .findings-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 16px 8px;
+    }
+    .findings-scroll::-webkit-scrollbar { width: 4px; }
+    .findings-scroll::-webkit-scrollbar-track { background: transparent; }
+    .findings-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+    /* Empty / idle state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 100%;
+      color: #444;
+      text-align: center;
+      padding: 24px;
+    }
+    .empty-state svg { opacity: .3; }
+    .empty-state p { font-size: 12px; line-height: 1.6; }
+
+    /* Finding card */
+    .finding-card {
+      background: #222;
+      border: 1px solid #2e2e2e;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .finding-card:last-child { margin-bottom: 0; }
+
+    .finding-header {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 8px;
+    }
+    .finding-risk-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .finding-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ccc;
+      flex: 1;
+    }
+    .finding-risk-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .finding-row {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 4px 8px;
+      font-size: 11.5px;
+      margin-bottom: 4px;
+    }
+    .finding-row:last-child { margin-bottom: 0; }
+    .finding-row-label { color: #555; font-weight: 600; padding-top: 1px; }
+    .finding-value {
+      font-family: "Menlo", "Consolas", monospace;
+      font-size: 11px;
+      word-break: break-all;
+    }
+    .finding-value.detected { color: #ff6b6b; }
+    .finding-value.safe     { color: #69db7c; }
+
+    /* ── Why flagged toggle ── */
+    .why-toggle {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 8px;
+      padding-top: 7px;
+      border-top: 1px solid #2e2e2e;
+      background: none;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      color: #666;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      transition: color 0.15s;
+    }
+    .why-toggle:hover { color: #aaa; }
+    .why-toggle .why-arrow {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-style: normal;
+      line-height: 1;
+    }
+    .why-toggle.open .why-arrow { transform: rotate(90deg); }
+
+    .why-body {
+      display: none;
+      margin-top: 7px;
+      padding: 8px 10px;
+      background: #1a1a1a;
+      border-radius: 6px;
+      border-left: 2px solid #444;
+      font-size: 11.5px;
+      color: #888;
+      line-height: 1.6;
+    }
+    .why-body.open { display: block; }
+
+    /* ── Action buttons ── */
+    .actions {
+      padding: 10px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      border-top: 1px solid #2a2a2a;
+      flex-shrink: 0;
+    }
+    .btn {
+      width: 100%;
+      padding: 8px 0;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn:not(:disabled):hover { opacity: .85; }
+
+    .btn-safe {
+      background: #1b2e1c;
+      color: #69db7c;
+      border-color: #388E3C;
+    }
+    .btn-send {
+      background: #2a2a2a;
+      color: #aaa;
+      border-color: #444;
+    }
+    .btn-refresh {
+      background: #222;
+      color: #666;
+      border-color: #333;
+      font-weight: 400;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      padding: 10px 16px 14px;
+      border-top: 1px solid #222;
+      flex-shrink: 0;
+    }
+    .legend-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 6px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 2px 0;
+      font-size: 11px;
+      color: #555;
+    }
+    .legend-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L4 5v6c0 5.25 3.5 10.15 8 11.35C16.5 21.15 20 16.25 20 11V5l-8-3z"
+            fill="#388E3C" opacity="0.9"/>
+      <text x="12" y="15.5" text-anchor="middle" font-size="8" font-weight="800"
+            fill="#fff" font-family="Arial,sans-serif">TP</text>
+    </svg>
+    <div class="header-text">
+      <h1>TrustPrompt</h1>
+      <p>Prompt privacy shield — v0.0.3</p>
+    </div>
+  </div>
+
+  <!-- Overall status -->
+  <div class="status-banner idle" id="status-banner">
+    <div class="status-dot idle" id="status-dot"></div>
+    <span class="status-label" id="status-label">Waiting for activity…</span>
+    <span class="status-badge idle" id="status-badge">Idle</span>
+  </div>
+
+  <!-- Findings label -->
+  <div class="section-label" id="findings-label">Detections</div>
+
+  <!-- Scrollable findings list -->
+  <div class="findings-scroll" id="findings-scroll">
+    <div class="empty-state" id="empty-state">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L4 5v6c0 5.25 3.5 10.15 8 11.35C16.5 21.15 20 16.25 20 11V5l-8-3z"
+              fill="#388E3C"/>
+      </svg>
+      <p>Start typing in ChatGPT.<br>TrustPrompt will scan your prompt<br>in real-time as you type.</p>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="actions">
+    <button class="btn btn-safe" id="btn-copy-safe" disabled>📋 Copy Safe Version</button>
+    <button class="btn btn-send" id="btn-send-anyway" disabled>Send Anyway</button>
+    <button class="btn btn-refresh" id="btn-refresh">↻ Refresh Rules</button>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-title">Risk Levels</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#D32F2F"></div> High — financial / auth data</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#F57C00"></div> Medium — contact / location</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#F9A825"></div> Low — metadata / labels</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#388E3C"></div> Safe — no sensitive data</div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

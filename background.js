@@ -2,41 +2,37 @@
 // TrustPrompt — service worker.
 //
 // Responsibilities:
-//   1. Fetch detection rules from Firebase Hosting (read-only, cached).
-//   2. Update the browser action badge colour based on risk level reported
-//      by the content script.
-//   3. Route messages from content scripts.
+//   1. Open the side panel when the user clicks the toolbar icon.
+//   2. Relay SCAN_RESULT / SCAN_SCANNING / SCAN_CLEARED messages from the
+//      content script to the side panel.
+//   3. Update the browser action badge colour based on risk level.
+//   4. Fetch detection rules from Firebase Hosting (cached, read-only).
 
 console.log("[TrustPrompt/bg] service worker started");
 
-// ── 1. FIREBASE RULES FETCH ───────────────────────────────────────────────────
-//
-// Rules are hosted at a public Firebase Hosting URL as a static JSON file.
-// They are fetched once per service worker session and cached in memory.
-// The content scripts do NOT call Firebase directly — they use the bundled
-// patterns.js, which can be overridden by remote rules fetched here and
-// forwarded via chrome.storage.session.
-//
-// Replace FIREBASE_RULES_URL with your actual Firebase Hosting URL.
+// ── 1. OPEN SIDE PANEL ON ICON CLICK ─────────────────────────────────────────
+
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch(err => console.warn("[TrustPrompt/bg] setPanelBehavior failed:", err));
+
+// ── 2. FIREBASE RULES FETCH ───────────────────────────────────────────────────
 
 const FIREBASE_RULES_URL = "https://YOUR_PROJECT.web.app/trustprompt-rules.json";
 const RULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-let cachedRules     = null;
-let rulesFetchedAt  = 0;
+let cachedRules    = null;
+let rulesFetchedAt = 0;
 
 async function fetchRules() {
   const now = Date.now();
-  if (cachedRules && (now - rulesFetchedAt) < RULES_CACHE_TTL_MS) {
-    return cachedRules;
-  }
+  if (cachedRules && (now - rulesFetchedAt) < RULES_CACHE_TTL_MS) return cachedRules;
   try {
     const resp = await fetch(FIREBASE_RULES_URL, { cache: "no-cache" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = await resp.json();
     cachedRules    = json;
     rulesFetchedAt = now;
-    // Persist so content scripts can read via chrome.storage.session
     await chrome.storage.session.set({ trustpromptRules: json });
     console.log("[TrustPrompt/bg] rules fetched from Firebase:", json);
     return json;
@@ -46,61 +42,124 @@ async function fetchRules() {
   }
 }
 
-// Kick off rules fetch on startup
 fetchRules();
 
-// ── 2. BADGE HELPERS ──────────────────────────────────────────────────────────
+// ── 3. BADGE HELPERS ──────────────────────────────────────────────────────────
+//
+// Badge states:
+//   "ON"  grey    — extension active, idle (no text typed yet)
+//   "…"   grey    — scanning (user is typing, debounce running)
+//   ""    green   — safe, no sensitive data found
+//   "!"   yellow  — low risk
+//   "!"   orange  — medium risk
+//   "!"   red     — high risk
 
 const BADGE_CONFIG = {
-  high:   { text: "!", colour: "#D32F2F" },
-  medium: { text: "!", colour: "#F57C00" },
-  low:    { text: "!", colour: "#F9A825" },
-  none:   { text: "",  colour: "#388E3C" }
+  active:   { text: "ON", colour: "#9E9E9E" },  // idle but running
+  scanning: { text: "…",  colour: "#9E9E9E" },  // debounce in progress
+  none:     { text: "",   colour: "#388E3C" },  // safe
+  low:      { text: "!",  colour: "#F9A825" },  // low risk
+  medium:   { text: "!",  colour: "#F57C00" },  // medium risk
+  high:     { text: "!",  colour: "#D32F2F" },  // high risk
 };
 
 function setBadge(tabId, riskLevel) {
   const cfg = BADGE_CONFIG[riskLevel] ?? BADGE_CONFIG.none;
   chrome.action.setBadgeText({ text: cfg.text, tabId });
   chrome.action.setBadgeBackgroundColor({ color: cfg.colour, tabId });
+  // Keep badge text legible at small size
+  chrome.action.setBadgeTextColor({ color: "#ffffff", tabId });
 }
 
-// ── 3. MESSAGE ROUTER ─────────────────────────────────────────────────────────
+// ── 4. MESSAGE ROUTER ─────────────────────────────────────────────────────────
+//
+// Content script sends:
+//   SCAN_RESULT   { riskLevel, findings, rawText }
+//   SCAN_SCANNING {}
+//   SCAN_CLEARED  {}
+//   UPDATE_BADGE  { riskLevel }          (legacy, still supported)
+//   REFRESH_RULES {}                     (from side panel refresh button)
+//
+// We relay scan messages to the side panel via chrome.runtime.sendMessage
+// so the panel always has up-to-date results regardless of which tab is active.
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
   const tabId = sender.tab?.id;
 
-  // Badge update requested by content script
+  // ── Content script just loaded → show active badge
+  if (message.type === "CONTENT_SCRIPT_READY") {
+    if (tabId) setBadge(tabId, "active");
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── Scan result from content script → badge + relay to side panel
+  if (message.type === "SCAN_RESULT") {
+    if (tabId) setBadge(tabId, message.riskLevel);
+    // Forward to side panel (it listens on chrome.runtime.onMessage)
+    chrome.runtime.sendMessage({ ...message, fromTab: tabId }).catch(() => {
+      // Side panel may not be open — that's fine
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.type === "SCAN_SCANNING") {
+    if (tabId) setBadge(tabId, "scanning");
+    chrome.runtime.sendMessage({ type: "SCAN_SCANNING" }).catch(() => {});
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.type === "SCAN_CLEARED") {
+    if (tabId) setBadge(tabId, "none");
+    chrome.runtime.sendMessage({ type: "SCAN_CLEARED" }).catch(() => {});
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── Legacy badge-only update
   if (message.type === "UPDATE_BADGE") {
     if (tabId) setBadge(tabId, message.riskLevel);
     sendResponse({ ok: true });
     return true;
   }
 
-  // Legacy / Claude path: raw prompt text sent for background-side detection
-  if (message.type === "PROMPT_SUBMITTED") {
-    console.log("[TrustPrompt/bg] PROMPT_SUBMITTED from:", sender.tab?.url);
-    // For Claude (pre-full implementation) we just acknowledge receipt.
-    // ChatGPT runs all detection in the content script itself.
-    sendResponse({ received: true });
-    return true;
-  }
-
-  // Rules refresh requested (e.g. from popup)
+  // ── Rules refresh (from side panel button)
   if (message.type === "REFRESH_RULES") {
     cachedRules    = null;
     rulesFetchedAt = 0;
     fetchRules().then(rules => sendResponse({ ok: true, rules }));
-    return true; // async response
+    return true;
+  }
+
+  // ── Open side panel (from inline alert click)
+  if (message.type === "OPEN_SIDE_PANEL") {
+    if (tabId) {
+      chrome.sidePanel.open({ tabId }).catch(err => {
+        console.warn("[TrustPrompt/bg] failed to open side panel:", err);
+      });
+    }
+    sendResponse({ ok: true });
+    return true;
   }
 
   return false;
 });
 
-// ── 4. CLEAR BADGE ON TAB NAVIGATION ─────────────────────────────────────────
+// ── 5. BADGE ON NAVIGATION ───────────────────────────────────────────────────
+// Reset to "active" state on navigation — extension is still running,
+// just hasn't scanned anything on the new page yet.
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "loading") {
-    setBadge(tabId, "none");
+    // Only set active badge on supported sites
+    const url = tab.url || "";
+    if (/chatgpt\.com|chat\.openai\.com|claude\.ai/.test(url)) {
+      setBadge(tabId, "active");
+    } else {
+      // Clear badge on unrelated tabs
+      chrome.action.setBadgeText({ text: "", tabId });
+    }
   }
 });

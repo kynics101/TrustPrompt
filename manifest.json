@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "TrustPrompt (dev test)",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Screens user prompts for sensitive data before submission to AI assistants.",
 
   "permissions": [
     "storage",
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
 
   "host_permissions": [
@@ -18,7 +19,13 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["content-script.js"],
+      "js": [
+        "lib/validator.min.js",
+        "ph-address-db.js",
+        "patterns.js",
+        "validator-wrapper.js",
+        "content-script.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -42,7 +49,11 @@
   },
 
   "action": {
-    "default_popup": "popup.html"
+    "default_title": "TrustPrompt"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
 
   "web_accessible_resources": [
@@ -50,7 +61,8 @@
       "resources": ["lib/validator.min.js"],
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://claude.ai/*"
       ]
     }
   ]

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TrustPrompt (dev test)",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "Screens user prompts for sensitive data before submission to AI assistants.",
 
   "permissions": [
@@ -18,7 +18,18 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["content-script.js"],
+      "js": [
+        "lib/validator.min.js",
+        "ph-address-db.js",
+        "normalizer.js",
+        "patterns.js",
+        "gazetteer.js",
+        "validator-wrapper.js",
+        "scanner.js",
+        "worker-bridge.js",
+        "ui.js",
+        "dom-claude.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -29,9 +40,14 @@
       "js": [
         "lib/validator.min.js",
         "ph-address-db.js",
+        "normalizer.js",
         "patterns.js",
+        "gazetteer.js",
         "validator-wrapper.js",
-        "content-script-chatgpt.js"
+        "scanner.js",
+        "worker-bridge.js",
+        "ui.js",
+        "dom-chatgpt.js"
       ],
       "run_at": "document_idle"
     }
@@ -47,8 +63,17 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["lib/validator.min.js"],
+      "resources": [
+        "lib/validator.min.js",
+        "trust-worker.js",
+        "normalizer.js",
+        "patterns.js",
+        "gazetteer.js",
+        "ph-address-db.js",
+        "validator-wrapper-worker.js"
+      ],
       "matches": [
+        "https://claude.ai/*",
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ]

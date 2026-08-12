@@ -1,26 +1,61 @@
-// normalizer.js
-// LAYER 1 — Global text normalisation.
+// normalizer.js — TrustPrompt text normalisation pipeline
 //
-// Runs ONCE on the raw DOM text before it is handed to either
-// Path A (regex) or Path B (gazetteer + NLP).
+// Two-layer architecture:
 //
-// What this layer does:
-//   FIX #1 — ALL-CAPS detection: if the message is dominated by uppercase
-//             characters, convert the whole message to sentence case so
-//             that downstream pattern matching and NLP work reliably.
+//   LAYER 1 — SHARED (always runs, language-agnostic)
+//     • Unicode NFKC normalisation
+//     • Remove invisible / zero-width unicode characters
+//     • Normalize line endings  (CRLF / CR → LF)
+//     • Trim leading and trailing whitespace
 //
-// What this layer deliberately does NOT do:
-//   - Fix lowercase names       → needs trigger-phrase context (Path B)
-//   - Fix typos                 → needs fuzzy matching (Path B)
-//   - Re-add missing punctuation → needs semantic context (Path B)
+//   LAYER 2 — LINGUISTIC (always runs after Layer 1)
+//     • Smart quote → ASCII quote
+//     • En/em dash → hyphen
+//     • Non-breaking and exotic spaces → regular space
+//     • Collapse consecutive inline whitespace (preserve newlines)
+//     • ALL-CAPS guard: if >70% alpha chars are uppercase, convert to
+//       sentence case so downstream regex and NLP work reliably
 //
-// All four fixes are noted in comments so the logic stays clear.
+// Return shape (unchanged for callers):
+//   { text: string, wasCapsConverted: boolean }
 
 /* global TrustNormalizer */
 
 const TrustNormalizer = (() => {
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Layer 1 — Shared ───────────────────────────────────────────────────────
+
+  /**
+   * Invisible / zero-width characters that should be stripped entirely.
+   *
+   * U+200B  ZERO WIDTH SPACE
+   * U+200C  ZERO WIDTH NON-JOINER
+   * U+200D  ZERO WIDTH JOINER
+   * U+200E  LEFT-TO-RIGHT MARK
+   * U+200F  RIGHT-TO-LEFT MARK
+   * U+FEFF  BYTE ORDER MARK / ZERO WIDTH NO-BREAK SPACE
+   * U+00AD  SOFT HYPHEN
+   * U+2060  WORD JOINER
+   * U+2061–U+2064  INVISIBLE mathematical operators
+   * U+206x  various deprecated formatting characters
+   */
+  const INVISIBLE_RE = /[\u00AD\u200B-\u200F\u2060-\u2064\u206A-\u206F\uFEFF]/g;
+
+  function sharedLayer(raw) {
+    return raw
+      // 1a. NFKC: decomposes compatibility characters (e.g. ﬁ → fi, ² → 2,
+      //     fullwidth ASCII → ASCII) and then recomposes canonically.
+      .normalize("NFKC")
+      // 1b. Strip invisible / zero-width control characters
+      .replace(INVISIBLE_RE, "")
+      // 1c. Normalise line endings: CRLF and lone CR → LF
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      // 1d. Trim leading and trailing whitespace (including newlines)
+      .trim();
+  }
+
+  // ── Layer 2 — Linguistic ───────────────────────────────────────────────────
 
   /**
    * Count the ratio of uppercase alpha characters in a string.
@@ -29,80 +64,67 @@ const TrustNormalizer = (() => {
   function uppercaseRatio(str) {
     const alpha = str.replace(/[^a-zA-Z]/g, "");
     if (alpha.length === 0) return 0;
-    const upper = str.replace(/[^A-Z]/g, "");
-    return upper.length / alpha.length;
+    return str.replace(/[^A-Z]/g, "").length / alpha.length;
   }
 
   /**
    * Convert a string to sentence case:
    *   - Lowercase everything
    *   - Capitalise the first letter of each sentence (after . ! ?)
-   *   - Capitalise the word "I" when standalone
+   *   - Restore standalone "I"
    *
-   * This is intentionally conservative — it does NOT try to capitalise
-   * proper nouns because it has no NLP context here.
+   * Intentionally conservative — does not capitalise proper nouns
+   * because no NLP context is available here.
    */
   function toSentenceCase(str) {
     return str
       .toLowerCase()
-      // Capitalise first character
       .replace(/^([a-z])/, (c) => c.toUpperCase())
-      // Capitalise after sentence-ending punctuation + whitespace
       .replace(/([.!?]\s+)([a-z])/g, (_, punct, letter) => punct + letter.toUpperCase())
-      // Restore standalone "i" → "I"
       .replace(/\bi\b/g, "I");
   }
 
-  // ── Unicode cleanup (runs unconditionally) ───────────────────────────────────
+  function linguisticLayer(str) {
+    let out = str
+      // 2a. Smart / curly quotes → ASCII equivalents
+      .replace(/[\u2018\u2019\u201A\u201B]/g, "'")   // single variants → '
+      .replace(/[\u201C\u201D\u201E\u201F]/g, '"')   // double variants → "
+      // 2b. Dashes → hyphen-minus
+      .replace(/[\u2010-\u2015\u2212]/g, "-")        // various dashes + minus sign
+      // 2c. Non-breaking and other exotic space variants → regular space
+      //     (U+00A0 NBSP, U+202F NARROW NBSP, U+3000 IDEOGRAPHIC SPACE, etc.)
+      .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
+      // 2d. Collapse consecutive inline whitespace; preserve intentional newlines
+      .replace(/[^\S\n]+/g, " ");
 
-  /**
-   * Normalise unicode, smart quotes, em-dashes, and whitespace.
-   * This always runs regardless of casing.
-   */
-  function unicodeClean(str) {
-    return str
-      .normalize("NFC")
-      .replace(/[\u2018\u2019]/g, "'")   // smart single quotes → '
-      .replace(/[\u201C\u201D]/g, '"')   // smart double quotes → "
-      .replace(/[\u2013\u2014]/g, "-")   // en/em dash → hyphen
-      .replace(/\u00A0/g, " ")           // non-breaking space → regular space
-      .replace(/[^\S\n]+/g, " ")         // collapse inline whitespace (keep newlines)
-      .trim();
+    // 2e. ALL-CAPS guard
+    // Threshold: >70% uppercase alpha AND text longer than 10 chars
+    // (avoids false-positives on short strings like "OK" or "TIN").
+    const wasCapsConverted = out.length > 10 && uppercaseRatio(out) > 0.70;
+    if (wasCapsConverted) {
+      out = toSentenceCase(out);
+    }
+
+    return { text: out, wasCapsConverted };
   }
 
-  // ── Public API ───────────────────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Run Layer 1 normalisation on raw DOM text.
+   * Run the full normalisation pipeline on raw DOM text.
    *
-   * @param {string} rawText  - text as extracted directly from the DOM element
+   * @param   {string} rawText
    * @returns {{ text: string, wasCapsConverted: boolean }}
-   *   text             - cleaned text ready for Path A and Path B
-   *   wasCapsConverted - true if ALL-CAPS conversion was applied (FIX #1)
    */
   function normalize(rawText) {
     if (!rawText || typeof rawText !== "string") {
       return { text: "", wasCapsConverted: false };
     }
-
-    // Step 1 — unicode cleanup (always)
-    let text = unicodeClean(rawText);
-
-    // Step 2 — FIX #1: ALL-CAPS guard
-    // Threshold: >70% of alpha characters are uppercase AND the text is
-    // longer than 10 chars (avoid false-positives on short things like "OK").
-    const wasCapsConverted = text.length > 10 && uppercaseRatio(text) > 0.70;
-    if (wasCapsConverted) {
-      text = toSentenceCase(text);
-    }
-
-    // NOTE: FIX #2 (lowercase names), FIX #3 (no punctuation boundary),
-    // FIX #4 (typos) are all handled in Path B (gazetteer.js) where
-    // trigger-phrase context is available.
-
-    return { text, wasCapsConverted };
+    const afterShared = sharedLayer(rawText);
+    return linguisticLayer(afterShared);
   }
 
-  return { normalize };
+  // Expose individual layers for unit-testing and the worker's internal use.
+  return { normalize, sharedLayer, linguisticLayer };
 
 })();

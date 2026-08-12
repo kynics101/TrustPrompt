@@ -16,15 +16,20 @@
 //     normalisedText: string, wasCapsConverted: boolean,
 //     elapsedMs: number }
 //
-// NOTE: importScripts paths are relative to the extension root,
-// which Chrome resolves correctly for web_accessible_resources.
+// NOTE: importScripts paths are resolved as follows:
+//   - When loaded via blob trampoline: self.EXTENSION_BASE is set by the blob,
+//     so we use absolute chrome-extension:// URLs.
+//   - When loaded directly via chrome.runtime.getURL(): relative paths work fine.
+
+const _base = (typeof self !== "undefined" && self.EXTENSION_BASE) ? self.EXTENSION_BASE : "";
+const _url  = (f) => _base ? _base + f : f;
 
 importScripts(
-  "normalizer.js",
-  "patterns.js",
-  "validator-wrapper-worker.js",   // validator.js-free version for the worker
-  "gazetteer.js",
-  "ph-address-db.js"
+  _url("normalizer.js"),
+  _url("patterns.js"),
+  _url("validator-wrapper-worker.js"),
+  _url("gazetteer.js"),
+  _url("ph-address-db.js")
 );
 
 // ── RISK SCORING ENGINE (NIST SP 800-122) ─────────────────────────────────────

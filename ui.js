@@ -504,6 +504,14 @@ const TrustUI = (() => {
     removePanel();
   }
 
+  function teardown() {
+    document.getElementById(ID_BADGE)?.remove();
+    removeBar();
+    removePanel();
+    _currentInputEl  = null;
+    _currentComposer = null;
+  }
+
   return {
     update,
     setScanning,
@@ -514,11 +522,3 @@ const TrustUI = (() => {
   };
 
 })();
-
-  function teardown() {
-    document.getElementById(ID_BADGE)?.remove();
-    removeBar();
-    removePanel();
-    _currentInputEl  = null;
-    _currentComposer = null;
-  }

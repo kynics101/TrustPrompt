@@ -1,19 +1,30 @@
-// dom-chatgpt.js — TrustPrompt ChatGPT DOM driver v0.0.4
+// dom-chatgpt.js — TrustPrompt ChatGPT DOM driver v0.0.6
 /* global TrustWorkerBridge, TrustUI, chrome */
 
 console.log("[TrustPrompt] ChatGPT driver loaded");
 
 const TP_CHATGPT = (() => {
 
-  const DEBOUNCE_MS = 400;
+  const DEBOUNCE_MS          = 400;
+  const OBSERVER_DEBOUNCE_MS = 120;
+
+  // ── Scan state machine ────────────────────────────────────────────────────
+  // IDLE     → box empty / freshly loaded, no pending scan
+  // PENDING  → user typed, debounce timer is running
+  // SCANNING → debounce fired, worker is running
+  // DONE     → scan completed, lastResult is valid
+  const STATE = { IDLE: "IDLE", PENDING: "PENDING", SCANNING: "SCANNING", DONE: "DONE" };
+  let scanState      = STATE.IDLE;
 
   let promptBox          = null;
   let debounceTimer      = null;
+  let observerDebounce   = null;
   let lastScannedText    = "";
-  let scanInProgress     = false;
   let pendingScanPromise = null;
   let lastResult         = null;
-  let submitBlocked      = false;
+
+  // Track which elements already have listeners so we never double-attach
+  const listenedElements = new WeakSet();
 
   // ── 1. CASCADING SELECTOR ─────────────────────────────────────────────────
 
@@ -46,7 +57,7 @@ const TP_CHATGPT = (() => {
         console.log("[TP/chatgpt] Wildcard"); return el;
       }
     }
-    // Layer 4 — Placeholder / send-button sibling
+    // Layer 4 — Visible text / placeholder proximity + send-button sibling
     const edits = document.querySelectorAll('textarea,div[contenteditable="true"]');
     for (const el of edits) {
       if (/message|prompt|ask|type|send/i.test(el.getAttribute("placeholder") || "") && isVisible(el)) {
@@ -59,12 +70,34 @@ const TP_CHATGPT = (() => {
       if (c) { const i = c.querySelector('textarea,div[contenteditable="true"]');
                if (i && isVisible(i)) { console.log("[TP/chatgpt] SendSibling"); return i; } }
     }
-    // Layer 5 — Last resort
+    // Layer 5 — Last resort: first visible editable
     for (const el of edits) {
       if (isVisible(el)) { console.warn("[TP/chatgpt] Fallback"); return el; }
     }
     return null;
   }
+
+  // ── 1b. EVENT-PROXIMITY DETECTION ─────────────────────────────────────────
+  // If findPromptBox() returned null (UI changed), we piggyback on focus and
+  // keydown events: the first editable element the user interacts with is
+  // adopted as the prompt box. This is our "keyboard / mouse event" fallback.
+
+  function onProximityEvent(e) {
+    if (promptBox && isVisible(promptBox)) return; // already have a valid box
+    const t = e.target;
+    if (!t || !(t.tagName === "TEXTAREA" || t.contentEditable === "true")) return;
+    if (!isVisible(t)) return;
+    console.log("[TP/chatgpt] ProximityEvent — adopting element via", e.type);
+    adoptPromptBox(t);
+  }
+
+  document.addEventListener("focusin", onProximityEvent, true);
+  document.addEventListener("keydown", (e) => {
+    // Only fire when no box yet and a printable key is pressed
+    if (promptBox && isVisible(promptBox)) return;
+    if (e.key.length !== 1 && e.key !== "Backspace") return;
+    onProximityEvent(e);
+  }, true);
 
   function findSendButton() {
     return (
@@ -100,23 +133,31 @@ const TP_CHATGPT = (() => {
   // ── 3. SCAN ───────────────────────────────────────────────────────────────
 
   function triggerScan(rawText) {
-    scanInProgress     = true;
+    scanState          = STATE.SCANNING;
+    lastScannedText    = rawText;
     pendingScanPromise = TrustWorkerBridge.scan(rawText)
       .then(result => {
-        scanInProgress = false;
-        lastResult     = result;
+        scanState  = STATE.DONE;
+        lastResult = result;
         applyResult(result, rawText);
-        if (submitBlocked) { submitBlocked = false; handleUnblock(result, rawText); }
+        if (pendingSubmitResolver) {
+          const resolve = pendingSubmitResolver;
+          pendingSubmitResolver = null;
+          resolve(result);
+        }
         return result;
       })
       .catch(err => {
-        scanInProgress = false;
-        submitBlocked  = false;
         console.error("[TP/chatgpt] scan failed, defaulting to safe:", err);
-        // Treat as safe so the UI doesn't stay stuck on "Scanning…"
         const fallback = { findings: [], riskLevel: "none", score: 0 };
+        scanState  = STATE.DONE;
         lastResult = fallback;
         applyResult(fallback, rawText);
+        if (pendingSubmitResolver) {
+          const resolve = pendingSubmitResolver;
+          pendingSubmitResolver = null;
+          resolve(fallback);
+        }
       });
     return pendingScanPromise;
   }
@@ -148,111 +189,170 @@ const TP_CHATGPT = (() => {
   function getComposerWrapper() { return getComposerCard(); }
 
   // ── 4. SUBMIT BLOCKING ────────────────────────────────────────────────────
+  //
+  // One resolver slot: when submit is intercepted while PENDING or SCANNING,
+  // we store a resolver here. triggerScan() calls it when the result arrives,
+  // and the intercept handler acts on the result (allow or show panel).
+  let pendingSubmitResolver = null;
 
+  // Returns a Promise that resolves with the scan result.
+  // - If already DONE:    resolves immediately with lastResult.
+  // - If SCANNING:        waits for the running scan to finish.
+  // - If PENDING/IDLE:    fast-tracks the scan right now (skips debounce).
+  function awaitScan() {
+    if (scanState === STATE.DONE && lastResult) {
+      return Promise.resolve(lastResult);
+    }
+    if (scanState === STATE.SCANNING && pendingScanPromise) {
+      return new Promise(resolve => { pendingSubmitResolver = resolve; });
+    }
+    // PENDING or IDLE — cancel debounce and scan immediately
+    clearTimeout(debounceTimer);
+    const raw = extractText(promptBox);
+    if (!raw.trim()) {
+      return Promise.resolve({ findings: [], riskLevel: "none", score: 0 });
+    }
+    return new Promise(resolve => {
+      pendingSubmitResolver = resolve;
+      TrustUI.setScanning(promptBox);
+      triggerScan(raw);
+    });
+  }
+
+  // The single entry point for all submit attempts (Enter key + send button).
   function handleSubmitAttempt(e) {
-    if (!scanInProgress && lastResult) {
-      if (lastResult.riskLevel === "none") return; // safe, allow through
-      if (e) e.preventDefault();
-      return;
-    }
-    if (scanInProgress && pendingScanPromise) {
-      if (e) e.preventDefault();
-      submitBlocked = true;
-      console.log("[TP/chatgpt] submit blocked — waiting for scan");
+    if (!promptBox) return;
+    const raw = extractText(promptBox);
+    if (!raw.trim()) return; // empty box — let it through
+
+    if (e) e.preventDefault();
+
+    console.log("[TP/chatgpt] submit intercepted — state:", scanState);
+
+    awaitScan().then(result => {
+      if (result.riskLevel === "none") {
+        console.log("[TP/chatgpt] scan clear — releasing submit");
+        releaseSubmit(e);
+      } else {
+        console.log("[TP/chatgpt] submit blocked — risk level:", result.riskLevel);
+      }
+    });
+  }
+
+  // Re-fire the submit that was blocked.
+  function releaseSubmit(originalEvent) {
+    if (originalEvent && originalEvent.type === "keydown") {
+      const synth = new KeyboardEvent("keydown", {
+        key: "Enter", code: "Enter", keyCode: 13,
+        bubbles: true, cancelable: true, composed: true
+      });
+      synth._tpRelease = true;
+      promptBox.dispatchEvent(synth);
+    } else {
+      findSendButton()?.click();
     }
   }
 
-  function handleUnblock(result, rawText) {
-    if (result.riskLevel === "none") {
-      console.log("[TP/chatgpt] safe — releasing submit");
-      findSendButton()?.click();
-    } else {
-      applyResult(result, rawText);
-    }
-  }
+  // ── Legacy helpers (kept for applyResult compat) ─────────────────────────
 
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
 
   function onInput() {
     TrustUI.setScanning(promptBox);
     clearTimeout(debounceTimer);
-    lastResult = null; submitBlocked = false;
+    scanState  = STATE.PENDING;
+    lastResult = null;
 
     debounceTimer = setTimeout(() => {
       if (!promptBox) return;
       const rawText = extractText(promptBox);
       if (!rawText.trim()) {
+        scanState = STATE.IDLE;
         TrustUI.reset(promptBox);
         chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
         lastScannedText = ""; return;
       }
-      if (rawText === lastScannedText) return;
-      lastScannedText = rawText;
+      if (rawText === lastScannedText) {
+        scanState = STATE.DONE;
+        return;
+      }
       triggerScan(rawText);
     }, DEBOUNCE_MS);
   }
 
   function attachListeners(el) {
+    if (listenedElements.has(el)) return; // idempotent guard
+    listenedElements.add(el);
     el.addEventListener("input",  onInput);
     el.addEventListener("keyup",  onInput);
     el.addEventListener("paste", () => setTimeout(onInput, 0));
   }
 
+  // Central helper: switch to a new prompt box, tear down old UI, re-attach
+  function adoptPromptBox(el) {
+    if (el === promptBox) return;
+    promptBox = el;
+    scanState  = STATE.IDLE;
+    lastResult = null; lastScannedText = "";
+    pendingSubmitResolver = null;
+    TrustUI.teardown();
+    TrustUI.setScanning(promptBox);
+    attachListeners(promptBox);
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    console.log("[TP/chatgpt] prompt box adopted:", el.tagName,
+      el.getAttribute("aria-label") || el.className.slice(0, 40));
+  }
+
+  // ── Submit intercept — Enter key ──────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey) return;
-    clearTimeout(debounceTimer);
+    if (e._tpRelease) return; // synthetic release event — let it through
+    if (!promptBox || !isVisible(promptBox)) return;
     handleSubmitAttempt(e);
-    if (!scanInProgress && promptBox) {
-      const raw = extractText(promptBox);
-      if (raw.trim() && raw !== lastScannedText) {
-        lastScannedText = raw; submitBlocked = true;
-        e.preventDefault(); triggerScan(raw);
-      }
-    }
   }, true);
 
+  // ── Submit intercept — send button click ──────────────────────────────────
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
     const lbl = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
     if (!lbl.includes("send")) return;
-    clearTimeout(debounceTimer);
+    if (!promptBox || !isVisible(promptBox)) return;
     handleSubmitAttempt(e);
-    if (!scanInProgress && promptBox) {
-      const raw = extractText(promptBox);
-      if (raw.trim() && raw !== lastScannedText) {
-        lastScannedText = raw; submitBlocked = true;
-        e.preventDefault(); triggerScan(raw);
-      }
-    }
   }, true);
 
   // ── 6. MUTATION OBSERVER + INIT ──────────────────────────────────────────
 
   const observer = new MutationObserver(() => {
-    if (!promptBox || !isVisible(promptBox)) {
-      const found = findPromptBox();
-      if (found && found !== promptBox) {
-        promptBox = found; lastResult = null; lastScannedText = ""; submitBlocked = false;
-        TrustUI.teardown();
-        // Show scanning badge immediately
-        TrustUI.setScanning(promptBox);
-        attachListeners(promptBox);
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
-        console.log("[TP/chatgpt] prompt box re-resolved");
+    // Debounce the re-resolution check — React can fire hundreds of mutations
+    // per interaction; we only need to act once the storm settles.
+    clearTimeout(observerDebounce);
+    observerDebounce = setTimeout(() => {
+      if (!promptBox || !isVisible(promptBox)) {
+        const found = findPromptBox();
+        if (found && found !== promptBox) {
+          adoptPromptBox(found);
+          console.log("[TP/chatgpt] prompt box re-resolved via MutationObserver");
+        }
       }
-    }
+    }, OBSERVER_DEBOUNCE_MS);
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+
+  // childList covers node insertions/removals (SPA navigation, lazy-loaded UI)
+  // attributes covers aria-label / contenteditable swaps on existing nodes
+  // subtree ensures we watch the entire document tree
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
   function init() {
     promptBox = findPromptBox();
     if (promptBox) {
+      scanState = STATE.IDLE;
       TrustUI.setScanning(promptBox);
       attachListeners(promptBox);
+      listenedElements.add(promptBox);
       console.log("[TP/chatgpt] init complete");
     } else {
-      console.warn("[TP/chatgpt] not found — waiting via MutationObserver");
+      console.warn("[TP/chatgpt] not found — waiting via MutationObserver + ProximityEvents");
     }
   }
 

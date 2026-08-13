@@ -257,9 +257,9 @@ const TrustScanner = (() => {
       return { findings: [], riskLevel: "none", score: 0,
                normalisedText: "", wasCapsConverted: false };
     }
-    const { text: normalisedText, wasCapsConverted } = TrustNormalizer.normalize(rawText);
-    const pathAFindings = runPathA(normalisedText);
-    const pathBFindings = TrustGazetteer.scan(normalisedText);
+    const { masked, textRegex, textNLP, wasCapsConverted } = TrustNormalizer.normalize(rawText);
+    const pathAFindings = runPathA(textRegex);
+    const pathBFindings = TrustGazetteer.scan(textNLP);
     const findings      = mergeAndDedupe(pathAFindings, pathBFindings);
     const { score, riskLevel, governance } = computeRiskScore(findings);
 
@@ -270,7 +270,7 @@ const TrustScanner = (() => {
       wasCapsConverted ? "| CAPS→sentenceCase" : ""
     );
 
-    return { findings, riskLevel, score, governance, normalisedText, wasCapsConverted };
+    return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted };
   }
 
   return { scan };

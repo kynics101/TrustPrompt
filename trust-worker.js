@@ -175,13 +175,13 @@ self.onmessage = function (e) {
   const t0 = performance.now();
 
   // Layer 1 — normalise
-  const { text: normalisedText, wasCapsConverted } = TrustNormalizer.normalize(rawText);
+  const { masked, textRegex, textNLP, wasCapsConverted } = TrustNormalizer.normalize(rawText);
 
   // Path A — regex
-  const pathAFindings = runPathA(normalisedText);
+  const pathAFindings = runPathA(textRegex);
 
   // Path B — gazetteer + trigger
-  const pathBFindings = TrustGazetteer.scan(normalisedText);
+  const pathBFindings = TrustGazetteer.scan(textNLP);
 
   // Merge
   const findings = mergeAndDedupe(pathAFindings, pathBFindings);
@@ -197,7 +197,7 @@ self.onmessage = function (e) {
     findings,
     riskLevel,
     score,
-    normalisedText,
+    normalisedText:  masked,
     wasCapsConverted,
     elapsedMs
   });

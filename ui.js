@@ -22,7 +22,7 @@ const TrustUI = (() => {
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const THEME = {
-    scanning: { bg: "#e5e7eb", text: "#6b7280", dot: "#9ca3af", label: "Scanning…"             },
+    scanning: { bg: "#e5e7eb", text: "#6b7280", dot: "#9ca3af", label: "TrustPrompt is scanning…" },
     none:     { bg: "#dcfce7", text: "#15803d", dot: "#22c55e", label: "Safe — no issues found" },
     low:      { bg: "#fef9c3", text: "#a16207", dot: "#eab308", label: "Low risk detected"      },
     medium:   { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Medium risk detected"   },
@@ -105,17 +105,16 @@ const TrustUI = (() => {
       "display:inline-flex",
       "align-items:center",
       "gap:6px",
-      "padding:4px 14px",
+      "padding:4px 12px",
       "border-radius:999px",
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
-      "font-size:12px",
+      "font-size:11px",
       "font-weight:500",
       "white-space:nowrap",
       "z-index:10000",
-      "box-shadow:0 1px 6px rgba(0,0,0,0.15)",
+      "box-shadow:0 1px 6px rgba(0,0,0,0.18)",
       "pointer-events:none",
-      "transition:background 0.25s,color 0.25s",
-      "transform:translateX(-50%)"
+      "transition:background 0.25s,color 0.25s,opacity 0.25s"
     ].join(";");
     document.body.appendChild(badge);
     return badge;
@@ -126,9 +125,11 @@ const TrustUI = (() => {
     if (!badge || !inputEl) return;
     const card = getCardRect(inputEl);
     if (!card) return;
-    // Centre horizontally over the card, sit 10px above the card's top edge
-    badge.style.left = (card.left + card.width / 2) + "px";
-    badge.style.top  = Math.max(4, card.top - 36) + "px";
+    // Anchor to the bottom-left corner of the card, 6px below it.
+    // This keeps the badge inside the composer area and away from the host
+    // site's top navigation bar.
+    badge.style.left = card.left + "px";
+    badge.style.top  = (card.bottom + 6) + "px";
   }
 
   function setBadge(riskLevel, inputEl) {
@@ -157,18 +158,21 @@ const TrustUI = (() => {
   // gets taller than that — we've just left the card.
   function getCardRect(inputEl) {
     if (!inputEl) return null;
-    const inputH = inputEl.getBoundingClientRect().height || 40;
-    const maxH   = inputH * 8;   // card can be up to 8× textarea height
-    const maxW   = window.innerWidth * 0.92;
-    let best     = inputEl.getBoundingClientRect();
-    let el       = inputEl.parentElement;
+    const inputRect = inputEl.getBoundingClientRect();
+    const inputH    = inputRect.height || 40;
+    const maxH      = inputH * 6;
+    // Width cap: never wider than the input element itself or 760px,
+    // whichever is smaller. This is the tightest safe bound — the bar
+    // should match the visible input card, not any outer wrapper.
+    const inputW    = inputRect.width || 400;
+    const maxW      = Math.min(inputW * 1.05, 760); // allow 5% overshoot for padding
+    let best        = inputRect;
+    let el          = inputEl.parentElement;
 
     while (el && el !== document.body) {
       const r = el.getBoundingClientRect();
-      // Stop if this ancestor is too tall (we've exited the card)
       if (r.height > maxH) break;
-      // Accept if it's reasonably wide but not full-page
-      if (r.width > 200 && r.width < maxW) {
+      if (r.width > best.width && r.width <= maxW) {
         best = r;
       }
       el = el.parentElement;
@@ -184,52 +188,57 @@ const TrustUI = (() => {
     const card = getCardRect(inputEl);
     if (!card) return;
 
-    // Safety: if card.bottom is more than 80% down the viewport, something
-    // went wrong with card detection — fall back to input rect + offset.
-    const inputRect = inputEl ? inputEl.getBoundingClientRect() : card;
-    const safeBottom = card.bottom < window.innerHeight * 0.85
-      ? card.bottom
-      : inputRect.bottom;
+    const barTop  = card.bottom + 6 + 28 + 4;
+    const isHigh  = riskLevel === "high";
+    const riskLabel = riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1);
 
     const bar = document.createElement("div");
     bar.id = ID_BAR;
-    // Use position:fixed so the bar is painted relative to the viewport,
-    // completely outside whatever DOM hierarchy the input lives in.
     bar.style.cssText = [
       "all:initial",
       "position:fixed",
       `left:${card.left}px`,
-      `top:${safeBottom + 6}px`,
+      `top:${barTop}px`,
       `width:${card.width}px`,
+      "max-width:760px",
       "display:flex",
       "align-items:center",
       "justify-content:space-between",
       `background:${acc.solid}`,
       "color:#fff",
-      "padding:8px 14px",
+      "padding:7px 12px",
       "border-radius:8px",
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
       "font-size:12px",
       "font-weight:500",
-      "cursor:pointer",
+      // High risk: not clickable — side panel auto-opens instead
+      isHigh ? "cursor:default" : "cursor:pointer",
       "z-index:9999",
       "box-sizing:border-box",
       "box-shadow:0 2px 8px rgba(0,0,0,0.18)"
     ].join(";");
 
-    const riskLabel = riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1);
     bar.innerHTML = `
-      <span style="display:flex;align-items:center;gap:8px;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+      <span style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
           <path d="M12 2L4 5v6c0 5.25 3.5 10.15 8 11.35C16.5 21.15 20 16.25 20 11V5l-8-3z"
                 fill="rgba(255,255,255,0.9)"/>
         </svg>
-        <strong>${riskLabel} risk detected</strong>
-        &mdash; ${findingsCount} sensitive item${findingsCount !== 1 ? "s" : ""} detected
+        <strong style="white-space:nowrap;">${riskLabel} risk</strong>
+        <span style="opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          — ${findingsCount} sensitive item${findingsCount !== 1 ? "s" : ""} found
+        </span>
       </span>
-      <span style="opacity:0.9;font-size:11px;">Click to open TrustPrompt →</span>`;
+      ${!isHigh ? `<span style="opacity:0.9;font-size:11px;white-space:nowrap;margin-left:8px;flex-shrink:0;">
+        View details →
+      </span>` : ""}`;
 
-    bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
+    // Low / medium: clicking the bar opens the inline detail panel
+    // High: bar is display-only — details are in the Chrome side panel
+    if (!isHigh) {
+      bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
+    }
+
     document.body.appendChild(bar);
   }
 
@@ -387,19 +396,22 @@ const TrustUI = (() => {
           Low risk — no action required. You may continue.
         </div>`;
     } else {
-      // medium / high — Copy Safe + Send Anyway + Refresh
-      const btnCopy = document.createElement("button");
-      btnCopy.textContent = "🗒 Copy Safe Version";
-      btnCopy.style.cssText = "width:100%;background:#166534;color:#fff;border:none;" +
-        "border-radius:8px;padding:10px;font-size:13px;font-weight:600;" +
-        "cursor:pointer;font-family:inherit;margin-bottom:8px;";
-      btnCopy.addEventListener("click", () => {
-        if (!safeText) return;
-        navigator.clipboard.writeText(safeText).then(() => {
-          btnCopy.textContent = "✅ Copied to clipboard!";
-          setTimeout(() => { btnCopy.textContent = "🗒 Copy Safe Version"; }, 2000);
+      // medium / high — Send Anyway + Refresh (Copy Safe Version only for high)
+      if (tier === "high") {
+        const btnCopy = document.createElement("button");
+        btnCopy.textContent = "🗒 Copy Safe Version";
+        btnCopy.style.cssText = "width:100%;background:#166534;color:#fff;border:none;" +
+          "border-radius:8px;padding:10px;font-size:13px;font-weight:600;" +
+          "cursor:pointer;font-family:inherit;margin-bottom:8px;";
+        btnCopy.addEventListener("click", () => {
+          if (!safeText) return;
+          navigator.clipboard.writeText(safeText).then(() => {
+            btnCopy.textContent = "✅ Copied to clipboard!";
+            setTimeout(() => { btnCopy.textContent = "🗒 Copy Safe Version"; }, 2000);
+          });
         });
-      });
+        footer.appendChild(btnCopy);
+      }
 
       const btnSend = document.createElement("button");
       btnSend.textContent = "Send Anyway";
@@ -422,7 +434,6 @@ const TrustUI = (() => {
         });
       });
 
-      footer.appendChild(btnCopy);
       footer.appendChild(btnSend);
       footer.appendChild(btnRefresh);
     }
@@ -453,14 +464,24 @@ const TrustUI = (() => {
 
     if (riskLevel !== "none" && riskLevel !== "scanning") {
       showBar(riskLevel, findings.length, inputEl, () => {
-        openPanel(findings, riskLevel, safeText, onSendAnyway, null);
+        // High risk: inline panel is suppressed — details live in the Chrome side panel
+        if (riskLevel !== "high") {
+          openPanel(findings, riskLevel, safeText, onSendAnyway, null);
+        }
       });
     } else {
       removeBar();
     }
 
-    if (document.getElementById(ID_PANEL)) {
+    // Refresh the inline panel if it is already open — but never for high risk
+    if (riskLevel !== "high" && document.getElementById(ID_PANEL)) {
       openPanel(findings, riskLevel, safeText, onSendAnyway, null);
+    }
+
+    // If risk escalated to high while the inline panel was open, close it —
+    // the Chrome side panel is the correct place for high-risk details
+    if (riskLevel === "high" && document.getElementById(ID_PANEL)) {
+      removePanel();
     }
   }
 
@@ -469,19 +490,16 @@ const TrustUI = (() => {
   let _currentComposer = null;
 
   function _reposition() {
-    if (_currentInputEl) {
-      positionBadge(_currentInputEl);
-      const bar = document.getElementById(ID_BAR);
-      if (bar) {
-        const card      = getCardRect(_currentInputEl);
-        const inputRect = _currentInputEl.getBoundingClientRect();
-        if (card) {
-          const safeBottom = card.bottom < window.innerHeight * 0.85
-            ? card.bottom : inputRect.bottom;
-          bar.style.left  = card.left + "px";
-          bar.style.top   = (safeBottom + 6) + "px";
-          bar.style.width = card.width + "px";
-        }
+    if (!_currentInputEl) return;
+    positionBadge(_currentInputEl);
+    const bar = document.getElementById(ID_BAR);
+    if (bar) {
+      const card = getCardRect(_currentInputEl);
+      if (card) {
+        const barTop = card.bottom + 6 + 28 + 4;
+        bar.style.left  = card.left + "px";
+        bar.style.top   = barTop + "px";
+        bar.style.width = card.width + "px";
       }
     }
   }

@@ -169,7 +169,7 @@ const TP_CHATGPT = (() => {
     TrustUI.update(riskLevel, findings, safeText, promptBox, composerEl,
       () => { TrustUI.reset(promptBox); chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" }); }
     );
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel });
+    chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
   }
 
   // Walk up from the textarea to find the outermost card/form wrapper

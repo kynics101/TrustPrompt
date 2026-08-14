@@ -6,7 +6,8 @@
 
   "permissions": [
     "storage",
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
 
   "host_permissions": [
@@ -57,8 +58,10 @@
     "service_worker": "background.js"
   },
 
-  "action": {
-    "default_popup": "popup.html"
+  "action": {},
+
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
 
   "web_accessible_resources": [

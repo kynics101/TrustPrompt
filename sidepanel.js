@@ -7,7 +7,7 @@
 // ── Risk metadata ─────────────────────────────────────────────────────────────
 
 const RISK_META = {
-  scanning: { label: "Scanning…",   badge: "Scanning", cls: "scanning" },
+  scanning: { label: "TrustPrompt is scanning…", badge: "Scanning", cls: "scanning" },
   high:     { label: "High risk detected",   badge: "High",     cls: "high"     },
   medium:   { label: "Medium risk detected", badge: "Medium",   cls: "medium"   },
   low:      { label: "Low risk detected",    badge: "Low",      cls: "low"      },
@@ -83,14 +83,18 @@ function renderFindings(findings, riskLevel) {
 
   if (findings.length === 0) {
     emptyState.style.display = "flex";
-    btnCopySafe.disabled   = true;
-    btnSendAnyway.disabled = true;
+    btnCopySafe.disabled     = true;
+    btnCopySafe.style.display = "block";
+    btnSendAnyway.disabled   = true;
     return;
   }
 
   emptyState.style.display = "none";
-  btnCopySafe.disabled   = false;
-  btnSendAnyway.disabled = false;
+  // Copy Safe Version is only available for high risk, not medium
+  const isHigh = riskLevel === "high";
+  btnCopySafe.style.display = isHigh ? "block" : "none";
+  btnCopySafe.disabled      = !isHigh;
+  btnSendAnyway.disabled    = false;
 
   for (const f of findings) {
     const colour    = RISK_COLOURS[f.risk] || "#9E9E9E";
@@ -153,6 +157,11 @@ function buildSafeText(originalText, findings) {
 
 // ── Button handlers ───────────────────────────────────────────────────────────
 
+// Close (×) — closes the side panel (same as clicking Chrome's native × button)
+document.getElementById("btn-close-panel").addEventListener("click", () => {
+  window.close();
+});
+
 btnCopySafe.addEventListener("click", () => {
   if (!lastFindings.length) return;
   const safeText = buildSafeText(lastRawText, lastFindings);
@@ -204,6 +213,7 @@ chrome.runtime.onMessage.addListener((message) => {
     lastRawText = "";
     setStatus("none");
     renderFindings([], "none");
+    btnCopySafe.style.display = "block";
   }
 });
 

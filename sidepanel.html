@@ -39,6 +39,20 @@
       color: #666;
       margin-top: 1px;
     }
+    .header-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .header-close:hover { color: #ccc; background: #2a2a2a; }
 
     /* ── Overall status banner ── */
     .status-banner {
@@ -305,8 +319,9 @@
     </svg>
     <div class="header-text">
       <h1>TrustPrompt</h1>
-      <p>Prompt privacy shield — v0.0.3</p>
+      <p>Prompt privacy shield — v0.0.4</p>
     </div>
+    <button class="header-close" id="btn-close-panel" title="Close panel">×</button>
   </div>
 
   <!-- Overall status -->

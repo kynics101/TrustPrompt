@@ -184,7 +184,7 @@ const TP_CLAUDE = (() => {
       () => { TrustUI.reset(promptBox); chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" }); },
       null
     );
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel });
+    chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
   }
 
   // ── 4. SUBMIT BLOCKING ────────────────────────────────────────────────────

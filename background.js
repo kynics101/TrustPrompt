@@ -44,7 +44,14 @@ async function fetchRules() {
 
 fetchRules();
 
-// ── 3. BADGE HELPERS ──────────────────────────────────────────────────────────
+// ── 3. PER-TAB HIGH-RISK AUTO-OPEN GATE ──────────────────────────────────────
+// Prevents the Chrome side panel from re-opening on every scan tick while the
+// user is still editing a high-risk prompt. Resets when risk drops to none
+// (sensitive data removed) or when the tab navigates to a new page.
+
+const highRiskAutoOpened = new Set(); // Set<tabId>
+
+// ── 4. BADGE HELPERS ──────────────────────────────────────────────────────────
 //
 // Badge states:
 //   "ON"  grey    — extension active, idle (no text typed yet)
@@ -96,6 +103,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ── Scan result from content script → badge + relay to side panel
   if (message.type === "SCAN_RESULT") {
     if (tabId) setBadge(tabId, message.riskLevel);
+
+    // Auto-open side panel on high risk — once per escalation per tab.
+    // Without this gate, the side panel re-opens on every scan tick (every
+    // 400ms typing pause) while the prompt contains high-risk content.
+    if (message.riskLevel === "high" && tabId && !highRiskAutoOpened.has(tabId)) {
+      highRiskAutoOpened.add(tabId);
+      chrome.sidePanel.open({ tabId }).catch(err => {
+        console.warn("[TrustPrompt/bg] failed to auto-open side panel on high risk:", err);
+      });
+    }
+
+    // Reset the gate when risk drops back to none (sensitive data removed)
+    if (message.riskLevel === "none" && tabId) {
+      highRiskAutoOpened.delete(tabId);
+    }
+
     // Forward to side panel (it listens on chrome.runtime.onMessage)
     chrome.runtime.sendMessage({ ...message, fromTab: tabId }).catch(() => {
       // Side panel may not be open — that's fine
@@ -153,12 +176,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "loading") {
-    // Only set active badge on supported sites
+    // Reset the high-risk gate on navigation — new page, clean slate
+    highRiskAutoOpened.delete(tabId);
     const url = tab.url || "";
     if (/chatgpt\.com|chat\.openai\.com|claude\.ai/.test(url)) {
       setBadge(tabId, "active");
     } else {
-      // Clear badge on unrelated tabs
       chrome.action.setBadgeText({ text: "", tabId });
     }
   }

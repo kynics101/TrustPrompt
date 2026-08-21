@@ -9,7 +9,7 @@
 const RISK_META = {
   scanning: { label: "TrustPrompt is scanning…", badge: "Scanning", cls: "scanning" },
   high:     { label: "High risk detected",   badge: "High",     cls: "high"     },
-  medium:   { label: "Medium risk detected", badge: "Medium",   cls: "medium"   },
+  moderate:   { label: "Moderate risk detected", badge: "Moderate",   cls: "moderate"   },
   low:      { label: "Low risk detected",    badge: "Low",      cls: "low"      },
   none:     { label: "No sensitive data detected", badge: "Safe", cls: "safe"   },
   idle:     { label: "Waiting for activity…", badge: "Idle",    cls: "idle"     }
@@ -17,7 +17,7 @@ const RISK_META = {
 
 const RISK_COLOURS = {
   high:   "#D32F2F",
-  medium: "#F57C00",
+  moderate: "#F57C00",
   low:    "#F9A825",
   none:   "#388E3C"
 };
@@ -90,7 +90,7 @@ function renderFindings(findings, riskLevel) {
   }
 
   emptyState.style.display = "none";
-  // Copy Safe Version is only available for high risk, not medium
+  // Copy Safe Version is only available for high risk, not moderate
   const isHigh = riskLevel === "high";
   btnCopySafe.style.display = isHigh ? "block" : "none";
   btnCopySafe.disabled      = !isHigh;

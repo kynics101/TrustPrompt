@@ -1,13 +1,13 @@
 // ui.js — TrustPrompt shared UI layer v0.0.4
 // Three visual components:
 //   1. BADGE   — pill floating above the input box (all tiers)
-//   2. BAR     — colored strip below the input box (low / medium / high)
-//   3. PANEL   — side panel sliding in from the right (medium / high only)
+//   2. BAR     — colored strip below the input box (low / moderate / high)
+//   3. PANEL   — side panel sliding in from the right (moderate / high only)
 //
 // Tier behaviour (from activity + UI diagrams):
 //   none   → badge: green "Safe — no issues found",  no bar,  no panel
 //   low    → badge: yellow,  bar: yellow,  panel: items only (no safe ver, no masked)
-//   medium → badge: orange,  bar: orange,  panel: items + safe ver + why + Copy/Send btns
+//   moderate → badge: orange,  bar: orange,  panel: items + why + 
 //   high   → badge: red,     bar: red,     panel: items + safe ver + why + Copy/Send btns
 
 /* global TrustUI */
@@ -25,14 +25,14 @@ const TrustUI = (() => {
     scanning: { bg: "#e5e7eb", text: "#6b7280", dot: "#9ca3af", label: "TrustPrompt is scanning…" },
     none:     { bg: "#dcfce7", text: "#15803d", dot: "#22c55e", label: "Safe — no issues found" },
     low:      { bg: "#fef9c3", text: "#a16207", dot: "#eab308", label: "Low risk detected"      },
-    medium:   { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Medium risk detected"   },
+    moderate:   { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Moderate risk detected"   },
     high:     { bg: "#fee2e2", text: "#b91c1c", dot: "#ef4444", label: "High risk detected"     }
   };
 
   // Bar/panel accent colours (solid, not pastel)
   const ACCENT = {
     low:    { solid: "#eab308", text: "#fff", dark: "#854d0e" },
-    medium: { solid: "#f97316", text: "#fff", dark: "#7c2d12" },
+    moderate: { solid: "#f97316", text: "#fff", dark: "#7c2d12" },
     high:   { solid: "#ef4444", text: "#fff", dark: "#7f1d1d" }
   };
 
@@ -41,7 +41,7 @@ const TrustUI = (() => {
     credit_card:      "Matched pattern: credit/debit card number format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Financial Information.",
     api_key:          "Matched pattern: API key / token format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Authentication Credentials.",
     jwt:              "Matched pattern: JSON Web Token (three base64url segments).\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
-    password_inline:  "Matched pattern: inline password assignment.\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
+    // password_inline:  "Matched pattern: inline password assignment.\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
     email:            "Matched pattern: email address format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
     ph_mobile:        "Matched pattern: PH mobile number format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
     phone_intl:       "Matched pattern: international phone number.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
@@ -53,13 +53,13 @@ const TrustUI = (() => {
     ph_address:       "Matched pattern: Philippine physical address.\nRule: RA 10173, SPI.\nCategory: Location Data.",
     gazetteer_medical:   "Detected medical term in context.\nRule: RA 10173, Sensitive PI — health data.\nCategory: Health Information.",
     gazetteer_financial: "Detected financial term in context.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
-    gazetteer_legal:     "Detected legal/criminal term in context.\nRule: RA 10173, SPI.\nCategory: Legal Record.",
+    // gazetteer_legal:     "Detected legal/criminal term in context.\nRule: RA 10173, SPI.\nCategory: Legal Record.",
     gazetteer_nationality_religion: "Detected nationality/religion term.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
     trigger_person_name: "Trigger phrase matched a person name.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
     trigger_location:    "Trigger phrase matched a location.\nRule: RA 10173, SPI.\nCategory: Location Data.",
     trigger_health:      "Trigger phrase matched a health condition.\nRule: RA 10173, Sensitive PI.\nCategory: Health Information.",
     trigger_employer:    "Trigger phrase matched employer/workplace.\nRule: RA 10173, PI.\nCategory: Occupational Data.",
-    trigger_religion:    "Trigger phrase matched religious belief.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
+    // trigger_religion:    "Trigger phrase matched religious belief.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
     trigger_financial:   "Trigger phrase matched financial information.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
     trigger_age:         "Trigger phrase matched age information.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
     trigger_dob:         "Trigger phrase matched date of birth.\nRule: RA 10173, SPI.\nCategory: Personal Identifier."
@@ -184,7 +184,7 @@ const TrustUI = (() => {
     removeBar();
     if (riskLevel === "none" || riskLevel === "scanning") return;
 
-    const acc  = ACCENT[riskLevel] || ACCENT.medium;
+    const acc  = ACCENT[riskLevel] || ACCENT.moderate;
     const card = getCardRect(inputEl);
     if (!card) return;
 
@@ -233,7 +233,7 @@ const TrustUI = (() => {
         View details →
       </span>` : ""}`;
 
-    // Low / medium: clicking the bar opens the inline detail panel
+    // Low / moderate: clicking the bar opens the inline detail panel
     // High: bar is display-only — details are in the Chrome side panel
     if (!isHigh) {
       bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
@@ -244,7 +244,7 @@ const TrustUI = (() => {
 
   // ── 3. SIDE PANEL ─────────────────────────────────────────────────────────
   // Dark panel that slides in from the right edge of the viewport.
-  // Medium: items + why dropdown (NO safe version).
+  // moderate: items + why dropdown (NO safe version).
   // High:   items + safe version + why dropdown.
 
   function removePanel() {
@@ -253,11 +253,11 @@ const TrustUI = (() => {
   }
 
   function buildFindingCard(f, tier) {
-    const acc      = ACCENT[tier] || ACCENT.medium;
-    const dotColor = f.risk === "high" ? "#ef4444" : f.risk === "medium" ? "#f97316" : "#eab308";
+    const acc      = ACCENT[tier] || ACCENT.moderate;
+    const dotColor = f.risk === "high" ? "#ef4444" : f.risk === "moderate" ? "#f97316" : "#eab308";
     const riskTag  = f.risk.toUpperCase();
     const why      = WHY[f.patternId] || "Matched a known sensitive data pattern.";
-    const showSafe = (tier === "high" || tier === "medium"); // both show safe ver per screenshots
+    const showSafe = (tier === "high" || tier === "moderate"); // both show safe ver per screenshots
 
     const card = document.createElement("div");
     card.style.cssText = [
@@ -307,9 +307,9 @@ const TrustUI = (() => {
 
   function openPanel(findings, riskLevel, safeText, onSendAnyway, onRefresh) {
     removePanel();
-    const tier = riskLevel; // "low" | "medium" | "high"
-    const acc  = ACCENT[tier] || ACCENT.medium;
-    const t    = THEME[tier]  || THEME.medium;
+    const tier = riskLevel; // "low" | "moderate" | "high"
+    const acc  = ACCENT[tier] || ACCENT.moderate;
+    const t    = THEME[tier]  || THEME.moderate;
 
     // Overlay (click to close)
     const overlay = document.createElement("div");
@@ -396,7 +396,7 @@ const TrustUI = (() => {
           Low risk — no action required. You may continue.
         </div>`;
     } else {
-      // medium / high — Send Anyway + Refresh (Copy Safe Version only for high)
+      // moderate / high — Send Anyway + Refresh (Copy Safe Version only for high)
       if (tier === "high") {
         const btnCopy = document.createElement("button");
         btnCopy.textContent = "🗒 Copy Safe Version";
@@ -444,7 +444,7 @@ const TrustUI = (() => {
         <div style="font-size:9px;letter-spacing:.7px;color:#6b7280;margin-bottom:4px;">RISK LEVELS</div>
         <div style="font-size:10px;color:#9ca3af;line-height:1.8;">
           <span style="color:#ef4444;">●</span> High — financial / auth data<br>
-          <span style="color:#f97316;">●</span> Medium — contact / location<br>
+          <span style="color:#f97316;">●</span> Moderate — contact / location<br>
           <span style="color:#eab308;">●</span> Low — metadata / labels<br>
           <span style="color:#22c55e;">●</span> Safe — no sensitive data
         </div>

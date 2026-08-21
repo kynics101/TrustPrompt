@@ -70,9 +70,9 @@ const TrustGazetteer = (() => {
 
   const TRIGGERS = [
     // Identity
-    { phrase: "my name is",          category: "person_name",  risk: "medium" },
-    { phrase: "my full name is",      category: "person_name",  risk: "medium" },
-    { phrase: "i am called",          category: "person_name",  risk: "medium" },
+    { phrase: "my name is",          category: "person_name",  risk: "moderate" },
+    { phrase: "my full name is",      category: "person_name",  risk: "moderate" },
+    { phrase: "i am called",          category: "person_name",  risk: "moderate" },
     { phrase: "call me",              category: "person_name",  risk: "low"    },
     { phrase: "my nickname is",       category: "person_name",  risk: "low"    },
     // Age / DOB
@@ -83,22 +83,22 @@ const TrustGazetteer = (() => {
     { phrase: "my birthday is",       category: "dob",          risk: "low"    },
     { phrase: "date of birth",        category: "dob",          risk: "low"    },
     // Location
-    { phrase: "i live in",            category: "location",     risk: "medium" },
-    { phrase: "i live at",            category: "location",     risk: "medium" },
-    { phrase: "i stay at",            category: "location",     risk: "medium" },
-    { phrase: "i reside at",          category: "location",     risk: "medium" },
-    { phrase: "my address is",        category: "location",     risk: "medium" },
-    { phrase: "my home address is",   category: "location",     risk: "medium" },
+    { phrase: "i live in",            category: "location",     risk: "moderate" },
+    { phrase: "i live at",            category: "location",     risk: "moderate" },
+    { phrase: "i stay at",            category: "location",     risk: "moderate" },
+    { phrase: "i reside at",          category: "location",     risk: "moderate" },
+    { phrase: "my address is",        category: "location",     risk: "moderate" },
+    { phrase: "my home address is",   category: "location",     risk: "moderate" },
     { phrase: "i am from",            category: "location",     risk: "low"    },
-    { phrase: "nakatira ako sa",      category: "location",     risk: "medium" }, // Filipino
-    { phrase: "nakatira sa",          category: "location",     risk: "medium" },
-    { phrase: "address ko",           category: "location",     risk: "medium" },
+    { phrase: "nakatira ako sa",      category: "location",     risk: "moderate" }, // Filipino
+    { phrase: "nakatira sa",          category: "location",     risk: "moderate" },
+    { phrase: "address ko",           category: "location",     risk: "moderate" },
     // Health
-    { phrase: "i have",               category: "health",       risk: "medium", requireGazetteer: "medical" },
-    { phrase: "i was diagnosed",      category: "health",       risk: "medium" },
-    { phrase: "i am diagnosed",       category: "health",       risk: "medium" },
-    { phrase: "i suffer from",        category: "health",       risk: "medium" },
-    { phrase: "my condition is",      category: "health",       risk: "medium" },
+    { phrase: "i have",               category: "health",       risk: "moderate", requireGazetteer: "medical" },
+    { phrase: "i was diagnosed",      category: "health",       risk: "moderate" },
+    { phrase: "i am diagnosed",       category: "health",       risk: "moderate" },
+    { phrase: "i suffer from",        category: "health",       risk: "moderate" },
+    { phrase: "my condition is",      category: "health",       risk: "moderate" },
     // Occupation / employer
     { phrase: "i work at",            category: "employer",     risk: "low"    },
     { phrase: "i work for",           category: "employer",     risk: "low"    },
@@ -109,9 +109,9 @@ const TrustGazetteer = (() => {
     { phrase: "i am a",               category: "religion",     risk: "low",   requireGazetteer: "nationality_religion" },
     { phrase: "i believe in",         category: "religion",     risk: "low",   requireGazetteer: "nationality_religion" },
     // Financial
-    { phrase: "my salary is",         category: "financial",    risk: "medium" },
-    { phrase: "i earn",               category: "financial",    risk: "medium" },
-    { phrase: "my income is",         category: "financial",    risk: "medium" },
+    { phrase: "my salary is",         category: "financial",    risk: "moderate" },
+    { phrase: "i earn",               category: "financial",    risk: "moderate" },
+    { phrase: "my income is",         category: "financial",    risk: "moderate" },
     { phrase: "my account number is", category: "financial",    risk: "high"   },
     { phrase: "my card number is",    category: "financial",    risk: "high"   }
   ];
@@ -142,7 +142,7 @@ const TrustGazetteer = (() => {
     financial:    { label: "Financial Information",sanitize: (_) => "[FINANCIAL INFO REDACTED]"     },
     medical_term: { label: "Medical Term",         sanitize: (v) => "[MEDICAL: " + v + "]"          },
     fin_term:     { label: "Financial Term",       sanitize: (v) => "[FINANCIAL TERM: " + v + "]"  },
-    legal_term:   { label: "Legal Term",           sanitize: (v) => "[LEGAL TERM: " + v + "]"      }
+    // legal_term:   { label: "Legal Term",           sanitize: (v) => "[LEGAL TERM: " + v + "]"      }
   };
 
   // ── Levenshtein similarity (≥ 0.80 threshold per architecture diagram) ──────
@@ -310,7 +310,7 @@ const TrustGazetteer = (() => {
         const re = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "i");
         const match = re.exec(text);
         if (match) {
-          const riskMap = { medical: "medium", financial: "medium", nationality_religion: "low", legal: "medium" };
+          const riskMap = { medical: "moderate", financial: "moderate", nationality_religion: "low", legal: "moderate" };
           const catMap  = { medical: "medical_term", financial: "fin_term", nationality_religion: "low", legal: "legal_term" };
           const meta    = CATEGORY_META[catMap[category]] || { label: term, sanitize: () => "[REDACTED]" };
           findings.push({

@@ -193,7 +193,7 @@ function scanText(text) {
 
   // De-duplicate — keep highest risk per unique raw match
   const seen      = new Map();
-  const RISK_ORDER = { high: 3, medium: 2, low: 1 };
+  const RISK_ORDER = { high: 3, moderate: 2, low: 1 };
   for (const f of findings) {
     const existing = seen.get(f.rawMatch);
     if (!existing || RISK_ORDER[f.risk] > RISK_ORDER[existing.risk]) {
@@ -208,7 +208,7 @@ function scanText(text) {
 
 function scoreRisk(findings) {
   if (findings.some(f => f.risk === "high"))   return "high";
-  if (findings.some(f => f.risk === "medium")) return "medium";
+  if (findings.some(f => f.risk === "moderate")) return "moderate";
   if (findings.length > 0)                     return "low";
   return "none";
 }
@@ -231,7 +231,7 @@ const RISK_META_UI = {
   scanning: { colour: "#9E9E9E", bg: "#f5f5f5", label: "Scanning…",               dot: "#9E9E9E" },
   none:     { colour: "#388E3C", bg: "#e8f5e9", label: "Safe — no issues found",  dot: "#388E3C" },
   low:      { colour: "#F9A825", bg: "#fffde7", label: "Low risk detected",        dot: "#F9A825" },
-  medium:   { colour: "#F57C00", bg: "#fff3e0", label: "Medium risk detected",     dot: "#F57C00" },
+  moderate:   { colour: "#F57C00", bg: "#fff3e0", label: "Moderate risk detected",     dot: "#F57C00" },
   high:     { colour: "#D32F2F", bg: "#ffebee", label: "High risk detected",       dot: "#D32F2F" },
 };
 

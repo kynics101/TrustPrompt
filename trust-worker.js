@@ -15,6 +15,14 @@
 //   Step 4: Governance rule evaluation (3 rules only)
 //   Step 5: Final risk = min[max(preliminary, escalation), ceiling]
 //
+// Task #4 additions:
+//   TASK-4.4: suppressPlaceholders() — same logic as scanner.js
+//   TASK-4.5: Entropy pre-check in runPathA()
+//   TASK-4.6: structuralValidate hook — sets validated:true for vendor-prefix
+//             API key matches, enabling governance Rule 1 escalation to HIGH
+//   TASK-4.3: Worker-side JWT validation delegated to validator-wrapper-worker.js
+//             _isJWT() now does full structural decode check
+//
 // Message in:
 //   { type: "SCAN", rawText: string, scanId: number }
 //
@@ -36,29 +44,18 @@ importScripts(
 );
 
 // ── STEP 1: Base scores ───────────────────────────────────────────────────────
-// Mirrors scanner.js BASE_SCORES exactly.
-// Three tiers per RAE proposed model + RA 10173 / NIST SP 800-122:
-//  (High) CRITICAL / ACCESS-CRITICAL  → 10
-//  (Moderate)  DIRECT PERSONAL IDENTIFIERS → 5
-//  (Low)  CONTEXTUAL INDICATORS       → 2
-//   SOURCE CODE (container)     → 0
 
 const BASE_SCORES = {
-  // Critical / access-critical (score 10)
   credit_card:      10,
   jwt:              10,
   api_key:          10,
-  // password_inline:  10,
-  id_label:         10,   // government-issued ID field (TIN, SSS, Passport…)
+  id_label:         10,
 
-  // Direct personal identifiers (score 5)
   email:            5,
   ph_mobile:        5,
   phone_intl:       5,
   ph_address:       5,
 
-  // Contextual indicators (score 2)
-  // IP & MAC are contextual per proposed model — NOT direct identifiers
   ipv4:             2,
   ipv6:             2,
   mac_address:      2,
@@ -67,27 +64,21 @@ const BASE_SCORES = {
   trigger_age:         2,
   trigger_dob:         2,
   trigger_employer:    2,
-  // trigger_religion:    2,
-  // gazetteer_nationality_religion: 2,
   trigger_location:    2,
   trigger_health:      2,
   trigger_financial:   2,
   gazetteer_medical:   2,
   gazetteer_financial: 2,
-  // gazetteer_legal:     2,
 
-  // Container (score 0)
   source_code: 0
 };
 
 // ── Entity tiers ──────────────────────────────────────────────────────────────
-// Mirrors scanner.js ENTITY_TIER exactly.
 
 const ENTITY_TIER = {
   credit_card:      "critical",
   jwt:              "critical",
   api_key:          "critical",
-  // password_inline:  "critical",
   id_label:         "critical",
 
   email:            "direct",
@@ -103,21 +94,17 @@ const ENTITY_TIER = {
   trigger_age:         "contextual",
   trigger_dob:         "contextual",
   trigger_employer:    "contextual",
-  // trigger_religion:    "contextual",
   trigger_location:    "contextual",
   trigger_health:      "contextual",
   trigger_financial:   "contextual",
-  // gazetteer_nationality_religion: "contextual",
   gazetteer_medical:   "contextual",
   gazetteer_financial: "contextual",
-  // gazetteer_legal:     "contextual",
 
   source_code: "container"
 };
 
 const SENSITIVE_CONTEXT_IDS = new Set([
   "gazetteer_medical",
-  // "gazetteer_legal",
   "gazetteer_financial",
   "trigger_health",
   "trigger_financial"
@@ -126,7 +113,6 @@ const SENSITIVE_CONTEXT_IDS = new Set([
 const RISK_ORDER = { none: 0, low: 1, moderate: 2, high: 3 };
 
 // ── STEP 2: Distinct entity-type multiplier ───────────────────────────────────
-// Capped at ×2.00. Mirrors scanner.js getMultiplier() exactly.
 
 function getMultiplier(distinctTypeCount) {
   if (distinctTypeCount >= 5) return 2.00;
@@ -146,18 +132,6 @@ function preliminaryClass(score) {
 }
 
 // ── STEP 4: Governance rule evaluation ───────────────────────────────────────
-// Exactly three rules. Mirrors scanner.js evaluateGovernance() exactly.
-//
-// Rule 1 — Strongly validated critical entity → HIGH
-//   Only findings where validated === true qualify.
-//   Format-only candidates (validated === false) do not trigger escalation.
-//
-// Rule 2 — Sensitive-context co-occurrence → raise preliminary +1 level
-//   Requires at least one valid personal (direct or critical) entity
-//   plus one or more medical / legal / financial context term.
-//   Capped at high.
-//
-// Rule 3 — Contextual-only ceiling → cannot exceed MODERATE
 
 function evaluateGovernance(findings, preliminary) {
   const hasValidatedCritical = findings.some(
@@ -175,12 +149,10 @@ function evaluateGovernance(findings, preliminary) {
          ENTITY_TIER[f.patternId] === "container"
   );
 
-  // Rule 1
   if (hasValidatedCritical) {
     return { rule: "critical_entity", result: "high" };
   }
 
-  // Rule 2
   if (hasDirectOrCritical && hasSensitiveContext) {
     const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
       ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
@@ -188,7 +160,6 @@ function evaluateGovernance(findings, preliminary) {
     return { rule: "sensitive_context", result: raised };
   }
 
-  // Rule 3
   if (allContextualOrContainer && findings.some(
     f => ENTITY_TIER[f.patternId] === "contextual")
   ) {
@@ -199,7 +170,6 @@ function evaluateGovernance(findings, preliminary) {
 }
 
 // ── STEP 5: Final classification ──────────────────────────────────────────────
-// Mirrors scanner.js finalClass() exactly.
 
 function finalClass(preliminary, governance) {
   const { rule, result } = governance;
@@ -218,7 +188,6 @@ function computeRiskScore(findings) {
   const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
   if (scorable.length === 0) return { score: 0, riskLevel: "none", governance: "none" };
 
-  // Step 1: base score per distinct entity type
   const seenTypes = new Set();
   let baseTotal   = 0;
   for (const f of scorable) {
@@ -228,19 +197,12 @@ function computeRiskScore(findings) {
     }
   }
 
-  // Step 2: multiplier
   const distinctTypeCount = seenTypes.size;
   const multiplier        = getMultiplier(distinctTypeCount);
   const preScore          = baseTotal * multiplier;
-
-  // Step 3: preliminary
-  const preliminary = preliminaryClass(preScore);
-
-  // Step 4: governance
-  const governance = evaluateGovernance(findings, preliminary);
-
-  // Step 5: final
-  const riskLevel = finalClass(preliminary, governance);
+  const preliminary       = preliminaryClass(preScore);
+  const governance        = evaluateGovernance(findings, preliminary);
+  const riskLevel         = finalClass(preliminary, governance);
 
   return {
     score:      Math.round(preScore * 100) / 100,
@@ -249,19 +211,44 @@ function computeRiskScore(findings) {
   };
 }
 
+// ── TASK-4.4: Placeholder suppression ────────────────────────────────────────
+// Mirror of scanner.js suppressPlaceholders() — same logic, same result.
+
+function suppressPlaceholders(findings) {
+  const kept       = [];
+  const suppressed = [];
+
+  for (const f of findings) {
+    if (isKnownPlaceholder(f.patternId, f.rawMatch)) {
+      suppressed.push(f);
+    } else {
+      kept.push(f);
+    }
+  }
+
+  if (suppressed.length > 0) {
+    console.log(
+      "[TrustPrompt/suppressed] placeholder findings removed (worker):",
+      suppressed.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`).join(", ")
+    );
+  }
+
+  return kept;
+}
+
 // ── PATH A — Regex (worker-safe) ──────────────────────────────────────────────
 //
-// validator.js cannot run in a Worker (size / ESM constraints).
-// TrustValidatorWorker is used instead — it passes all matches except
-// isPHAddress which still runs the gazetteer DB check.
+// TASK-4.5: Entropy pre-check — if pattern.minEntropy is set, extract the value
+//   portion and check Shannon entropy. Reject if below threshold.
 //
-
+// TASK-4.6: structuralValidate hook — if pattern.structuralValidate is defined
+//   and returns true for the raw match, set validated:true even though the full
+//   mathematical validator (Luhn, RFC5322) is unavailable in the worker.
+//   This enables governance Rule 1 (critical_entity → HIGH) for vendor-prefix
+//   API keys in the worker path, fixing Known Issue #4 from review.md.
 //
-// NOTE: Because the worker cannot run the full mathematical validator.js
-// (Luhn, RFC5322, etc.), `validated` is set to true for all non-address
-// patterns that pass the regex. The main-thread fallback (scanner.js)
-// applies full mathematical validation. This is a known limitation of the
-// worker path and is documented in the gap analysis.
+// TASK-4.3: JWT validation is now handled by validator-wrapper-worker.js
+//   _isJWT() which does a structural decode check (base64url → JSON).
 
 function runPathA(normalisedText) {
   const findings = [];
@@ -269,16 +256,29 @@ function runPathA(normalisedText) {
     const re = new RegExp(pattern.regex.source, pattern.regex.flags);
     let match;
     while ((match = re.exec(normalisedText)) !== null) {
-      const raw    = match[0];
+      const raw = match[0];
+
+      // TASK-4.5: Entropy pre-check
+      if (pattern.minEntropy !== undefined) {
+        const valueMatch = raw.match(/[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{10,})["']?\s*$/)
+                        || raw.match(/^([A-Za-z0-9\-_\.+\/=]{10,})$/);
+        const valueStr = valueMatch ? valueMatch[1] : raw;
+        if (shannonEntropy(valueStr) < pattern.minEntropy) {
+          continue;
+        }
+      }
+
       const result = TrustValidatorWorker.validate(pattern.validate, raw);
 
-      // Reject matches that failed structural / gazetteer check
       if (!result.passed) continue;
 
-      // validated = true  → Tier 1 (gazetteer) or Tier 2 (heuristic)
-      //             false → Tier 3 (regex shape only — Luhn/RFC5322 not available)
-      // Only validated:true findings qualify for critical-entity governance escalation.
-      const validated = result.tier !== "3_regex_only";
+      // TASK-4.6: structuralValidate hook — override tier for vendor-prefix matches
+      let validated = result.tier !== "3_regex_only";
+      if (!validated && typeof pattern.structuralValidate === "function") {
+        if (pattern.structuralValidate(raw)) {
+          validated = true;
+        }
+      }
 
       findings.push({
         patternId:   pattern.id,
@@ -319,7 +319,8 @@ self.onmessage = function (e) {
 
   const pathAFindings = runPathA(textRegex);
   const pathBFindings = TrustGazetteer.scan(textNLP);
-  const findings      = mergeAndDedupe(pathAFindings, pathBFindings);
+  const merged        = mergeAndDedupe(pathAFindings, pathBFindings);
+  const findings      = suppressPlaceholders(merged);  // TASK-4.4
 
   const { score, riskLevel, governance } = computeRiskScore(findings);
 

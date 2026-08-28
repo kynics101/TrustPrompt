@@ -9,7 +9,10 @@
 //     isPHAddress  → runs PH_ADDRESS_DB gazetteer lookup (same as main thread)
 //
 //   TIER 2 — Lightweight structural heuristic (worker-only substitute):
-//     isJWT        → verifies three base64url segments starting with eyJ
+//     isJWT        → TASK-4.3: verifies three base64url segments starting with
+//                    eyJ AND decodes header+payload to confirm valid JSON objects.
+//                    This elevates JWT from Tier 3 to Tier 2, so validated:true
+//                    is set in trust-worker.js, enabling governance Rule 1 (→ HIGH).
 //     isIP         → verifies four octets each 0–255 (IPv4)
 //     isIPv6       → verifies colon-hex structure
 //     isMACAddress → verifies six colon/hyphen-separated hex pairs
@@ -25,30 +28,86 @@
 //   validate() returns { passed: boolean, tier: string } so that trust-worker.js
 //   can set validated: true only for Tier 1 and Tier 2 results, and
 //   validated: false for Tier 3 (regex-only) results.
-//
-//   This means credit cards and emails that pass the regex but have not been
-//   mathematically confirmed are flagged as validated: false — they contribute
-//   their base score but do NOT trigger the critical-entity governance escalation
-//   in the worker path. The main-thread fallback (scanner.js) applies full
-//   Luhn / RFC5322 validation and sets validated: true only on confirmed matches.
-//
-// NOTE: The worker path will have a slightly higher false-positive rate than
-// the main-thread path for credit cards and emails. This is a known and
-// documented trade-off for off-thread performance.
 
 /* global TrustValidatorWorker, PH_ADDRESS_DB */
 
 const TrustValidatorWorker = (() => {
 
+  // ── Base64url decode helper ───────────────────────────────────────────────
+  // Decodes a base64url-encoded string to a UTF-8 string.
+  // base64url uses - and _ instead of + and /; no padding required.
+
+  function _base64urlDecode(str) {
+    try {
+      // Pad to multiple of 4
+      const padded = str.replace(/-/g, "+").replace(/_/g, "/");
+      const pad = padded.length % 4;
+      const b64 = pad ? padded + "=".repeat(4 - pad) : padded;
+      return atob(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Tier 2 heuristics ─────────────────────────────────────────────────────
 
+  /**
+   * TASK-4.3: Structural JWT check for the web worker path.
+   *
+   * Validation steps:
+   *   1. Must have exactly three dot-separated segments
+   *   2. All three segments must be non-empty base64url strings
+   *   3. Segment 1 (header)  must start with "eyJ" (base64url of `{"`)
+   *   4. Segment 2 (payload) must start with "eyJ"
+   *   5. Segment 1 decodes to a string that, when parsed, is a JSON object
+   *   6. Segment 2 decodes to a string that, when parsed, is a JSON object
+   *   7. Segment 3 (signature) must be ≥ 20 characters (rejects truncated tokens)
+   *
+   * Steps 5–6 replace the old "starts with eyJ" check with an actual JSON parse,
+   * preventing false positives from arbitrary base64url strings that happen to
+   * start with eyJ.
+   *
+   * This check is Tier 2 (heuristic) — not full cryptographic verification.
+   * It confirms structural validity, not signature authenticity.
+   */
   function _isJWT(raw) {
-    // Three base64url-safe segments separated by dots, first two start with eyJ
-    const parts = raw.split(".");
+    const parts = raw.trim().split(".");
     if (parts.length !== 3) return false;
+
+    const [header, payload, signature] = parts;
     const b64url = /^[A-Za-z0-9\-_]+$/;
-    return b64url.test(parts[0]) && b64url.test(parts[1]) && b64url.test(parts[2])
-      && parts[0].startsWith("eyJ") && parts[1].startsWith("eyJ");
+
+    // All segments must be non-empty base64url characters
+    if (!b64url.test(header) || !b64url.test(payload) || !b64url.test(signature)) {
+      return false;
+    }
+
+    // Header and payload must start with eyJ (base64url encoding of `{"`)
+    if (!header.startsWith("eyJ") || !payload.startsWith("eyJ")) return false;
+
+    // Signature segment must be ≥ 20 chars (TASK-4.3.1)
+    if (signature.length < 20) return false;
+
+    // Decode and JSON-parse header and payload to confirm they are JSON objects
+    try {
+      const headerDecoded  = _base64urlDecode(header);
+      const payloadDecoded = _base64urlDecode(payload);
+      if (!headerDecoded || !payloadDecoded) return false;
+
+      const headerObj  = JSON.parse(headerDecoded);
+      const payloadObj = JSON.parse(payloadDecoded);
+
+      // Both must be plain objects (not arrays, not primitives)
+      if (typeof headerObj  !== "object" || Array.isArray(headerObj)  || headerObj  === null) return false;
+      if (typeof payloadObj !== "object" || Array.isArray(payloadObj) || payloadObj === null) return false;
+
+      // Header must have at least an "alg" field (standard JWT requirement)
+      if (!headerObj.alg) return false;
+
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   function _isIPv4(raw) {
@@ -99,6 +158,11 @@ const TrustValidatorWorker = (() => {
   //
   // trust-worker.js sets finding.validated = (tier !== "3_regex_only")
   // so that only Tier 1 and Tier 2 results qualify for governance escalation.
+  //
+  // TASK-4.3: isJWT is now Tier 2 (was effectively Tier 3 before — the old
+  // check only verified base64url structure without JSON decode, so a random
+  // base64url string starting with eyJ would pass). The new check decodes and
+  // parses both header and payload as JSON objects with an alg field.
 
   function validate(validatorName, rawMatch) {
 

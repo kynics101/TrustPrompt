@@ -1,13 +1,19 @@
 // patterns.js
 // All detection patterns for TrustPrompt.
 // Each entry defines:
-//   id        - machine-readable key
-//   label     - human-readable display name
-//   regex     - detection regex (non-sticky, global flag applied at runtime)
-//   risk      - "high" | "moderate" | "low"  (maps to NIST SP 800-122 sensitivity)
-//   validate  - optional validator.js method name to confirm the raw match
-//   sanitize  - function(match) => redacted string shown in safe version
-//   reason    - plain-language explanation of why this is flagged as a risk
+//   id                - machine-readable key
+//   label             - human-readable display name
+//   regex             - detection regex (non-sticky, global flag applied at runtime)
+//   risk              - "high" | "moderate" | "low"  (maps to NIST SP 800-122 sensitivity)
+//   validate          - optional validator.js method name to confirm the raw match
+//   sanitize          - function(match) => redacted string shown in safe version
+//   reason            - plain-language explanation of why this is flagged as a risk
+//   minEntropy        - optional minimum Shannon entropy (bits/char) required for the
+//                       value portion of the match; matches below this threshold are
+//                       discarded as low-entropy dummy values (TASK-4.5)
+//   structuralValidate - optional function(raw) => boolean; called in the web worker
+//                       path to set validated:true for vendor-prefixed keys where
+//                       mathematical validation is unavailable (TASK-4.6)
 //
 // Risk mapping (NIST SP 800-122 inspired):
 //   high   → direct financial or authentication identifiers (red)
@@ -15,6 +21,110 @@
 //   low    → metadata / indirect identifiers (yellow)
 
 /* global TRUSTPROMPT_PATTERNS */
+
+// ── TASK-4.5: Shannon entropy utility ────────────────────────────────────────
+// Returns the Shannon entropy of str in bits per character.
+// H = -Σ p(x) * log2(p(x))
+// A real API key / JWT has H ≥ ~3.5 bits/char.
+// An all-same-character string has H = 0.
+/**
+ * Calculate Shannon entropy of a string.
+ * @param {string} str - input string to measure
+ * @returns {number} entropy in bits per character (0 for empty / uniform strings)
+ */
+function shannonEntropy(str) {
+  if (!str || str.length === 0) return 0;
+  const freq = {};
+  for (const ch of str) freq[ch] = (freq[ch] || 0) + 1;
+  const len = str.length;
+  let H = 0;
+  for (const count of Object.values(freq)) {
+    const p = count / len;
+    H -= p * Math.log2(p);
+  }
+  return H;
+}
+
+// ── TASK-4.4: Known-placeholder suppression constants ─────────────────────────
+// PLACEHOLDER_SUPPRESSIONS maps patternId → Set of known-safe dummy values.
+// Values are stored lowercased with spaces and dashes stripped for comparison.
+// These are universally recognized test/documentation values that carry no
+// real risk (Stripe test cards, AWS docs example key, jwt.io default token).
+const PLACEHOLDER_SUPPRESSIONS = Object.freeze({
+  credit_card: new Set([
+    "4111111111111111",        // Stripe Visa test (SRC-SYN-001)
+    "5500000000000004",        // Stripe Mastercard test
+    "378282246310005",         // Stripe Amex test
+    "6011111111111117",        // Stripe Discover test
+    "3566002020360505",        // Stripe JCB test
+    "4242424242424242",        // Stripe second Visa test
+    "5105105105105100",        // Stripe Mastercard test 2
+  ]),
+  api_key: new Set([
+    "akiaiosfodnn7example",    // AWS documentation example (TASK-4.4.6)
+    "wjalkfsmuoi",             // AWS secret key example suffix (docs)
+  ]),
+  jwt: new Set([
+    // jwt.io default payload: {"sub":"1234567890","name":"John Doe","iat":1516239022}
+    // Store the base64url-encoded payload segment as the lookup key
+    "eyjzdwiioiixmjm0nty3odkwiiwibmftzsi6ikpvag4grgvliiwiaweioiixnte2mjm5mdiyyn0",
+  ]),
+});
+
+// PLACEHOLDER_PATTERNS: structural regexes that identify placeholder-shaped values
+// regardless of exact content. Applied to the extracted value portion of a match.
+const PLACEHOLDER_PATTERNS = Object.freeze([
+  /^<[A-Z_][A-Z0-9_]*>$/,          // <YOUR_API_KEY>, <TOKEN>, <SECRET>
+  /^YOUR_[A-Z][A-Z0-9_]*$/,        // YOUR_API_KEY, YOUR_SECRET_TOKEN
+  /^x+$/i,                          // xxx...xxx (all-x strings)
+  /^0+$/,                           // 000...000 (all-zero strings)
+  /^1+$/,                           // 111...111 (all-one strings, e.g. 4111...)
+  /^(placeholder|example|test|demo|fake|dummy|sample|insert.?here|changeme)$/i,
+]);
+
+/**
+ * TASK-4.4: Check whether a raw match value is a known placeholder.
+ * Strips formatting (spaces, dashes) and lowercases before lookup.
+ * @param {string} patternId - the pattern's id field
+ * @param {string} rawValue  - the matched value string
+ * @returns {boolean} true if this value should be suppressed
+ */
+function isKnownPlaceholder(patternId, rawValue) {
+  const normalized = rawValue.replace(/[\s\-]/g, "").toLowerCase();
+  const suppressed = PLACEHOLDER_SUPPRESSIONS[patternId];
+  if (suppressed && suppressed.has(normalized)) return true;
+  // Also check structural placeholder patterns against the normalized value
+  return PLACEHOLDER_PATTERNS.some(re => re.test(rawValue.trim()));
+}
+
+// ── TASK-4.6: Vendor-prefix structural validator ──────────────────────────────
+// Used by the web worker path where validator.js is unavailable.
+// Returns true if the raw match starts with a known vendor-specific API key prefix,
+// which is structurally distinctive enough to confirm the match without Luhn/RFC5322.
+const VENDOR_PREFIXES = Object.freeze([
+  /^sk-[A-Za-z0-9\-_]{20,}/,             // OpenAI (sk-..., sk-proj-...)
+  /^ghp_[A-Za-z0-9]{36}/,                // GitHub Personal Access Token
+  /^gho_[A-Za-z0-9]{36}/,                // GitHub OAuth token
+  /^github_pat_[A-Za-z0-9_]{82}/,        // GitHub fine-grained PAT
+  /^xoxb-\d+-[A-Za-z0-9\-]+/,            // Slack Bot token
+  /^xoxp-\d+-[A-Za-z0-9\-]+/,            // Slack User token
+  /^AKIA[A-Z0-9]{16}/,                   // AWS Access Key ID
+  /^AIza[A-Za-z0-9\-_]{35}/,             // Google API key
+  /^ya29\.[A-Za-z0-9\-_]+/,              // Google OAuth access token
+  /^eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_.+/=]+/, // JWT (vendor-structural)
+]);
+
+/**
+ * TASK-4.6: Structural vendor-prefix check for use in the web worker path.
+ * @param {string} raw - the full raw match from the regex
+ * @returns {boolean} true if the value matches a known vendor key prefix
+ */
+function structuralValidateApiKey(raw) {
+  // Extract the value portion (after any label=... prefix)
+  const valueMatch = raw.match(/[:=]\s*["']?(.+?)["']?\s*$/) || raw.match(/^(.+)$/);
+  const value = valueMatch ? valueMatch[1].trim() : raw.trim();
+  return VENDOR_PREFIXES.some(re => re.test(value));
+}
 
 const TRUSTPROMPT_PATTERNS = [
 
@@ -30,24 +140,72 @@ const TRUSTPROMPT_PATTERNS = [
     sanitize: (m) => m.replace(/\d(?=\d{4})/g, "*")
   },
 
+  // TASK-4.2: Hardened api_key pattern.
+  //
+  // Changes from original:
+  //   (1) Tightened keyword list — dropped bare `secret` and bare `token` as
+  //       standalone keywords; these caused false positives on natural language
+  //       (e.g. "my secret recipe", "access token: pending_approval_by_admin").
+  //       Retained: api_key, api-key, access_key, access-key, client_secret,
+  //       client-secret, auth_token, auth-token, bearer.
+  //
+  //   (2) Added vendor-prefix OR branch — detects well-known API key shapes
+  //       without requiring a label prefix: OpenAI (sk-), GitHub (ghp_, gho_,
+  //       github_pat_), Slack (xoxb-, xoxp-), AWS (AKIA), Google (AIza, ya29.).
+  //       These are structurally distinctive enough to confirm without a label.
+  //
+  //   (3) minEntropy: 3.5 — rejects low-entropy dummy values (all-same-char
+  //       strings, sequential patterns) that pass the regex shape. See TASK-4.5.
+  //
+  //   (4) structuralValidate — allows the web worker path to set validated:true
+  //       for vendor-prefix matches, enabling governance Rule 1 escalation to
+  //       HIGH. See TASK-4.6.
   {
     id: "api_key",
     label: "API Key / Secret Token",
-    reason: "API keys and secret tokens authenticate your identity with a service — they are the equivalent of a password for software systems. Exposing one allows anyone who sees it to make requests on your behalf, potentially incurring charges, accessing private data, or compromising connected systems. Keys included in prompts may be logged by the AI provider.",
-    regex: /(?:api[_\-\s]?key|secret|token|access[_\-\s]?key|client[_\-\s]?secret)\s*[:=]\s*["']?([A-Za-z0-9\-_\.+/=]{20,})["']?/gi,
+    reason: "API keys and secret tokens authenticate your identity with a service — they are the equivalent of a password for software systems. Exposing one allows anyone who sees it to make requests on your behalf, potentially incurring charges, accessing private data, or compromising connected systems. This includes vendor-specific formats: OpenAI (sk-...), GitHub (ghp_...), Slack (xoxb-...), AWS (AKIA...), and Google (AIza...). Keys included in prompts may be logged by the AI provider.",
+    // Labelled-key branch: tightened keyword list (no bare `secret` or `token`)
+    // Vendor-prefix branch: structurally distinctive prefixes without requiring a label
+    regex: /(?:(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer)\s*[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{20,})["']?|(?:sk-[A-Za-z0-9\-_]{20,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xoxb-\d{9,}-[A-Za-z0-9\-]{20,}|xoxp-\d{9,}-[A-Za-z0-9\-]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9\-_]{35}|ya29\.[A-Za-z0-9\-_]{50,}))/g,
     risk: "high",
-    validate: null,
-    sanitize: (m) => m.replace(/([A-Za-z0-9\-_\.+/=]{20,})/, "[REDACTED-KEY]")
+    validate: null,  // no single validator covers all key formats; entropy + structural checks used instead
+    minEntropy: 3.5, // TASK-4.5: reject low-entropy dummy values
+    structuralValidate: structuralValidateApiKey, // TASK-4.6: worker-path vendor-prefix check
+    sanitize: (m) => {
+      // Preserve label if present, redact the value
+      const colonIdx = m.search(/[:=]/);
+      if (colonIdx !== -1) {
+        return m.slice(0, colonIdx + 1) + " [REDACTED-KEY]";
+      }
+      return "[REDACTED-KEY]";
+    }
   },
 
+  // TASK-4.3: Hardened JWT pattern.
+  //
+  // Changes from original:
+  //   (1) Added segment-length guards in the regex: header ≥ 10 chars,
+  //       payload ≥ 10 chars, signature ≥ 20 chars. This rejects truncated
+  //       or malformed strings that happen to contain dots.
+  //
+  //   (2) minEntropy: 3.5 — same entropy guard as api_key. A real JWT has
+  //       high entropy across all three segments.
+  //
+  //   (3) Sanitize decision (TASK-4.3.4): full [REDACTED-JWT] is the correct
+  //       behaviour. A partial token is still a security risk (header reveals
+  //       algorithm; payload may contain claims). Full redaction is intentional.
   {
     id: "jwt",
     label: "JSON Web Token (JWT)",
     reason: "A JSON Web Token is a session credential that proves you are logged in to a service. Sharing a live JWT gives anyone who obtains it the ability to impersonate your session until it expires. JWTs are often short-lived but can grant access to sensitive APIs, dashboards, or user data.",
-    regex: /eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_.+/=]+/g,
+    // Segment-length guards: header ≥10, payload ≥10, signature ≥20 chars
+    regex: /eyJ[A-Za-z0-9\-_]{7,}\.eyJ[A-Za-z0-9\-_]{7,}\.[A-Za-z0-9\-_.+\/=]{20,}/g,
     risk: "high",
     validate: "isJWT",
+    minEntropy: 3.5, // TASK-4.5
     sanitize: (_m) => "[REDACTED-JWT]"
+    // Full redaction is intentional: partial tokens still reveal algorithm (header)
+    // and payload claims. [REDACTED-JWT] is the safe version. (TASK-4.3.4)
   },
 
   // {
@@ -144,12 +302,6 @@ const TRUSTPROMPT_PATTERNS = [
     sanitize: (_m) => "[CODE BLOCK REMOVED]"
   },
 
-  // ── id_label: government-issued ID field labels ───────────────────────────
-  // Tier: CRITICAL (score 10) — maps to HIGH-IMPACT per proposed scoring model.
-  // These field names explicitly identify government-issued IDs or financial
-  // account numbers. Under RA 10173, these are Sensitive Personal Information
-  // (SPI) when present with a value. A labelled government ID field is treated
-  // the same as a critical credential for scoring purposes.
   {
     id: "id_label",
     label: "Government-Issued ID Field",
@@ -163,12 +315,6 @@ const TRUSTPROMPT_PATTERNS = [
     }
   },
 
-  // ── personal_label: generic personal field labels ─────────────────────────
-  // Tier: CONTEXTUAL (score 2) — maps to LOW-IMPACT per proposed scoring model.
-  // These are general personal field labels (name, age, etc.).
-  // They indicate that structured personal data may be present but do not by
-  // themselves constitute SPI. They contribute to identification when combined
-  // with direct identifiers (RA 10173 Sec. 3(g) aggregation principle).
   {
     id: "personal_label",
     label: "Labelled Personal Field",

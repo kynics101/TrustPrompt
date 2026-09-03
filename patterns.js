@@ -111,7 +111,6 @@ const VENDOR_PREFIXES = Object.freeze([
   /^AKIA[A-Z0-9]{16}/,                   // AWS Access Key ID
   /^AIza[A-Za-z0-9\-_]{35}/,             // Google API key
   /^ya29\.[A-Za-z0-9\-_]+/,              // Google OAuth access token
-  /^eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_.+/=]+/, // JWT (vendor-structural)
 ]);
 
 /**

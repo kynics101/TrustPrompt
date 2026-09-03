@@ -250,6 +250,7 @@ const TrustScanner = (() => {
   function runPathA(normalisedText) {
     const findings = [];
     for (const pattern of TRUSTPROMPT_PATTERNS) {
+      if (!pattern.regex) continue; // ph_mobile and any future regex-less patterns skip Path A
       const re = new RegExp(pattern.regex.source, pattern.regex.flags);
       let match;
       while ((match = re.exec(normalisedText)) !== null) {

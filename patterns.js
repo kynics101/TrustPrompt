@@ -335,6 +335,38 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "low",
     validate: "isPHAddress",
     sanitize: (_m) => "[PHILIPPINE ADDRESS REMOVED]"
+  },
+
+  // ── PATH C: LINGUISTIC NLP-BASED PATTERNS ──────────────────────────────────
+
+  {
+    id: "nlp_person_name",
+    label: "Person Name (NLP)",
+    reason: "Person names are direct personal identifiers under RA 10173. While a name alone may not uniquely identify an individual, it is classified as Personal Information and is sensitive contextual data. The system detects names using Named Entity Recognition (NER) on normalized text to capture natural language mentions (e.g., 'My name is Alice', 'I am John') that regex and gazetteers may miss.",
+    regex: null,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[NAME REDACTED]"
+  },
+
+  {
+    id: "nlp_job_title",
+    label: "Job Title (NLP)",
+    reason: "Job titles and professional roles are contextual personal information under RA 10173. While not uniquely identifying on their own, they represent sensitive occupational data that, combined with name or organization, can infer identity. The system detects job titles using POS tagging and named entity recognition on normalized text to identify occupational mentions in natural language (e.g., 'I am a Senior Engineer', 'My role is Project Manager').",
+    regex: null,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[JOB TITLE REDACTED]"
+  },
+
+  {
+    id: "nlp_organization",
+    label: "Organization (NLP)",
+    reason: "Organization and company names are contextual personal information under RA 10173. They represent workplace affiliations that, combined with a person's name or job title, can infer identity and enable social engineering or targeted attacks. The system detects organizations using Named Entity Recognition (NER) on normalized text to identify company and institutional mentions (e.g., 'I work at Google', 'I'm employed by Acme Corp').",
+    regex: null,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[ORGANIZATION REDACTED]"
   }
 
 ];

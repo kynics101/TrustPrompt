@@ -27,32 +27,47 @@ chrome.runtime.sendMessage({ type: "CONTENT_SCRIPT_READY" }).catch(() => {});
 
 const DEBOUNCE_MS = 400;
 
+// ── CSS Animations ─────────────────────────────────────────────────────────────
+
+const TOAST_STYLES = document.createElement("style");
+TOAST_STYLES.textContent = `
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+`;
+document.head.appendChild(TOAST_STYLES);
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let promptBox       = null;
 let debounceTimer   = null;
 let lastScannedText = "";
+let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
+let lastScanResult  = null;
+let pendingSubmitResolver = null;
 
-// ── 1. CASCADING SELECTOR ─────────────────────────────────────────────────────
+// ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
 function findPromptBox() {
 
-  // Layer 1 — data-testid (most stable across ChatGPT deploys)
-  const testIdSelectors = [
-    '[data-testid="prompt-textarea"]',
+  // Layer 1 — Claude's stable data-testid
+  const testIds = [
     '[data-testid="chat-input"]',
-    '[data-testid="composer-speech-button"]',  // sibling — walk to editable
+    '[data-testid="composer-input"]',
+    '[data-testid="prompt-input"]',
   ];
-  for (const sel of testIdSelectors) {
+  for (const sel of testIds) {
     const el = document.querySelector(sel);
-    if (!el) continue;
-    const editable = (el.contentEditable === "true")
-      ? el
-      : el.closest("form, [class*='composer']")
-          ?.querySelector('div[contenteditable="true"], textarea');
-    if (editable && isVisible(editable)) {
-      console.log("[TrustPrompt] found via data-testid:", sel);
-      return editable;
+    if (el && isVisible(el)) {
+      console.log("[TrustPrompt/Claude] found via data-testid:", sel);
+      return el;
     }
   }
 
@@ -60,70 +75,49 @@ function findPromptBox() {
   const ariaSelectors = [
     'div[contenteditable="true"][aria-label]',
     'div[contenteditable="true"][role="textbox"]',
-    '[aria-label="Message ChatGPT"]',
-    '[aria-label="Send a message"]',
-    '[aria-label="Message"]',
-    '[aria-label="Ask anything"]',
-    '[aria-describedby*="prompt"]',
-    '[role="textbox"]'
+    '[aria-label="Write your prompt to Claude"]',
+    '[aria-label="Message Claude…"]',
+    '[aria-label="Chat with Claude"]',
+    '[aria-placeholder]',
+    '[role="textbox"]',
   ];
   for (const sel of ariaSelectors) {
     const el = document.querySelector(sel);
     if (el && isVisible(el)) {
-      console.log("[TrustPrompt] found via ARIA/Role:", sel);
+      console.log("[TrustPrompt/Claude] found via ARIA:", sel);
       return el;
     }
   }
 
-  // Layer 3 — form anchor
+  // Layer 3 — ProseMirror (Claude uses a ProseMirror rich-text editor)
+  const proseMirror = document.querySelector('.ProseMirror[contenteditable="true"]');
+  if (proseMirror && isVisible(proseMirror)) {
+    console.log("[TrustPrompt/Claude] found via ProseMirror class");
+    return proseMirror;
+  }
+
+  // Layer 4 — form / main anchor
   const formAnchors = [
     'form div[contenteditable="true"]',
-    'main form div[contenteditable="true"]',
+    'main div[contenteditable="true"]',
     'form textarea',
-    'main form textarea',
-    'main form div[contenteditable]'
+    'main textarea',
   ];
   for (const sel of formAnchors) {
     const el = document.querySelector(sel);
     if (el && isVisible(el)) {
-      console.log("[TrustPrompt] found via Form-Anchor:", sel);
+      console.log("[TrustPrompt/Claude] found via form anchor:", sel);
       return el;
     }
   }
 
-  // Layer 4 — attribute wildcard
-  const wildcardCandidates = document.querySelectorAll(
-    '[id*="prompt"],[id*="composer"],[id*="chat-input"],[id*="message-input"],' +
-    '[class*="prompt"],[class*="composer"],[class*="chat-input"],[class*="ProseMirror"]'
-  );
-  for (const el of wildcardCandidates) {
-    if ((el.tagName === "TEXTAREA" || el.contentEditable === "true") && isVisible(el)) {
-      console.log("[TrustPrompt] found via Attribute Wildcard");
-      return el;
-    }
-  }
-
-  // Layer 5 — send button proximity
-  const allEditable = document.querySelectorAll('textarea, div[contenteditable="true"]');
-  const sendBtns = [...document.querySelectorAll("button")].filter(btn =>
-    /send|submit/i.test(btn.getAttribute("aria-label") || "")
-  );
-  for (const btn of sendBtns) {
-    const container = btn.closest("form, [class*='composer'], [class*='input'], div");
-    if (container) {
-      const inp = container.querySelector('textarea, div[contenteditable="true"]');
-      if (inp && isVisible(inp)) {
-        console.log("[TrustPrompt] found via send button proximity");
-        return inp;
-      }
-    }
-  }
-
-  // Layer 6 — editable next to any button
+  // Layer 5 — any visible contenteditable with a nearby send button
+  const allEditable = document.querySelectorAll('div[contenteditable="true"], textarea');
   for (const el of allEditable) {
     if (!isVisible(el)) continue;
-    if (el.parentElement?.querySelector("button")) {
-      console.log("[TrustPrompt] found via editable+button heuristic");
+    const parent = el.closest("form, [class*='composer'], [class*='input'], div");
+    if (parent && parent.querySelector("button")) {
+      console.log("[TrustPrompt/Claude] found via editable+button heuristic");
       return el;
     }
   }
@@ -131,7 +125,7 @@ function findPromptBox() {
   // Last resort
   for (const el of allEditable) {
     if (isVisible(el)) {
-      console.warn("[TrustPrompt] falling back to first visible editable");
+      console.warn("[TrustPrompt/Claude] falling back to first visible editable");
       return el;
     }
   }
@@ -192,7 +186,7 @@ function scanText(text) {
   }
 
   // De-duplicate — keep highest risk per unique raw match
-  const seen      = new Map();
+  const seen       = new Map();
   const RISK_ORDER = { high: 3, moderate: 2, low: 1 };
   for (const f of findings) {
     const existing = seen.get(f.rawMatch);
@@ -214,28 +208,19 @@ function scoreRisk(findings) {
 }
 
 // ── 5. FLOATING BADGE + INLINE ALERT ─────────────────────────────────────────
-//
-// Two visual elements:
-//
-//   A) Floating badge (position:fixed, bottom-right) — always visible,
-//      color-coded by state like QuillBot. Never touches the page layout.
-//
-//   B) Inline alert banner — slim strip below the composer, only shown
-//      when risk is detected. Removed when box is cleared.
 
 const BADGE_ID        = "trustprompt-floating-badge";
 const ALERT_BANNER_ID = "trustprompt-inline-alert";
+const TOAST_ID        = "trustprompt-toast-notification";
 
 const RISK_META_UI = {
-  idle:     { colour: "#9E9E9E", bg: "#f5f5f5", label: "TrustPrompt active",      dot: "#9E9E9E" },
-  scanning: { colour: "#9E9E9E", bg: "#f5f5f5", label: "Scanning…",               dot: "#9E9E9E" },
-  none:     { colour: "#388E3C", bg: "#e8f5e9", label: "Safe — no issues found",  dot: "#388E3C" },
-  low:      { colour: "#F9A825", bg: "#fffde7", label: "Low risk detected",        dot: "#F9A825" },
-  moderate:   { colour: "#F57C00", bg: "#fff3e0", label: "Moderate risk detected",     dot: "#F57C00" },
-  high:     { colour: "#D32F2F", bg: "#ffebee", label: "High risk detected",       dot: "#D32F2F" },
+  idle:     { colour: "#9E9E9E", bg: "#f5f5f5", label: "TrustPrompt active",     dot: "#9E9E9E" },
+  scanning: { colour: "#9E9E9E", bg: "#f5f5f5", label: "Scanning…",              dot: "#9E9E9E" },
+  none:     { colour: "#388E3C", bg: "#e8f5e9", label: "Safe — no issues found", dot: "#388E3C" },
+  low:      { colour: "#F9A825", bg: "#fffde7", label: "Low risk detected",       dot: "#F9A825" },
+  moderate:   { colour: "#F57C00", bg: "#fff3e0", label: "Moderate risk detected",    dot: "#F57C00" },
+  high:     { colour: "#D32F2F", bg: "#ffebee", label: "High risk detected",      dot: "#D32F2F" },
 };
-
-// ── A) Floating badge ─────────────────────────────────────────────────────────
 
 // Tracks the badge position above the textarea
 let badgePositionObserver = null;
@@ -285,8 +270,7 @@ function getOrCreateFloatingBadge() {
 
   badge.innerHTML = `
     <span id="tp-badge-dot" style="
-      width: 9px;
-      height: 9px;
+      width: 9px; height: 9px;
       border-radius: 50%;
       background: #9E9E9E;
       flex-shrink: 0;
@@ -310,12 +294,10 @@ function getOrCreateFloatingBadge() {
 
   document.body.appendChild(badge);
 
-  // Position it immediately, then keep it in sync as the page scrolls/resizes
   positionBadgeAboveBox();
   window.addEventListener("resize", positionBadgeAboveBox);
   window.addEventListener("scroll", positionBadgeAboveBox, true);
 
-  // Also watch the textarea itself for size/position changes
   if (promptBox) {
     badgePositionObserver = new ResizeObserver(positionBadgeAboveBox);
     badgePositionObserver.observe(promptBox);
@@ -333,18 +315,11 @@ function updateFloatingBadge(state) {
 
   const dot   = badge.querySelector("#tp-badge-dot");
   const label = badge.querySelector("#tp-badge-label");
-
   if (dot)   dot.style.background = meta.dot;
-  if (label) {
-    label.style.color = meta.colour;
-    label.textContent = meta.label;
-  }
+  if (label) { label.style.color = meta.colour; label.textContent = meta.label; }
 
-  // Re-sync position in case textarea height changed
   positionBadgeAboveBox();
 }
-
-// ── B) Inline alert banner ────────────────────────────────────────────────────
 
 function removeInlineAlert() {
   document.getElementById(ALERT_BANNER_ID)?.remove();
@@ -356,7 +331,6 @@ function showInlineAlert(riskLevel, findingsCount) {
 
   const meta   = RISK_META_UI[riskLevel];
   const colour = meta.colour;
-  const label  = meta.label;
 
   const banner = document.createElement("div");
   banner.id = ALERT_BANNER_ID;
@@ -386,7 +360,7 @@ function showInlineAlert(riskLevel, findingsCount) {
             fill="${colour}" font-family="Arial,sans-serif">!</text>
     </svg>
     <span style="flex:1; font-weight:600; color:#fff;">
-      ${label} — ${findingsCount} sensitive item${findingsCount !== 1 ? "s" : ""} detected
+      ${meta.label} — ${findingsCount} sensitive item${findingsCount !== 1 ? "s" : ""} detected
     </span>
     <span style="font-size:11px; color:rgba(255,255,255,0.8); font-weight:400;">
       Click to open TrustPrompt →
@@ -405,12 +379,61 @@ function showInlineAlert(riskLevel, findingsCount) {
   }
 }
 
+// ── Toast notification for early submit during scan ──────────────────────────
+
+function removeToast() {
+  document.getElementById(TOAST_ID)?.remove();
+}
+
+function showToast(message, duration = 3000) {
+  removeToast();
+  
+  const toast = document.createElement("div");
+  toast.id = TOAST_ID;
+  toast.style.cssText = `
+    all: initial;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 999999 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    border-left: 3px solid #f97316 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  `;
+  
+  toast.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink: 0; display: block;">
+      <circle cx="12" cy="12" r="10" stroke="#f97316" stroke-width="2"/>
+      <path d="M12 6v6" stroke="#f97316" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="12" cy="15" r="0.5" fill="#f97316"/>
+    </svg>
+    <span style="display: block;">${message}</span>
+  `;
+  
+  document.body.appendChild(toast);
+  console.log("[TrustPrompt] Toast shown:", message);
+  
+  if (duration > 0) {
+    setTimeout(removeToast, duration);
+  }
+}
+
 // ── 6. MESSAGING ─────────────────────────────────────────────────────────────
 
 function sendToBackground(message) {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Service worker may be inactive — ignore
-  });
+  chrome.runtime.sendMessage(message).catch(() => {});
 }
 
 // ── 7. MAIN SCAN PIPELINE ────────────────────────────────────────────────────
@@ -429,18 +452,22 @@ function runScan() {
     removeInlineAlert();
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
+    scanState = "IDLE";
     return;
   }
 
   if (rawText === lastScannedText) return;
   lastScannedText = rawText;
+  
+  scanState = "SCANNING";
 
   const findings  = scanText(rawText);
   const riskLevel = scoreRisk(findings);
 
-  console.log("[TrustPrompt] scan — risk:", riskLevel, "| findings:", findings.length);
+  console.log("[TrustPrompt/Claude] scan — risk:", riskLevel, "| findings:", findings.length);
 
-  // Update floating badge + inline alert
+  lastScanResult = { findings, riskLevel };
+  
   updateFloatingBadge(riskLevel);
   showInlineAlert(riskLevel, findings.length);
 
@@ -450,6 +477,15 @@ function runScan() {
     findings:  findings,
     rawText:   rawText
   });
+  
+  scanState = "DONE";
+  
+  // If submit was blocked waiting for scan, notify it
+  if (pendingSubmitResolver) {
+    const resolve = pendingSubmitResolver;
+    pendingSubmitResolver = null;
+    resolve({ findings, riskLevel });
+  }
 }
 
 // ── 8. INPUT LISTENER ────────────────────────────────────────────────────────
@@ -457,7 +493,9 @@ function runScan() {
 function attachInputListener(el) {
   el.addEventListener("input", onInput);
   el.addEventListener("paste", () => setTimeout(onInput, 0));
-  console.log("[TrustPrompt] input listener attached");
+  // Attach keydown on the element itself (captures before ProseMirror's handlers)
+  el.addEventListener("keydown", onPromptBoxKeydown, true);
+  console.log("[TrustPrompt/Claude] input listener attached");
 }
 
 function onInput() {
@@ -466,33 +504,165 @@ function onInput() {
   if (currentText && currentText !== lastScannedText) {
     updateFloatingBadge("scanning");
     sendToBackground({ type: "SCAN_SCANNING" });
+    scanState = "PENDING";
   }
   debounceTimer = setTimeout(runScan, DEBOUNCE_MS);
 }
 
 // ── 9. SEND INTERCEPTION ─────────────────────────────────────────────────────
-// Re-run scan synchronously on Enter / send button so we never miss a
-// quick type-and-send before the debounce fires.
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    clearTimeout(debounceTimer);
-    runScan();
+// Extract safe version of text by sanitizing all sensitive patterns found
+function extractSafeVersion(rawText) {
+  const normalised = normaliseText(rawText);
+  let safeText = normalised;
+
+  for (const pattern of TRUSTPROMPT_PATTERNS) {
+    const re = new RegExp(pattern.regex.source, pattern.regex.flags);
+    let match;
+    while ((match = re.exec(normalised)) !== null) {
+      const raw = match[0];
+      if (!TrustValidator.validate(pattern.validate, raw)) continue;
+      const safeVersion = pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]";
+      safeText = safeText.replace(raw, safeVersion);
+    }
   }
-}, true);
 
+  return safeText;
+}
+
+// Returns a Promise that resolves with the scan result
+function awaitScan() {
+  const rawText = extractText(promptBox);
+  if (!rawText.trim()) {
+    return Promise.resolve({ findings: [], riskLevel: "none" });
+  }
+
+  // Already done
+  if (scanState === "DONE" && lastScanResult) {
+    return Promise.resolve(lastScanResult);
+  }
+
+  // Currently scanning — wait for it
+  if (scanState === "SCANNING") {
+    return new Promise(resolve => {
+      pendingSubmitResolver = resolve;
+    });
+  }
+
+  // Pending — wait for debounce to complete and scan to run
+  if (scanState === "PENDING") {
+    return new Promise(resolve => {
+      pendingSubmitResolver = resolve;
+      // Don't clear the debounce timer — let it fire naturally
+      // This will trigger runScan() which will call the resolver
+    });
+  }
+
+  // Idle — run scan immediately (skip debounce)
+  clearTimeout(debounceTimer);
+  return new Promise(resolve => {
+    pendingSubmitResolver = resolve;
+    scanState = "SCANNING";
+    updateFloatingBadge("scanning");
+    runScan();
+  });
+}
+
+// Find send button to click for release
+function findSendButton() {
+  return (
+    document.querySelector('button[aria-label="Send message"]') ||
+    document.querySelector('button[aria-label="Send"]') ||
+    [...document.querySelectorAll("button")].find(b =>
+      /^send$/i.test((b.getAttribute("aria-label") || b.textContent || "").trim()))
+  );
+}
+
+// Release the submit by clicking the send button
+function releaseSubmit() {
+  const btn = findSendButton();
+  if (btn) {
+    btn._tpRelease = true;
+    btn.click();
+  }
+}
+
+function handleSubmitAttempt(e) {
+  if (!promptBox || !isVisible(promptBox)) {
+    console.log("[TrustPrompt] handleSubmitAttempt called but no promptBox");
+    return;
+  }
+  const rawText = extractText(promptBox);
+  if (!rawText.trim()) {
+    console.log("[TrustPrompt] handleSubmitAttempt called but text is empty");
+    return; // allow empty submissions
+  }
+
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  const safeVersion = extractSafeVersion(rawText);
+  console.log("[TrustPrompt] submit intercepted — state:", scanState);
+  console.log("[TrustPrompt] safe version:", safeVersion);
+  
+  if (scanState === "PENDING" || scanState === "SCANNING") {
+    console.log("[TrustPrompt] showing toast - state is", scanState);
+    showToast("⏸ Message blocked — TrustPrompt is still scanning. Please wait…");
+  }
+
+  console.log("[TrustPrompt] awaiting scan...");
+  awaitScan().then(result => {
+    console.log("[TrustPrompt] scan result received:", result);
+    if (result && result.riskLevel === "none") {
+      console.log("[TrustPrompt] scan clear — releasing submit");
+      releaseSubmit();
+    } else {
+      console.log("[TrustPrompt] submit blocked — risk level:", result?.riskLevel);
+    }
+  });
+}
+
+// Submit interception: Enter key on the prompt box (fires before ProseMirror)
+function onPromptBoxKeydown(e) {
+  console.log("[TrustPrompt] onPromptBoxKeydown fired - key:", e.key, "shiftKey:", e.shiftKey);
+  if (e.key !== "Enter" || e.shiftKey) return;
+  if (e._tpRelease) {
+    console.log("[TrustPrompt] onPromptBoxKeydown - release flag set, allowing through");
+    return;
+  }
+  console.log("[TrustPrompt] onPromptBoxKeydown - calling handleSubmitAttempt");
+  handleSubmitAttempt(e);
+}
+
+// Attach keydown listener to promptBox in attachInputListener
+// (See updated attachInputListener below)
+
+// Submit interception: send button click
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
+  if (btn._tpRelease) { btn._tpRelease = false; return; } // our own release click
   const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
-  if (label.includes("send")) {
-    clearTimeout(debounceTimer);
-    runScan();
+  if (!label.includes("send")) return;
+  if (!promptBox || !isVisible(promptBox)) return;
+  handleSubmitAttempt(e);
+}, true);
+
+// Document-level Enter key intercept (fallback for events outside promptBox)
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey) return;
+  if (e._tpRelease) return;
+  if (!promptBox || !isVisible(promptBox)) return;
+  // If the event came from inside promptBox, skip (will be handled by onPromptBoxKeydown)
+  if (promptBox.contains(e.target)) {
+    console.log("[TrustPrompt] document keydown - event from inside promptBox, skipping");
+    return;
   }
+  console.log("[TrustPrompt] document keydown - calling handleSubmitAttempt");
+  handleSubmitAttempt(e);
 }, true);
 
 // ── 10. SEND_ANYWAY from side panel ───────────────────────────────────────────
-// The side panel's "Send Anyway" button tells us to clear state.
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "SEND_ANYWAY") {
@@ -515,7 +685,7 @@ const observer = new MutationObserver(() => {
       removeInlineAlert();
       updateFloatingBadge("idle");
       sendToBackground({ type: "SCAN_CLEARED" });
-      console.log("[TrustPrompt] prompt box re-resolved after DOM change");
+      console.log("[TrustPrompt/Claude] prompt box re-resolved after DOM change");
     }
   }
 });
@@ -529,9 +699,9 @@ function init() {
   if (promptBox) {
     attachInputListener(promptBox);
     updateFloatingBadge("idle");
-    console.log("[TrustPrompt] prompt box found on init");
+    console.log("[TrustPrompt/Claude] prompt box found on init");
   } else {
-    console.warn("[TrustPrompt] prompt box not found on init — will retry via MutationObserver");
+    console.warn("[TrustPrompt/Claude] prompt box not found on init — will retry via MutationObserver");
   }
 }
 

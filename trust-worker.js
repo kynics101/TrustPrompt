@@ -40,7 +40,8 @@ importScripts(
   _url("patterns.js"),
   _url("validator-wrapper-worker.js"),
   _url("gazetteer.js"),
-  _url("ph-address-db.js")
+  _url("ph-address-db.js"),
+  _url("linguistic-detector.js")
 );
 
 // ── STEP 1: Base scores ───────────────────────────────────────────────────────
@@ -69,6 +70,9 @@ const BASE_SCORES = {
   trigger_financial:   2,
   gazetteer_medical:   2,
   gazetteer_financial: 2,
+  nlp_person_name:     2,  // PATH C linguistic
+  nlp_job_title:       2,  // PATH C linguistic
+  nlp_organization:    2,  // PATH C linguistic
 
   source_code: 0
 };
@@ -99,6 +103,9 @@ const ENTITY_TIER = {
   trigger_financial:   "contextual",
   gazetteer_medical:   "contextual",
   gazetteer_financial: "contextual",
+  nlp_person_name:     "contextual",  // PATH C linguistic
+  nlp_job_title:       "contextual",  // PATH C linguistic
+  nlp_organization:    "contextual",  // PATH C linguistic
 
   source_code: "container"
 };
@@ -297,9 +304,9 @@ function runPathA(normalisedText) {
 
 // ── Merge + deduplicate ───────────────────────────────────────────────────────
 
-function mergeAndDedupe(pathAFindings, pathBFindings) {
+function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings) {
   const seen = new Map();
-  for (const f of [...pathAFindings, ...pathBFindings]) {
+  for (const f of [...pathAFindings, ...pathBFindings, ...pathCFindings]) {
     const key = f.rawMatch.trim().toLowerCase();
     const ex  = seen.get(key);
     if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
@@ -320,7 +327,19 @@ self.onmessage = function (e) {
 
   const pathAFindings = runPathA(textRegex);
   const pathBFindings = TrustGazetteer.scan(textNLP);
-  const merged        = mergeAndDedupe(pathAFindings, pathBFindings);
+  
+  // PATH C with safe fallback if TrustLinguisticDetector is unavailable
+  let pathCFindings = [];
+  if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && typeof TrustLinguisticDetector.scan === 'function') {
+    try {
+      pathCFindings = TrustLinguisticDetector.scan(textNLP);
+    } catch (pathCError) {
+      console.error("[TrustPrompt/worker] PATH C error:", pathCError);
+      pathCFindings = [];
+    }
+  }
+  
+  const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
   const findings      = suppressPlaceholders(merged);  // TASK-4.4
 
   const { score, riskLevel, governance } = computeRiskScore(findings);

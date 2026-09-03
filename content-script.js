@@ -26,11 +26,31 @@ chrome.runtime.sendMessage({ type: "CONTENT_SCRIPT_READY" }).catch(() => {});
 
 const DEBOUNCE_MS = 400;
 
+// ── CSS Animations ─────────────────────────────────────────────────────────────
+
+const TOAST_STYLES = document.createElement("style");
+TOAST_STYLES.textContent = `
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+`;
+document.head.appendChild(TOAST_STYLES);
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let promptBox       = null;
 let debounceTimer   = null;
 let lastScannedText = "";
+let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
+let lastScanResult  = null;
+let pendingSubmitResolver = null;
 
 // ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
@@ -190,6 +210,7 @@ function scoreRisk(findings) {
 
 const BADGE_ID        = "trustprompt-floating-badge";
 const ALERT_BANNER_ID = "trustprompt-inline-alert";
+const TOAST_ID        = "trustprompt-toast-notification";
 
 const RISK_META_UI = {
   idle:     { colour: "#9E9E9E", bg: "#f5f5f5", label: "TrustPrompt active",     dot: "#9E9E9E" },
@@ -357,6 +378,57 @@ function showInlineAlert(riskLevel, findingsCount) {
   }
 }
 
+// ── Toast notification for early submit during scan ──────────────────────────
+
+function removeToast() {
+  document.getElementById(TOAST_ID)?.remove();
+}
+
+function showToast(message, duration = 3000) {
+  removeToast();
+  
+  const toast = document.createElement("div");
+  toast.id = TOAST_ID;
+  toast.style.cssText = `
+    all: initial;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 999999 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    border-left: 3px solid #f97316 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  `;
+  
+  toast.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink: 0; display: block;">
+      <circle cx="12" cy="12" r="10" stroke="#f97316" stroke-width="2"/>
+      <path d="M12 6v6" stroke="#f97316" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="12" cy="15" r="0.5" fill="#f97316"/>
+    </svg>
+    <span style="display: block;">${message}</span>
+  `;
+  
+  document.body.appendChild(toast);
+  console.log("[TrustPrompt] Toast shown:", message);
+  
+  if (duration > 0) {
+    setTimeout(removeToast, duration);
+  }
+}
+
 // ── 6. MESSAGING ─────────────────────────────────────────────────────────────
 
 function sendToBackground(message) {
@@ -379,17 +451,22 @@ function runScan() {
     removeInlineAlert();
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
+    scanState = "IDLE";
     return;
   }
 
   if (rawText === lastScannedText) return;
   lastScannedText = rawText;
+  
+  scanState = "SCANNING";
 
   const findings  = scanText(rawText);
   const riskLevel = scoreRisk(findings);
 
   console.log("[TrustPrompt/Claude] scan — risk:", riskLevel, "| findings:", findings.length);
 
+  lastScanResult = { findings, riskLevel };
+  
   updateFloatingBadge(riskLevel);
   showInlineAlert(riskLevel, findings.length);
 
@@ -399,6 +476,15 @@ function runScan() {
     findings:  findings,
     rawText:   rawText
   });
+  
+  scanState = "DONE";
+  
+  // If submit was blocked waiting for scan, notify it
+  if (pendingSubmitResolver) {
+    const resolve = pendingSubmitResolver;
+    pendingSubmitResolver = null;
+    resolve({ findings, riskLevel });
+  }
 }
 
 // ── 8. INPUT LISTENER ────────────────────────────────────────────────────────
@@ -406,6 +492,8 @@ function runScan() {
 function attachInputListener(el) {
   el.addEventListener("input", onInput);
   el.addEventListener("paste", () => setTimeout(onInput, 0));
+  // Attach keydown on the element itself (captures before ProseMirror's handlers)
+  el.addEventListener("keydown", onPromptBoxKeydown, true);
   console.log("[TrustPrompt/Claude] input listener attached");
 }
 
@@ -415,27 +503,162 @@ function onInput() {
   if (currentText && currentText !== lastScannedText) {
     updateFloatingBadge("scanning");
     sendToBackground({ type: "SCAN_SCANNING" });
+    scanState = "PENDING";
   }
   debounceTimer = setTimeout(runScan, DEBOUNCE_MS);
 }
 
 // ── 9. SEND INTERCEPTION ─────────────────────────────────────────────────────
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    clearTimeout(debounceTimer);
-    runScan();
-  }
-}, true);
+// Extract safe version of text by sanitizing all sensitive patterns found
+function extractSafeVersion(rawText) {
+  const normalised = normaliseText(rawText);
+  let safeText = normalised;
 
+  for (const pattern of TRUSTPROMPT_PATTERNS) {
+    const re = new RegExp(pattern.regex.source, pattern.regex.flags);
+    let match;
+    while ((match = re.exec(normalised)) !== null) {
+      const raw = match[0];
+      if (!TrustValidator.validate(pattern.validate, raw)) continue;
+      const safeVersion = pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]";
+      safeText = safeText.replace(raw, safeVersion);
+    }
+  }
+
+  return safeText;
+}
+
+// Returns a Promise that resolves with the scan result
+function awaitScan() {
+  const rawText = extractText(promptBox);
+  if (!rawText.trim()) {
+    return Promise.resolve({ findings: [], riskLevel: "none" });
+  }
+
+  // Already done
+  if (scanState === "DONE" && lastScanResult) {
+    return Promise.resolve(lastScanResult);
+  }
+
+  // Currently scanning — wait for it
+  if (scanState === "SCANNING") {
+    return new Promise(resolve => {
+      pendingSubmitResolver = resolve;
+    });
+  }
+
+  // Pending — wait for debounce to complete and scan to run
+  if (scanState === "PENDING") {
+    return new Promise(resolve => {
+      pendingSubmitResolver = resolve;
+      // Don't clear the debounce timer — let it fire naturally
+      // This will trigger runScan() which will call the resolver
+    });
+  }
+
+  // Idle — run scan immediately (skip debounce)
+  clearTimeout(debounceTimer);
+  return new Promise(resolve => {
+    pendingSubmitResolver = resolve;
+    scanState = "SCANNING";
+    updateFloatingBadge("scanning");
+    runScan();
+  });
+}
+
+// Find send button to click for release
+function findSendButton() {
+  return (
+    document.querySelector('button[aria-label="Send message"]') ||
+    document.querySelector('button[aria-label="Send"]') ||
+    [...document.querySelectorAll("button")].find(b =>
+      /^send$/i.test((b.getAttribute("aria-label") || b.textContent || "").trim()))
+  );
+}
+
+// Release the submit by clicking the send button
+function releaseSubmit() {
+  const btn = findSendButton();
+  if (btn) {
+    btn._tpRelease = true;
+    btn.click();
+  }
+}
+
+function handleSubmitAttempt(e) {
+  if (!promptBox || !isVisible(promptBox)) {
+    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but no promptBox");
+    return;
+  }
+  const rawText = extractText(promptBox);
+  if (!rawText.trim()) {
+    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but text is empty");
+    return; // allow empty submissions
+  }
+
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  const safeVersion = extractSafeVersion(rawText);
+  console.log("[TrustPrompt/Claude] submit intercepted — state:", scanState);
+  console.log("[TrustPrompt/Claude] safe version:", safeVersion);
+  
+  if (scanState === "PENDING" || scanState === "SCANNING") {
+    console.log("[TrustPrompt/Claude] showing toast - state is", scanState);
+    showToast("⏸ Message blocked — TrustPrompt is still scanning. Please wait…");
+  }
+
+  console.log("[TrustPrompt/Claude] awaiting scan...");
+  awaitScan().then(result => {
+    console.log("[TrustPrompt/Claude] scan result received:", result);
+    if (result && result.riskLevel === "none") {
+      console.log("[TrustPrompt/Claude] scan clear — releasing submit");
+      releaseSubmit();
+    } else {
+      console.log("[TrustPrompt/Claude] submit blocked — risk level:", result?.riskLevel);
+    }
+  });
+}
+
+// Submit interception: Enter key on the prompt box (fires before ProseMirror)
+function onPromptBoxKeydown(e) {
+  console.log("[TrustPrompt/Claude] onPromptBoxKeydown fired - key:", e.key, "shiftKey:", e.shiftKey);
+  if (e.key !== "Enter" || e.shiftKey) return;
+  if (e._tpRelease) {
+    console.log("[TrustPrompt/Claude] onPromptBoxKeydown - release flag set, allowing through");
+    return;
+  }
+  console.log("[TrustPrompt/Claude] onPromptBoxKeydown - calling handleSubmitAttempt");
+  handleSubmitAttempt(e);
+}
+
+// Attach keydown listener to promptBox in attachInputListener
+// (See updated attachInputListener below)
+
+// Submit interception: send button click
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
+  if (btn._tpRelease) { btn._tpRelease = false; return; } // our own release click
   const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
-  if (label.includes("send")) {
-    clearTimeout(debounceTimer);
-    runScan();
+  if (!label.includes("send")) return;
+  if (!promptBox || !isVisible(promptBox)) return;
+  handleSubmitAttempt(e);
+}, true);
+
+// Document-level Enter key intercept (fallback for events outside promptBox)
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey) return;
+  if (e._tpRelease) return;
+  if (!promptBox || !isVisible(promptBox)) return;
+  // If the event came from inside promptBox, skip (will be handled by onPromptBoxKeydown)
+  if (promptBox.contains(e.target)) {
+    console.log("[TrustPrompt/Claude] document keydown - event from inside promptBox, skipping");
+    return;
   }
+  console.log("[TrustPrompt/Claude] document keydown - calling handleSubmitAttempt");
+  handleSubmitAttempt(e);
 }, true);
 
 // ── 10. SEND_ANYWAY from side panel ───────────────────────────────────────────

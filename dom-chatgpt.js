@@ -133,32 +133,46 @@ const TP_CHATGPT = (() => {
   // ── 3. SCAN ───────────────────────────────────────────────────────────────
 
   function triggerScan(rawText) {
+    console.log("[TP/chatgpt] triggerScan called with:", rawText.substring(0, 50));
     scanState          = STATE.SCANNING;
     lastScannedText    = rawText;
-    pendingScanPromise = TrustWorkerBridge.scan(rawText)
-      .then(result => {
-        scanState  = STATE.DONE;
-        lastResult = result;
-        applyResult(result, rawText);
-        if (pendingSubmitResolver) {
-          const resolve = pendingSubmitResolver;
-          pendingSubmitResolver = null;
-          resolve(result);
-        }
-        return result;
-      })
-      .catch(err => {
-        console.error("[TP/chatgpt] scan failed, defaulting to safe:", err);
-        const fallback = { findings: [], riskLevel: "none", score: 0 };
-        scanState  = STATE.DONE;
-        lastResult = fallback;
-        applyResult(fallback, rawText);
-        if (pendingSubmitResolver) {
-          const resolve = pendingSubmitResolver;
-          pendingSubmitResolver = null;
-          resolve(fallback);
-        }
-      });
+    
+    console.log("[TP/chatgpt] typeof TrustWorkerBridge:", typeof TrustWorkerBridge);
+    
+    if (typeof TrustWorkerBridge === 'undefined') {
+      console.error("[TP/chatgpt] TrustWorkerBridge is not defined!");
+      const fallback = { findings: [], riskLevel: "none", score: 0 };
+      applyResult(fallback, rawText);
+      return Promise.resolve(fallback);
+    }
+    
+    try {
+      console.log("[TP/chatgpt] Calling TrustWorkerBridge.scan()");
+      pendingScanPromise = TrustWorkerBridge.scan(rawText)
+        .then(result => {
+          console.log("[TP/chatgpt] Scan promise resolved");
+          scanState  = STATE.DONE;
+          lastResult = result;
+          applyResult(result, rawText);
+          return result;
+        })
+        .catch(err => {
+          console.error("[TP/chatgpt] scan promise rejected:", err);
+          const fallback = { findings: [], riskLevel: "none", score: 0 };
+          scanState  = STATE.DONE;
+          lastResult = fallback;
+          applyResult(fallback, rawText);
+          return fallback;
+        });
+    } catch (syncError) {
+      console.error("[TP/chatgpt] sync error calling TrustWorkerBridge.scan():", syncError);
+      const fallback = { findings: [], riskLevel: "none", score: 0 };
+      scanState  = STATE.DONE;
+      lastResult = fallback;
+      applyResult(fallback, rawText);
+      return Promise.resolve(fallback);
+    }
+    
     return pendingScanPromise;
   }
 
@@ -190,74 +204,108 @@ const TP_CHATGPT = (() => {
 
   // ── 4. SUBMIT BLOCKING ────────────────────────────────────────────────────
   //
-  // One resolver slot: when submit is intercepted while PENDING or SCANNING,
-  // we store a resolver here. triggerScan() calls it when the result arrives,
-  // and the intercept handler acts on the result (allow or show panel).
-  let pendingSubmitResolver = null;
+  // Simple approach: only block when scan is PENDING (hasn't started yet).
+  // If scan is SCANNING or DONE, let it through.
+  // When user presses Enter during PENDING, cancel debounce and trigger scan NOW.
 
-  // Returns a Promise that resolves with the scan result.
-  // - If already DONE:    resolves immediately with lastResult.
-  // - If SCANNING:        waits for the running scan to finish.
-  // - If PENDING/IDLE:    fast-tracks the scan right now (skips debounce).
-  function awaitScan() {
-    if (scanState === STATE.DONE && lastResult) {
-      return Promise.resolve(lastResult);
+  function showToast(message) {
+    // Remove any existing toast
+    const existing = document.getElementById("tp-submit-toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.id = "tp-submit-toast";
+    toast.setAttribute("style", 
+      "position:fixed !important;" +
+      "bottom:20px !important;" +
+      "left:50% !important;" +
+      "transform:translateX(-50%) !important;" +
+      "background:#f97316 !important;" +
+      "color:#fff !important;" +
+      "padding:12px 20px !important;" +
+      "border-radius:8px !important;" +
+      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif !important;" +
+      "font-size:13px !important;" +
+      "font-weight:500 !important;" +
+      "z-index:99999 !important;" +
+      "box-shadow:0 4px 12px rgba(0,0,0,0.3) !important;" +
+      "pointer-events:auto !important;"
+    );
+
+    // Add animation style if not present
+    if (!document.getElementById("tp-toast-styles")) {
+      const style = document.createElement("style");
+      style.id = "tp-toast-styles";
+      style.textContent = `
+        @keyframes tp-slideUp {
+          from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
+        }
+        #tp-submit-toast {
+          animation: tp-slideUp 0.3s ease-out !important;
+        }
+      `;
+      document.head.appendChild(style);
     }
-    if (scanState === STATE.SCANNING && pendingScanPromise) {
-      return new Promise(resolve => { pendingSubmitResolver = resolve; });
-    }
-    // PENDING or IDLE — cancel debounce and scan immediately
-    clearTimeout(debounceTimer);
-    const raw = extractText(promptBox);
-    if (!raw.trim()) {
-      return Promise.resolve({ findings: [], riskLevel: "none", score: 0 });
-    }
-    return new Promise(resolve => {
-      pendingSubmitResolver = resolve;
-      TrustUI.setScanning(promptBox);
-      triggerScan(raw);
-    });
+
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    console.log("[TP/chatgpt] Toast shown:", message);
+
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+      if (toast.parentElement) toast.remove();
+    }, 3000);
   }
 
-  // The single entry point for all submit attempts (Enter key + send button).
   function handleSubmitAttempt(e) {
     if (!promptBox) return;
     const raw = extractText(promptBox);
     if (!raw.trim()) return; // empty box — let it through
 
-    if (e) e.preventDefault();
+    // ALWAYS prevent Enter from going through initially
+    if (e && e.key === "Enter") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
 
-    console.log("[TP/chatgpt] submit intercepted — state:", scanState);
-
-    awaitScan().then(result => {
-      if (result.riskLevel === "none") {
-        console.log("[TP/chatgpt] scan clear — releasing submit");
-        releaseSubmit(e);
-      } else {
-        console.log("[TP/chatgpt] submit blocked — risk level:", result.riskLevel);
+    // Only block further if we're in PENDING state (debounce running, scan hasn't started yet)
+    if (scanState !== STATE.PENDING) {
+      console.log("[TP/chatgpt] handleSubmitAttempt — state is", scanState, "allowing through");
+      // State is DONE or SCANNING — let the original event continue by manually clicking send
+      if (e && e.key === "Enter") {
+        const btn = findSendButton();
+        if (btn) {
+          console.log("[TP/chatgpt] Clicking send button since scan is complete");
+          btn.click();
+        }
       }
+      return;
+    }
+
+    // We're in PENDING — block and trigger scan immediately
+    console.log("[TP/chatgpt] handleSubmitAttempt — state is PENDING, blocking and triggering scan");
+    showToast("🔍 Starting scan…");
+
+    // Cancel debounce and scan immediately
+    clearTimeout(debounceTimer);
+    TrustUI.setScanning(promptBox);
+    triggerScan(raw).then(() => {
+      console.log("[TP/chatgpt] Scan complete, user should now retry submission");
+      showToast("✓ Scan complete — ready to send");
     });
   }
-
-  // Re-fire the submit that was blocked.
-  function releaseSubmit(originalEvent) {
-    if (originalEvent && originalEvent.type === "keydown") {
-      const synth = new KeyboardEvent("keydown", {
-        key: "Enter", code: "Enter", keyCode: 13,
-        bubbles: true, cancelable: true, composed: true
-      });
-      synth._tpRelease = true;
-      promptBox.dispatchEvent(synth);
-    } else {
-      findSendButton()?.click();
-    }
-  }
-
-  // ── Legacy helpers (kept for applyResult compat) ─────────────────────────
 
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
 
   function onInput() {
+    console.log("[TP/chatgpt] onInput triggered");
     TrustUI.setScanning(promptBox);
     clearTimeout(debounceTimer);
     scanState  = STATE.PENDING;
@@ -266,6 +314,7 @@ const TP_CHATGPT = (() => {
     debounceTimer = setTimeout(() => {
       if (!promptBox) return;
       const rawText = extractText(promptBox);
+      console.log("[TP/chatgpt] Debounce fired, text:", rawText.substring(0, 50));
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(promptBox);
@@ -273,19 +322,26 @@ const TP_CHATGPT = (() => {
         lastScannedText = ""; return;
       }
       if (rawText === lastScannedText) {
+        console.log("[TP/chatgpt] Text unchanged, skipping scan");
         scanState = STATE.DONE;
         return;
       }
+      console.log("[TP/chatgpt] Triggering scan");
       triggerScan(rawText);
     }, DEBOUNCE_MS);
   }
 
   function attachListeners(el) {
-    if (listenedElements.has(el)) return; // idempotent guard
+    if (listenedElements.has(el)) {
+      console.log("[TP/chatgpt] Listeners already attached to this element");
+      return; // idempotent guard
+    }
     listenedElements.add(el);
+    console.log("[TP/chatgpt] Attaching input/keyup/paste listeners to element:", el.tagName, el.className.slice(0, 50));
     el.addEventListener("input",  onInput);
     el.addEventListener("keyup",  onInput);
     el.addEventListener("paste", () => setTimeout(onInput, 0));
+    console.log("[TP/chatgpt] Listeners attached successfully");
   }
 
   // Central helper: switch to a new prompt box, tear down old UI, re-attach
@@ -294,7 +350,6 @@ const TP_CHATGPT = (() => {
     promptBox = el;
     scanState  = STATE.IDLE;
     lastResult = null; lastScannedText = "";
-    pendingSubmitResolver = null;
     TrustUI.teardown();
     TrustUI.setScanning(promptBox);
     attachListeners(promptBox);
@@ -306,7 +361,6 @@ const TP_CHATGPT = (() => {
   // ── Submit intercept — Enter key ──────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey) return;
-    if (e._tpRelease) return; // synthetic release event — let it through
     if (!promptBox || !isVisible(promptBox)) return;
     handleSubmitAttempt(e);
   }, true);

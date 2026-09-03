@@ -18,7 +18,7 @@
 //     → Step 4: governance rule evaluation
 //     → Step 5: final risk classification
 
-/* global TrustNormalizer, TRUSTPROMPT_PATTERNS, TrustValidator, TrustGazetteer */
+/* global TrustNormalizer, TRUSTPROMPT_PATTERNS, TrustValidator, TrustGazetteer, TrustLinguisticDetector */
 /* global shannonEntropy, isKnownPlaceholder, PLACEHOLDER_PATTERNS */
 
 const TrustScanner = (() => {
@@ -55,6 +55,9 @@ const TrustScanner = (() => {
     trigger_financial:   2,
     gazetteer_medical:   2,
     gazetteer_financial: 2,
+    nlp_person_name:     2,  // PATH C linguistic
+    nlp_job_title:       2,  // PATH C linguistic
+    nlp_organization:    2,  // PATH C linguistic
 
     // ── Container (score 0) ───────────────────────────────────────────────
     source_code: 0
@@ -84,6 +87,9 @@ const TrustScanner = (() => {
     trigger_financial:   "contextual",
     gazetteer_medical:   "contextual",
     gazetteer_financial: "contextual",
+    nlp_person_name:     "contextual",  // PATH C linguistic
+    nlp_job_title:       "contextual",  // PATH C linguistic
+    nlp_organization:    "contextual",  // PATH C linguistic
 
     source_code: "container"
   };
@@ -237,11 +243,44 @@ const TrustScanner = (() => {
     return kept;
   }
 
+  // ── Context-aware filtering helper ──────────────────────────────────────────
+  // TASK-4.7: Rejects matches that appear in measurement/unit contexts
+  // This prevents false positives like "0909835056 grams" being flagged as a phone number.
+  // Checks the original text around the match position for unit keywords.
+
+  function isMeasurementContext(rawMatch, fullText, matchIndex) {
+    // Measurement unit keywords that commonly follow numeric values
+    const unitPatterns = [
+      /\b(grams?|ounces?|pounds?|kilograms?|kg|lb|oz)\b/i,
+      /\b(milliliters?|liters?|ml|l|gallons?|cups?|tablespoons?|teaspoons?)\b/i,
+      /\b(meters?|kilometers?|miles?|feet|yards?|inches?|cm|mm|km|mi)\b/i,
+      /\b(seconds?|minutes?|hours?|days?|weeks?|months?|years?|ms|sec|min|hr)\b/i,
+      /\b(watts?|volts?|amperes?|hertz|Hz|MHz|GHz|W|V|A)\b/i,
+      /\b(celsius|fahrenheit|degrees?|°C|°F)\b/i,
+      /\b(bytes?|kilobytes?|megabytes?|gigabytes?|kb|mb|gb|bits?)\b/i,
+      /\b(rpm|mph|kph|m\/s|km\/h)\b/i,
+    ];
+
+    // Look ahead after the match (up to 50 characters)
+    const startLookahead = matchIndex + rawMatch.length;
+    const lookahead = fullText.slice(startLookahead, startLookahead + 50);
+    
+    // Check if any unit pattern matches the lookahead
+    if (unitPatterns.some(pattern => pattern.test(lookahead))) {
+      return true;
+    }
+
+    return false;
+  }
+
   // ── PATH A — regex + validator.js ────────────────────────────────────────
   //
   // TASK-4.5: Added entropy pre-check — if pattern.minEntropy is set, the
   //   extracted value must meet the minimum Shannon entropy threshold or the
   //   match is discarded before the validator step.
+  //
+  // TASK-4.7: Added context-aware filtering — for phone numbers, rejects matches
+  //   that appear immediately before measurement units (e.g., "0909835056 grams").
   //
   // Each finding receives a `validated` boolean:
   //   true  — passed TrustValidator.validate() (mathematical confirmation)
@@ -255,6 +294,13 @@ const TrustScanner = (() => {
       let match;
       while ((match = re.exec(normalisedText)) !== null) {
         const raw = match[0];
+        const matchIndex = match.index;
+
+        // TASK-4.7: Context-aware filtering for phone numbers
+        if (pattern.id === "phone_intl" && isMeasurementContext(raw, normalisedText, matchIndex)) {
+          console.log(`[TrustPrompt/context] rejected measurement context: ${raw.slice(0, 30)} grams/unit`);
+          continue;
+        }
 
         // TASK-4.5: Entropy pre-check — reject low-entropy dummy values
         if (pattern.minEntropy !== undefined) {
@@ -285,11 +331,15 @@ const TrustScanner = (() => {
     return findings;
   }
 
-  // ── Merge + deduplicate ───────────────────────────────────────────────────
+  // ── Merge + deduplicate ───────────────────────────────────────────────────────
+  //
+  // Merges findings from all three paths (A: regex, B: gazetteer, C: linguistic).
+  // When the same rawMatch appears in multiple paths, the finding with the highest
+  // risk level is preserved (highest RISK_ORDER value wins).
 
-  function mergeAndDedupe(pathA, pathB) {
+  function mergeAndDedupe(pathA, pathB, pathC) {
     const seen = new Map();
-    for (const f of [...pathA, ...pathB]) {
+    for (const f of [...pathA, ...pathB, ...pathC]) {
       const key = f.rawMatch.trim().toLowerCase();
       const ex  = seen.get(key);
       if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
@@ -298,25 +348,72 @@ const TrustScanner = (() => {
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
+  //
+  // Three-path architecture:
+  //   PATH A (regex + validator.js) — runs on textRegex view
+  //   PATH B (gazetteer + trigger phrases) — runs on textNLP view
+  //   PATH C (linguistic NER/POS) — runs on textNLP view in parallel with PATH B
+  //
+  // After all paths complete, findings are merged and deduplicated (highest risk wins).
+  // The normalized textNLP view is prepared specifically for linguistic analysis:
+  // sentence case estimated, whitespace normalized, punctuation standardized.
 
   function scan(rawText) {
+    console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
+    
     if (!rawText || !rawText.trim()) {
+      console.log("[TrustPrompt/scanner] Empty text - returning empty findings");
       return { findings: [], riskLevel: "none", score: 0,
                governance: "none", normalisedText: "", wasCapsConverted: false };
     }
+    
+    console.log("[TrustPrompt/scanner] Normalizing...");
     const { masked, textRegex, textNLP, wasCapsConverted } =
       TrustNormalizer.normalize(rawText);
-
+    
+    console.log("[TrustPrompt/scanner] Running PATH A (regex)...");
     const pathAFindings = runPathA(textRegex);
+    console.log("[TrustPrompt/scanner] PATH A findings:", pathAFindings.length);
+    
+    // PATH B and PATH C execute in parallel on the same textNLP input
+    console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
     const pathBFindings = TrustGazetteer.scan(textNLP);
-    const merged        = mergeAndDedupe(pathAFindings, pathBFindings);
+    console.log("[TrustPrompt/scanner] PATH B findings:", pathBFindings.length);
+    
+    // ========== DIAGNOSTIC LOGGING ==========
+    console.log("[DIAGNOSTIC] TrustLinguisticDetector type:", typeof TrustLinguisticDetector);
+    console.log("[DIAGNOSTIC] TrustLinguisticDetector available:", !!TrustLinguisticDetector);
+    console.log("[DIAGNOSTIC] Text to scan:", textNLP.substring(0, 100));
+    // =========================================
+    
+    // PATH C with safe fallback if TrustLinguisticDetector is unavailable
+    let pathCFindings = [];
+    if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && typeof TrustLinguisticDetector.scan === 'function') {
+      try {
+        console.log("[DIAGNOSTIC] Calling TrustLinguisticDetector.scan()...");
+        pathCFindings = TrustLinguisticDetector.scan(textNLP);
+        console.log("[DIAGNOSTIC] PATH C returned:", pathCFindings.length, "findings");
+        for (let i = 0; i < pathCFindings.length; i++) {
+          console.log(`  [${i}]`, pathCFindings[i].patternId, ":", pathCFindings[i].rawMatch);
+        }
+      } catch (pathCError) {
+        console.error("[TrustPrompt/scanner] PATH C error:", pathCError);
+        console.log("[DIAGNOSTIC] PATH C crashed");
+        pathCFindings = [];
+      }
+    } else {
+      console.warn("[TrustPrompt/scanner] TrustLinguisticDetector not available - PATH C skipped");
+      console.log("[DIAGNOSTIC] PATH C not available");
+    }
+    
+    const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
     const findings      = suppressPlaceholders(merged);  // TASK-4.4
     const { score, riskLevel, governance } = computeRiskScore(findings);
 
     console.log(
       "[TrustPrompt/scanner] risk:", riskLevel, `score:${score}`,
       "| findings:", findings.length,
-      `(A:${pathAFindings.length} B:${pathBFindings.length})`,
+      `(A:${pathAFindings.length} B:${pathBFindings.length} C:${pathCFindings.length})`,
       wasCapsConverted ? "| CAPS→sentenceCase" : ""
     );
 

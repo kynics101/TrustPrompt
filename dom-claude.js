@@ -22,7 +22,6 @@ const TP_CLAUDE = (() => {
   let lastScannedText    = "";
   let pendingScanPromise = null;
   let lastResult         = null;
-  let pendingSubmitResolver = null;
 
   // Track which elements already have listeners so we never double-attach
   const listenedElements = new WeakSet();
@@ -150,29 +149,22 @@ const TP_CLAUDE = (() => {
   function triggerScan(rawText) {
     scanState          = STATE.SCANNING;
     lastScannedText    = rawText;
+    console.log("[TP/claude] triggerScan starting — state:", STATE.SCANNING);
     pendingScanPromise = TrustWorkerBridge.scan(rawText)
       .then(result => {
+        console.log("[TP/claude] triggerScan complete — riskLevel:", result.riskLevel);
         scanState  = STATE.DONE;
         lastResult = result;
         applyResult(result, rawText);
-        if (pendingSubmitResolver) {
-          const resolve = pendingSubmitResolver;
-          pendingSubmitResolver = null;
-          resolve(result);
-        }
         return result;
       })
       .catch(err => {
-        console.error("[TP/claude] scan failed, defaulting to safe:", err);
+        console.error("[TP/claude] scan failed:", err);
         const fallback = { findings: [], riskLevel: "none", score: 0 };
         scanState  = STATE.DONE;
         lastResult = fallback;
         applyResult(fallback, rawText);
-        if (pendingSubmitResolver) {
-          const resolve = pendingSubmitResolver;
-          pendingSubmitResolver = null;
-          resolve(fallback);
-        }
+        return fallback;
       });
     return pendingScanPromise;
   }
@@ -194,27 +186,63 @@ const TP_CLAUDE = (() => {
   //   a) document capture (catches most cases)
   //   b) promptBox capture (catches ProseMirror's inner keydown before React)
   //
-  // releaseSubmit always clicks the send button — synthetic KeyboardEvents
-  // dispatched from outside React's tree are ignored by ProseMirror.
+  // When scan completes, we click the send button with a flag set so our
+  // click listener knows to let it through.
 
-  function awaitScan() {
-    if (scanState === STATE.DONE && lastResult) {
-      return Promise.resolve(lastResult);
+  let allowNextSubmit = false; // Flag: next submit event should be allowed through
+
+  function showToast(message) {
+    // Remove any existing toast
+    const existing = document.getElementById("tp-submit-toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.id = "tp-submit-toast";
+    toast.setAttribute("style", 
+      "position:fixed !important;" +
+      "bottom:20px !important;" +
+      "left:50% !important;" +
+      "transform:translateX(-50%) !important;" +
+      "background:#f97316 !important;" +
+      "color:#fff !important;" +
+      "padding:12px 20px !important;" +
+      "border-radius:8px !important;" +
+      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif !important;" +
+      "font-size:13px !important;" +
+      "font-weight:500 !important;" +
+      "z-index:99999 !important;" +
+      "box-shadow:0 4px 12px rgba(0,0,0,0.3) !important;" +
+      "animation:tp-slideUp 0.3s ease-out !important;" +
+      "pointer-events:auto !important;"
+    );
+
+    // Add animation style if not present
+    if (!document.getElementById("tp-toast-styles")) {
+      const style = document.createElement("style");
+      style.id = "tp-toast-styles";
+      style.textContent = `
+        @keyframes tp-slideUp {
+          from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
+        }
+      `;
+      document.head.appendChild(style);
     }
-    if (scanState === STATE.SCANNING && pendingScanPromise) {
-      return new Promise(resolve => { pendingSubmitResolver = resolve; });
-    }
-    // PENDING or IDLE — cancel debounce and scan immediately
-    clearTimeout(debounceTimer);
-    const raw = extractText(promptBox);
-    if (!raw.trim()) {
-      return Promise.resolve({ findings: [], riskLevel: "none", score: 0 });
-    }
-    return new Promise(resolve => {
-      pendingSubmitResolver = resolve;
-      TrustUI.setScanning(getComposerWrapper());
-      triggerScan(raw);
-    });
+
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    console.log("[TP/claude] Toast shown:", message);
+
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+      if (toast.parentElement) toast.remove();
+    }, 3000);
   }
 
   function handleSubmitAttempt(e) {
@@ -222,29 +250,37 @@ const TP_CLAUDE = (() => {
     const raw = extractText(promptBox);
     if (!raw.trim()) return; // empty box — let it through
 
-    e.preventDefault();
-    e.stopImmediatePropagation(); // stop ProseMirror's own handlers from firing
-
-    console.log("[TP/claude] submit intercepted — state:", scanState);
-
-    awaitScan().then(result => {
-      if (result.riskLevel === "none") {
-        console.log("[TP/claude] scan clear — releasing submit");
-        releaseSubmit();
-      } else {
-        console.log("[TP/claude] submit blocked — risk level:", result.riskLevel);
-      }
-    });
-  }
-
-  // Claude's ProseMirror ignores synthetic KeyboardEvents from outside React.
-  // The only reliable way to release is to click the actual send button.
-  function releaseSubmit() {
-    const btn = findSendButton();
-    if (btn) {
-      btn._tpRelease = true;
-      btn.click();
+    // ALWAYS prevent Enter from going through initially
+    if (e && e.key === "Enter") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
     }
+
+    // Only block further if we're in PENDING state (debounce running, scan hasn't started yet)
+    if (scanState !== STATE.PENDING) {
+      console.log("[TP/claude] handleSubmitAttempt — state is", scanState, "allowing through");
+      // State is DONE or SCANNING — let the original event continue by manually clicking send
+      if (e && e.key === "Enter") {
+        const btn = findSendButton();
+        if (btn) {
+          console.log("[TP/claude] Clicking send button since scan is complete");
+          btn.click();
+        }
+      }
+      return;
+    }
+
+    // We're in PENDING — block and trigger scan immediately
+    console.log("[TP/claude] handleSubmitAttempt — state is PENDING, blocking and triggering scan");
+    showToast("🔍 Starting scan…");
+
+    // Cancel debounce and scan immediately
+    clearTimeout(debounceTimer);
+    TrustUI.setScanning(getComposerWrapper());
+    triggerScan(raw).then(() => {
+      console.log("[TP/claude] Scan complete, user should now retry submission");
+      showToast("✓ Scan complete — ready to send");
+    });
   }
 
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
@@ -276,7 +312,6 @@ const TP_CLAUDE = (() => {
   // Attached here so it captures before ProseMirror's own keydown handlers.
   function onPromptBoxKeydown(e) {
     if (e.key !== "Enter" || e.shiftKey) return;
-    if (e._tpRelease) return;
     handleSubmitAttempt(e);
   }
 
@@ -296,7 +331,6 @@ const TP_CLAUDE = (() => {
     promptBox = el;
     scanState  = STATE.IDLE;
     lastResult = null; lastScannedText = "";
-    pendingSubmitResolver = null;
     TrustUI.teardown();
     TrustUI.setScanning(getComposerWrapper());
     attachListeners(promptBox);
@@ -308,7 +342,6 @@ const TP_CLAUDE = (() => {
   // ── Submit intercept — document-level capture (send button + Enter fallback)
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey) return;
-    if (e._tpRelease) return;
     if (!promptBox || !isVisible(promptBox)) return;
     // The promptBox listener handles this if it fires first; this is a fallback
     // for cases where the event target is outside the promptBox subtree.
@@ -319,7 +352,6 @@ const TP_CLAUDE = (() => {
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
-    if (btn._tpRelease) { btn._tpRelease = false; return; } // our own release click
     const lbl = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
     if (!lbl.includes("send")) return;
     if (!promptBox || !isVisible(promptBox)) return;

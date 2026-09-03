@@ -25,6 +25,7 @@
         "normalizer.js",
         "patterns.js",
         "gazetteer.js",
+        "linguistic-detector.js",
         "validator-wrapper.js",
         "scanner.js",
         "worker-bridge.js",
@@ -44,6 +45,7 @@
         "normalizer.js",
         "patterns.js",
         "gazetteer.js",
+        "linguistic-detector.js",
         "validator-wrapper.js",
         "scanner.js",
         "worker-bridge.js",
@@ -72,6 +74,7 @@
         "normalizer.js",
         "patterns.js",
         "gazetteer.js",
+        "linguistic-detector.js",
         "ph-address-db.js",
         "validator-wrapper-worker.js"
       ],

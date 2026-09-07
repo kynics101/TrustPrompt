@@ -1,0 +1,1535 @@
+[
+  {
+    "id_type": "phild",
+    "raw_value": "123456789012",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - 12 digits, birth date 12-34-56, sex digit 2 (female)"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "12-3456-78-90-12",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with hyphens"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "001234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID with leading zeros"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "00 1234 56 78 90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with spaces"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "851231234561",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 85-12-31, sex digit 1 (male)"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "85-1231-23-45-61",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with hyphens - boundary year 1985"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "001231999991",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 00-12-31, sex digit 1"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "00 1231 99 99 91",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with spaces"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "991231123452",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 99-12-31 (year 1999)"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "99.1231.12.34.52",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with dots"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "500101123451",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 50-01-01"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "50-0101-12-34-51",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with hyphens"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "751225456782",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 75-12-25"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "75 1225 45 67 82",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with spaces"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "000101000001",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - boundary minimum values"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "00-0101-00-00-01",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with hyphens - boundary"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "999999999992",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - boundary maximum digit values"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "99 9999 99 99 92",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with spaces - boundary"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "450615123451",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilID - birth date 45-06-15"
+  },
+  {
+    "id_type": "phild",
+    "raw_value": "45-0615-12-34-51",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilID with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "12345678901",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - 11 numeric digits, region 12"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "12-3456-7890-1",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "01234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 01 (minimum)"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "01 2345 6789 0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with spaces"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "16999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 16 (maximum)"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "16-9999-9999-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "0A2B3C4D5E6",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - alphanumeric variant"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "0A 2B3C 4D5E 6",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License alphanumeric with spaces"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "05678901234",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 05"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "05.6789.0123.4",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with dots"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "11123456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 11"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "11-1234-5678-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "09ABCDEF123",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - alphanumeric region 09"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "09 ABCD EF12 3",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License alphanumeric with spaces"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "03000000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 03 with zeros"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "03-0000-0000-0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "13999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 13"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "13-9999-9999-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "02XYZ1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - alphanumeric region 02"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "02 XYZ1 2345 67",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License alphanumeric with spaces"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "14567890123",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Driver's License - region 14"
+  },
+  {
+    "id_type": "drivers_license",
+    "raw_value": "14-5678-9012-3",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Driver's License with hyphens"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "12345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - 8 digits, type 1"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P12345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P-1234-5678",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Passport with P prefix and hyphens"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "123456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - 9 digits, type 1"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P123456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix - 9 digits"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "PH12345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with PH prefix"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "PH-1234-5678",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Passport with PH prefix and hyphens"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "23456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - type 2"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P23456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix, type 2"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P 2345 6789",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Passport with spaces"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "34567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - type 3"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P34567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix, type 3"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "345678901",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - 9 digits, type 3"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P.3456.7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Passport with dots"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "10000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - boundary minimum type 1"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P10000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix, boundary"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "199999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - 9 digits, type 1, maximum"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P-1999-9999",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Passport with hyphens, maximum"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "30000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport - boundary minimum type 3"
+  },
+  {
+    "id_type": "passport",
+    "raw_value": "P30000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Passport with P prefix, type 3"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "123456789012",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - 12 digits, SSS code 1234"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1234-5678-90-12",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with hyphens"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1000123456781",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1000 (minimum)"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1000 1234 56 81",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with spaces"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1999123456782",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1999 (maximum)"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1999-1234-56-82",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with hyphens"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "150001234567", 
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1500"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1500.0123.45.67",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with dots"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "100000000008",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - boundary minimum with check digit"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1000-0000-00-08",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with hyphens"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "199999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - maximum digit values"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1999 9999 99 99",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with spaces"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "175012345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1750"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1750-1234-56-78",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with hyphens"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "112006012341",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1120"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1120-0601-23-41",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with hyphens"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "145512234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid UMID - SSS code 1455"
+  },
+  {
+    "id_type": "umid",
+    "raw_value": "1455 1223 45 67",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid UMID with spaces"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "1234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - 10 digits, branch 12"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "12-345678-90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with hyphens"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "0100000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 01 (minimum)"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "01 000000 00",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with spaces"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "5999999990",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 59 (maximum)"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "59-999999-90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with hyphens"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "0512345670",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 05"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "05.123456.70",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with dots"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "3067890121",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 30"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "30 678901 21",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with spaces"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "0200000011",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 02 with check digits"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "02-000000-11",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with hyphens"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "4599999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 45"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "45 999999 99",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with spaces"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "1700000008",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 17"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "17-000000-08",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with hyphens"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "0134567898",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 01"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "01-345678-98",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with hyphens"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "3856789023",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid SSS - branch 38"
+  },
+  {
+    "id_type": "sss",
+    "raw_value": "38 567890 23",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid SSS with spaces"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "1234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - 10 digits, agency 1234"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "12-34567-8-90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with hyphens"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0001000010",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 0001 (minimum)"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0001 00001 0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with spaces"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "9999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - maximum digit values"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "9999-99999-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with hyphens"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0567000018",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 0567"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0567.00001.8",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with dots"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "3456012345",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 3456"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "3456 01234 5",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with spaces"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0002345670",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 0002"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "0002-34567-0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with hyphens"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "5000999998",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 5000"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "5000 99999 8",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with spaces"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "8888000002",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid GSIS - agency 8888"
+  },
+  {
+    "id_type": "gsis",
+    "raw_value": "8888.00000.2",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid GSIS with dots"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - 6 digits, profession 12"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2021-123456",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year prefix"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - 7 digits"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2020-1234567",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year prefix - 7 digits"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "010000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - profession 01 (minimum)"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "1900-010000",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year 1900 (minimum)"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - profession 99 (maximum)"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2099-999999",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year 2099 (maximum)"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "450123",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - profession 45"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2018 450123",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year prefix and space"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "5678901",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - 7 digits, profession 56"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2015-5678901",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year 2015"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "789012",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - profession 78"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2010.789012",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year and dot separator"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "3456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PRC - 7 digits, profession 34"
+  },
+  {
+    "id_type": "prc",
+    "raw_value": "2005-3456789",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PRC with year 2005"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "123456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - 9 digits, area 123"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "123-45-67-8-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with hyphens"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "100000008",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 100 (minimum)"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "100 00 00 0 8",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with spaces"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "900999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 900 (maximum)"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "900-99-99-9-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with hyphens"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "450123454",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 450"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "450.12.34.5.4",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with dots"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "567234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 567"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "567 23 45 6 7",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with spaces"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 234"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "234-56-78-9-0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with hyphens"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "678456123",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid TIN - area 678"
+  },
+  {
+    "id_type": "tin",
+    "raw_value": "678 45 61 2 3",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid TIN with spaces"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "123456789012",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - 12 digits, category 12"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "12-345678-90-1-2",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with hyphens"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "000000000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - all zeros (boundary)"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "00 000000 00 0 0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with spaces"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "999999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - maximum digit values"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "99-999999-99-9-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with hyphens"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "456789012345",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - category 45"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "45.678901.23.4.5",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with dots"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "123000000001",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - category 12 with zeros"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "12 000000 00 0 1",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with spaces"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "789123456789",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PhilHealth - category 78"
+  },
+  {
+    "id_type": "philhealth",
+    "raw_value": "78-912345-67-8-9",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PhilHealth with hyphens"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI - 7 digits, year 12"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "NBI1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI with NBI prefix"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "12-34-56-7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with hyphens - 10 digits"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "0001000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI - year 00, office 001"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "00 001 0000",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with spaces"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "9999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI - maximum digit values (10 digits)"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "NBI-9999-999999",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with NBI prefix and hyphens"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "2012345",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI - year 20, office 123"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "20.123.45678",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with dots"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "NBI5234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI with NBI prefix - 10 digits"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "NBI 52 345 6789 0",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with NBI prefix and spaces"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "4512345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid NBI - 10 digits"
+  },
+  {
+    "id_type": "nbi_clearance",
+    "raw_value": "45-123-456-7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid NBI with hyphens"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance - 6 digits"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "PNP123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance with PNP prefix"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "PNP-2021-123456",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Police Clearance with PNP and year"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance - 7 digits"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "PNP1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance with PNP prefix - 7 digits"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "2020-1234567",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Police Clearance with year - 7 digits"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "0123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance - office 01"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "PNP.2019.0123456",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Police Clearance with dots"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "1234567890",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Police Clearance - 10 digits"
+  },
+  {
+    "id_type": "police_clearance",
+    "raw_value": "PNP-2018-1234567890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Police Clearance with year - 10 digits"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "10123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - 8 digits, birth cert type 101"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "101-234-5678",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with hyphens"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "2011234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - marriage cert type 201"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "201 1234 5678 90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with spaces - 10 digits"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "3011234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - death cert type 301"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "301-1234-5678-90",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with hyphens - 10 digits"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "1012345678901",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - 13 digits, birth cert"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "101 2345 6789 01 23",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with spaces - 13 digits"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "10100000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - boundary minimum"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "101-000-0000",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with hyphens"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "2019999999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid PSA Certificate - 13 digits, marriage cert"
+  },
+  {
+    "id_type": "psa_certificate",
+    "raw_value": "201 9999 9999 99 99",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid PSA Certificate with spaces"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "1234",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - 4 digits"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "BC-2021-1234",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with BC prefix and year"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "12345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - 8 digits"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "2020-12-345678",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with year and barangay code"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "0100",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - boundary barangay 01"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "BC-2019-01-0000",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with BC prefix"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "9999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - maximum 4 digits"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "2022 99 9999",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with spaces"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "12345",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - 5 digits"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "Barangay-2021-12345",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with Barangay prefix"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "1234567",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid Barangay Clearance - 7 digits"
+  },
+  {
+    "id_type": "barangay_clearance",
+    "raw_value": "2018-45-123456",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid Barangay Clearance with year"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "0112345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - 10 digits, province 01"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "01-12-34-56-7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with hyphens"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "01123456789012",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - 14 digits"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "01 12 34 5678 9012",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with spaces"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "0100000000",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - boundary minimum"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "01-00-00-00-00",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with hyphens"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "8299999999",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - province 82 (maximum)"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "82-99-99-9999-9999",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with hyphens - 14 digits"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "2345123456",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - province 23, city 45"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "23.45.12.3456.7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with dots"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "1501234567890123",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - 14 digits, province 15"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "15 01 23 4567 89 01 23",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with spaces - maximum format"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "6712345678",
+    "expected_result": true,
+    "with_separators": false,
+    "notes": "Valid COMELEC - province 67"
+  },
+  {
+    "id_type": "comelec_voter_id",
+    "raw_value": "67-12-34-56-7890",
+    "expected_result": true,
+    "with_separators": true,
+    "notes": "Valid COMELEC with hyphens"
+  }
+]

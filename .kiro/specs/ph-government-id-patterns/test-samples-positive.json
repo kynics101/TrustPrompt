@@ -1,0 +1,1537 @@
+{
+  "samples": [
+    {
+      "idType": "philid",
+      "raw": "120315234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 12-digit PhilID (birthdate: 1203-15, sex: male)"
+    },
+    {
+      "idType": "philid",
+      "raw": "12-03-15-234-56-7",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with hyphen separators"
+    },
+    {
+      "idType": "philid",
+      "raw": "12 03 15 234 56 7",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with space separators"
+    },
+    {
+      "idType": "philid",
+      "raw": "120315.234.567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with dot separators"
+    },
+    {
+      "idType": "philid",
+      "raw": "120315_234_567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with underscore separators"
+    },
+    {
+      "idType": "philid",
+      "raw": "000101234561",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilID edge case: minimum birthdate (000101), male"
+    },
+    {
+      "idType": "philid",
+      "raw": "991231234561",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilID edge case: maximum birthdate (991231), male"
+    },
+    {
+      "idType": "philid",
+      "raw": "120315234562",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 12-digit PhilID (sex: female)"
+    },
+    {
+      "idType": "philid",
+      "raw": "050612999991",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilID edge case: maximum city code (999)"
+    },
+    {
+      "idType": "philid",
+      "raw": "050612000001",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilID edge case: minimum city code (000)"
+    },
+    {
+      "idType": "philid",
+      "raw": "85-07-22-567-89-1",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with mixed formatting"
+    },
+    {
+      "idType": "philid",
+      "raw": "700228456781",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilID from 1970s"
+    },
+    {
+      "idType": "philid",
+      "raw": "950114678902",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilID from 1995"
+    },
+    {
+      "idType": "philid",
+      "raw": "030309111112",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilID with sequential digits"
+    },
+    {
+      "idType": "philid",
+      "raw": "15-10-30-555-55-2",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID female with hyphens"
+    },
+    {
+      "idType": "philid",
+      "raw": "880515.333.441",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with dot separators"
+    },
+    {
+      "idType": "philid",
+      "raw": "771201789101",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilID male"
+    },
+    {
+      "idType": "philid",
+      "raw": "920428345672",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilID female variant"
+    },
+    {
+      "idType": "philid",
+      "raw": "06-12-31-012-99-1",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PhilID edge case: maximum order number (99)"
+    },
+    {
+      "idType": "philid",
+      "raw": "04.05.15.123.45.2",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilID with dot separators, female"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "01121234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 11-char driver's license (region 01)"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "01-12-1234-567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with hyphen separators"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "01 12 1234 567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with space separators"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "16011234ABC",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "Driver's license edge case: maximum region (16)"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "0199ABCD123",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "Driver's license edge case: alphanumeric variant"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "03-45-5678-901",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with different city code"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "04 02 AB12 345",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with alphanumeric series"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "12345678901",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid numeric driver's license"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "05-67-XYZ1-234",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with letter series"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "08 34 5678 ZZZ",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with alphanumeric sequence"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "01.99.ABCD.999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Driver's license edge case: maximum city code with dots"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "15-56-7890-123",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with hyphen grouping"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "02001234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid driver's license region 02"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "11 88 2468 135",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with space grouping"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "07999ABC012",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Driver's license with alphanumeric mix"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "14-44-5678-901",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license region 14"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "09.11.1111.111",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Driver's license with sequential digits"
+    },
+    {
+      "idType": "drivers_license",
+      "raw": "16-99-XYZ0-999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Driver's license edge case: region 16, max city code"
+    },
+    {
+      "idType": "passport",
+      "raw": "12345678",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 8-digit passport"
+    },
+    {
+      "idType": "passport",
+      "raw": "P12345678",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Passport with P prefix"
+    },
+    {
+      "idType": "passport",
+      "raw": "PH12345678",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Passport with PH prefix (newer format)"
+    },
+    {
+      "idType": "passport",
+      "raw": "123456789",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 9-digit passport"
+    },
+    {
+      "idType": "passport",
+      "raw": "P123456789",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "9-digit passport with P prefix"
+    },
+    {
+      "idType": "passport",
+      "raw": "1-234-5678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with hyphen separators"
+    },
+    {
+      "idType": "passport",
+      "raw": "P1-2345-678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with prefix and hyphens"
+    },
+    {
+      "idType": "passport",
+      "raw": "123 456 789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with space separators"
+    },
+    {
+      "idType": "passport",
+      "raw": "312345678",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "Passport edge case: type 3 (diplomatic)"
+    },
+    {
+      "idType": "passport",
+      "raw": "112345678",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "Passport edge case: type 1 (standard)"
+    },
+    {
+      "idType": "passport",
+      "raw": "212345678",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "Passport edge case: type 2 (official)"
+    },
+    {
+      "idType": "passport",
+      "raw": "PH1.2345.678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with dot separators"
+    },
+    {
+      "idType": "passport",
+      "raw": "P123.456.789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with P and dot separators"
+    },
+    {
+      "idType": "passport",
+      "raw": "234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 9-digit passport without prefix"
+    },
+    {
+      "idType": "passport",
+      "raw": "PH2-3456-789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport PH prefix with hyphens"
+    },
+    {
+      "idType": "passport",
+      "raw": "p98765432",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Passport lowercase p prefix"
+    },
+    {
+      "idType": "passport",
+      "raw": "P 123 456 78",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Passport with mixed spacing"
+    },
+    {
+      "idType": "umid",
+      "raw": "123456789012",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 12-digit UMID"
+    },
+    {
+      "idType": "umid",
+      "raw": "1234-5678-9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with hyphen separators"
+    },
+    {
+      "idType": "umid",
+      "raw": "1234 5678 9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with space separators"
+    },
+    {
+      "idType": "umid",
+      "raw": "1000010120001",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "UMID edge case: SSS system code 1000"
+    },
+    {
+      "idType": "umid",
+      "raw": "1999123199993",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "UMID edge case: SSS system code 1999"
+    },
+    {
+      "idType": "umid",
+      "raw": "1234-0101-5630",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with month/year format"
+    },
+    {
+      "idType": "umid",
+      "raw": "1567 1231 2225",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with space grouping"
+    },
+    {
+      "idType": "umid",
+      "raw": "123456789012",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid basic UMID"
+    },
+    {
+      "idType": "umid",
+      "raw": "1234.5678.9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with dot separators"
+    },
+    {
+      "idType": "umid",
+      "raw": "1234_5678_9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with underscore separators"
+    },
+    {
+      "idType": "umid",
+      "raw": "1111111111112",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "UMID with sequential digits"
+    },
+    {
+      "idType": "umid",
+      "raw": "1500-0615-9994",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID alternative grouping"
+    },
+    {
+      "idType": "umid",
+      "raw": "1888 1225 4567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "UMID with space grouping variant"
+    },
+    {
+      "idType": "sss",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 10-digit SSS"
+    },
+    {
+      "idType": "sss",
+      "raw": "12-3456789-0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with standard separator format"
+    },
+    {
+      "idType": "sss",
+      "raw": "12 3456789 0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with space separators"
+    },
+    {
+      "idType": "sss",
+      "raw": "01123456780",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "SSS edge case: branch code 01"
+    },
+    {
+      "idType": "sss",
+      "raw": "59999999999",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "SSS edge case: branch code 59 (max)"
+    },
+    {
+      "idType": "sss",
+      "raw": "45-0000000-00",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "SSS edge case: minimum sequence and check digits"
+    },
+    {
+      "idType": "sss",
+      "raw": "30 9876543 21",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with space grouping"
+    },
+    {
+      "idType": "sss",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid SSS basic format"
+    },
+    {
+      "idType": "sss",
+      "raw": "28-1234567-89",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS standard format"
+    },
+    {
+      "idType": "sss",
+      "raw": "05.1111111.11",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with dot separators"
+    },
+    {
+      "idType": "sss",
+      "raw": "50_5555555_55",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with underscore separators"
+    },
+    {
+      "idType": "sss",
+      "raw": "12-9999999-99",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "SSS edge case: maximum sequence and check"
+    },
+    {
+      "idType": "sss",
+      "raw": "33 5555555 88",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS alternative grouping"
+    },
+    {
+      "idType": "sss",
+      "raw": "18-2468135-79",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS with mixed digits"
+    },
+    {
+      "idType": "sss",
+      "raw": "07 7777777 77",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "SSS branch 07"
+    },
+    {
+      "idType": "gsis",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 10-digit GSIS"
+    },
+    {
+      "idType": "gsis",
+      "raw": "1234-56789-0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with standard separator format"
+    },
+    {
+      "idType": "gsis",
+      "raw": "1234 56789 0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with space separators"
+    },
+    {
+      "idType": "gsis",
+      "raw": "0001234567",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "GSIS edge case: agency code 0001 (min)"
+    },
+    {
+      "idType": "gsis",
+      "raw": "9999999999",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "GSIS edge case: agency code 9999 (max)"
+    },
+    {
+      "idType": "gsis",
+      "raw": "5678-00000-0",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "GSIS edge case: minimum sequence and check"
+    },
+    {
+      "idType": "gsis",
+      "raw": "2468 13579 0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with space grouping"
+    },
+    {
+      "idType": "gsis",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid GSIS basic format"
+    },
+    {
+      "idType": "gsis",
+      "raw": "5555-55555-5",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with sequential digits"
+    },
+    {
+      "idType": "gsis",
+      "raw": "1111.11111.1",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with dot separators"
+    },
+    {
+      "idType": "gsis",
+      "raw": "3333_33333_3",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS with underscore separators"
+    },
+    {
+      "idType": "gsis",
+      "raw": "7890-12345-6",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS standard format variant"
+    },
+    {
+      "idType": "gsis",
+      "raw": "4321 98765 4",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS descending digits"
+    },
+    {
+      "idType": "gsis",
+      "raw": "2222-22222-2",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "GSIS all same digits"
+    },
+    {
+      "idType": "gsis",
+      "raw": "9999-99999-9",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "GSIS edge case: maximum all digits"
+    },
+    {
+      "idType": "prc",
+      "raw": "1234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 7-digit PRC"
+    },
+    {
+      "idType": "prc",
+      "raw": "123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 6-digit PRC"
+    },
+    {
+      "idType": "prc",
+      "raw": "2021-1234567",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with year prefix"
+    },
+    {
+      "idType": "prc",
+      "raw": "2020-123456",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC 6-digit with year"
+    },
+    {
+      "idType": "prc",
+      "raw": "1900-1234567",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PRC edge case: year 1900 (min)"
+    },
+    {
+      "idType": "prc",
+      "raw": "2099-1234567",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PRC edge case: year 2099 (max)"
+    },
+    {
+      "idType": "prc",
+      "raw": "01-123456",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PRC edge case: profession 01 (min)"
+    },
+    {
+      "idType": "prc",
+      "raw": "99-1234567",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PRC edge case: profession 99 (max)"
+    },
+    {
+      "idType": "prc",
+      "raw": "2022 9876543",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with space separator"
+    },
+    {
+      "idType": "prc",
+      "raw": "2023.5555555",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with dot separator"
+    },
+    {
+      "idType": "prc",
+      "raw": "1234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PRC 7-digit"
+    },
+    {
+      "idType": "prc",
+      "raw": "2021-111111",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with repeated digits"
+    },
+    {
+      "idType": "prc",
+      "raw": "2024_8888888",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with underscore separator"
+    },
+    {
+      "idType": "prc",
+      "raw": "25-9876543",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC alternative profession code"
+    },
+    {
+      "idType": "prc",
+      "raw": "50123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 7-digit PRC profession 50"
+    },
+    {
+      "idType": "prc",
+      "raw": "2020-99-9999",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC year-profession variant"
+    },
+    {
+      "idType": "prc",
+      "raw": "1999-4567890",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC historical year"
+    },
+    {
+      "idType": "prc",
+      "raw": "2018 345678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PRC with space and 6 digits"
+    },
+    {
+      "idType": "tin",
+      "raw": "123456789",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 9-digit TIN"
+    },
+    {
+      "idType": "tin",
+      "raw": "123-456-789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN with hyphen separators"
+    },
+    {
+      "idType": "tin",
+      "raw": "123 456 789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN with space separators"
+    },
+    {
+      "idType": "tin",
+      "raw": "100012345",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "TIN edge case: area code 100 (min)"
+    },
+    {
+      "idType": "tin",
+      "raw": "900987654",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "TIN edge case: area code 900 (max)"
+    },
+    {
+      "idType": "tin",
+      "raw": "450-000-000",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "TIN edge case: minimum sequence"
+    },
+    {
+      "idType": "tin",
+      "raw": "234 567 890",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN with space grouping"
+    },
+    {
+      "idType": "tin",
+      "raw": "123456789",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid TIN basic format"
+    },
+    {
+      "idType": "tin",
+      "raw": "555.555.555",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN with dot separators"
+    },
+    {
+      "idType": "tin",
+      "raw": "111_111_111",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN with underscore separators"
+    },
+    {
+      "idType": "tin",
+      "raw": "789-123-456",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN standard format variant"
+    },
+    {
+      "idType": "tin",
+      "raw": "300 999 999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "TIN edge case: maximum sequence"
+    },
+    {
+      "idType": "tin",
+      "raw": "600-500-400",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN descending digits"
+    },
+    {
+      "idType": "tin",
+      "raw": "200-111-222",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN mixed digits"
+    },
+    {
+      "idType": "tin",
+      "raw": "875 246 135",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "TIN alternative grouping"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "123456789012",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 12-digit PhilHealth"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "12-345-678-9-0-1-2",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with hyphen separators"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "12 345 678 9 0 1 2",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with space separators"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "00123456789012",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilHealth edge case: category 00"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "99999999999999",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PhilHealth edge case: category 99"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "45-000000-000-0",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "PhilHealth edge case: minimum sequence"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "67 123456 789 5",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with space grouping"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "234567890123",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid PhilHealth basic format"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "11.111.111.1.1.1.1",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with dot separators"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "99_999_999_9_9_9_9",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with underscore separators"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "88-888-888-8-8-8-8",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth all same digits"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "50 555555 555 5",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth alternative grouping"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "78-246-135-2-4-6-8",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth mixed digits"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "25 789456 123 7",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth variant formatting"
+    },
+    {
+      "idType": "philhealth",
+      "raw": "60-000-000-0-0-0-0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PhilHealth with zeros"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "1234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 7-digit NBI clearance"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "NBI1234567",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "NBI clearance with NBI prefix"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "12-34-567-890",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI clearance with hyphen separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "00-001-0001",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "NBI edge case: year 00, office 001 (min)"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "99-999-9999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "NBI edge case: year 99, office 999 (max)"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "NBI-12-345-6789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI with prefix and separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "45 67 8901",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI clearance with space separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "123456789",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 9-digit NBI clearance"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "NBI 12 345 6789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI with prefix and space separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "22.33.444.5555",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI clearance with dot separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 10-digit NBI clearance"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "nbi7654321",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "NBI clearance lowercase prefix"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "88-888-8888",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI clearance all same digits"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "50_50_5050",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "NBI clearance underscore separators"
+    },
+    {
+      "idType": "nbi_clearance",
+      "raw": "11111111111",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "NBI clearance all ones"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 6-digit police clearance"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "PNP123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Police clearance with PNP prefix"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "PNP-2021-123456",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance with year"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "12-34-5678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance with hyphen separators"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "1900-123456",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Police clearance edge case: year 1900"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "2099-ABCDEF",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Police clearance edge case: year 2099, alphanumeric"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "ABC1234",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Police clearance alphanumeric variant"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "2020 567890",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance with space"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "PNP.2022.9876",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance with dots"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "2018123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Police clearance year concatenated"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "pnp555666",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Police clearance lowercase prefix"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "11-22-3333-4444",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance mixed pattern"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "PNP_2023_777888",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance underscore separators"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "PNPXYZ1234",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Police clearance alphanumeric with prefix"
+    },
+    {
+      "idType": "police_clearance",
+      "raw": "99-99-9999",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Police clearance max digits"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "12345678",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 8-digit PSA certificate"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "123-4567-8901-23",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate with hyphen separators"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "101234567",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PSA certificate edge case: type 101 (birth)"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "201123456789",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PSA certificate edge case: type 201 (marriage)"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "301987654321",
+      "withSeparators": false,
+      "edgeCase": true,
+      "description": "PSA certificate edge case: type 301 (death)"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "123 4567 8901 23",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate with space separators"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 10-digit PSA certificate"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "234-5678-9012-345",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate 13-digit with hyphens"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "567.890.123.4",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate with dot separators"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "789_012_345_6789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate underscore separators"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "1234567891011",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 13-digit PSA certificate"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "111 111 111 1111",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate all ones"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "000-000-000-0",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate all zeros"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "999999999999999",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "PSA certificate 13-digit maximum"
+    },
+    {
+      "idType": "psa_certificate",
+      "raw": "345-678-9012-345",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "PSA certificate alternative grouping"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2021123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid barangay clearance with year"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "BC-2021-1234",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance with BC prefix"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2020-12-3456",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance with year and code"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "1900-01-0001",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Barangay clearance edge case: year 1900, code 01"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2099-99-9999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Barangay clearance edge case: year 2099, code 99"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2022 15 2468",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance with space separators"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2019.45.5678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance with dot separators"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2023_78_1357",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance underscore separators"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2021123456",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Barangay clearance basic format"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "BC 2020 55 7777",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance BC prefix with spaces"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2018-88-8888",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance sequential digits"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2024 02 0001",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance minimum code"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2022-66-4444",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "Barangay clearance mixed digits"
+    },
+    {
+      "idType": "barangay_clearance",
+      "raw": "2017_33_9999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "Barangay clearance maximum sequence"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "1234567890",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 10-digit COMELEC voter ID"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "12-34-56-78-9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID with hyphen separators"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "12 34 56 78 9012",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID with space separators"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "01-01-01-0001-001",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "COMELEC edge case: province 01, city 01, barangay 01"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "82-99-99-9999-9999",
+      "withSeparators": true,
+      "edgeCase": true,
+      "description": "COMELEC edge case: max province 82, max city 99"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "45 67 89 1234 5678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID with space grouping"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "12345678901234",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "Valid 14-digit COMELEC voter ID"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "23.34.45.5678.6789",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID with dot separators"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "56_67_78_8901_2345",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID underscore separators"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "1111111111",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "COMELEC voter ID all ones"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "33-33-33-3333-3333",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID all same digits"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "12 34 56 7890 1234",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID alternative grouping"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "25-47-69-1234-5678",
+      "withSeparators": true,
+      "edgeCase": false,
+      "description": "COMELEC voter ID mixed digits"
+    },
+    {
+      "idType": "comelec_voter_id",
+      "raw": "55555555555555",
+      "withSeparators": false,
+      "edgeCase": false,
+      "description": "COMELEC voter ID 14-digit all fives"
+    }
+  ]
+}

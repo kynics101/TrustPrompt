@@ -35,6 +35,22 @@ const TrustScanner = (() => {
     // password_inline:  10,
     id_label:         10,
 
+    // ── Philippine Government IDs (TASK-7.3) ───────────────────────────────
+    ph_id_philid:              10,  // PhilID (PSA National ID)
+    ph_id_drivers_license:     10,  // Driver's License (LTO)
+    ph_id_passport:            10,  // Passport (BI)
+    ph_id_umid:                10,  // UMID (Unified Multi-Purpose ID)
+    ph_id_sss:                 10,  // SSS (Social Security System)
+    ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
+    ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
+    ph_id_tin:                 10,  // TIN (Taxpayer Identification Number)
+    ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
+    ph_id_nbi_clearance:       10,  // NBI Clearance
+    ph_id_police_clearance:    10,  // Police Clearance (PNP)
+    ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
+    ph_id_barangay_clearance:  8,   // Barangay Clearance (MODERATE risk - Requirement 13)
+    ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
+
     // ── Direct personal identifiers (score 5) ────────────────────────────
     email:            5,
     ph_mobile:        5,
@@ -68,6 +84,22 @@ const TrustScanner = (() => {
     jwt:              "critical",
     api_key:          "critical",
     id_label:         "critical",
+
+    // ── Philippine Government IDs (TASK-7.3) – all classified as CRITICAL ────
+    ph_id_philid:              "critical",  // PhilID (PSA National ID)
+    ph_id_drivers_license:     "critical",  // Driver's License (LTO)
+    ph_id_passport:            "critical",  // Passport (BI)
+    ph_id_umid:                "critical",  // UMID (Unified Multi-Purpose ID)
+    ph_id_sss:                 "critical",  // SSS (Social Security System)
+    ph_id_gsis:                "critical",  // GSIS (Government Service Insurance System)
+    ph_id_prc:                 "critical",  // PRC (Professional Regulation Commission)
+    ph_id_tin:                 "critical",  // TIN (Taxpayer Identification Number)
+    ph_id_philhealth:          "critical",  // PhilHealth (Health Insurance)
+    ph_id_nbi_clearance:       "critical",  // NBI Clearance
+    ph_id_police_clearance:    "critical",  // Police Clearance (PNP)
+    ph_id_psa_certificate:     "critical",  // PSA Certificate (Vital Records)
+    ph_id_barangay_clearance:  "critical",  // Barangay Clearance (MODERATE risk but CRITICAL tier)
+    ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
 
     email:            "direct",
     ph_mobile:        "direct",
@@ -121,11 +153,28 @@ const TrustScanner = (() => {
   }
 
   // ── STEP 4: Governance rule evaluation ───────────────────────────────────
+  //
+  // TASK-8.1: Governance Rule 1 escalation for validated Philippine IDs
+  // When finding.validated:true and ENTITY_TIER="critical" and patternId matches ph_id_*,
+  // escalate risk to "high" regardless of other scoring factors.
 
   function evaluateGovernance(findings, preliminary) {
     const hasValidatedCritical = findings.some(
       f => ENTITY_TIER[f.patternId] === "critical" && f.validated === true
     );
+    
+    // TASK-8.1: Check for validated Philippine Government IDs
+    const validatedPhilIDFinding = findings.find(
+      f => f.validated === true && 
+           ENTITY_TIER[f.patternId] === "critical" &&
+           f.patternId && f.patternId.startsWith("ph_id_")
+    );
+    
+    if (validatedPhilIDFinding) {
+      console.log(`[TrustPrompt/governance] Rule 1 escalation: ${validatedPhilIDFinding.patternId} (validated) → HIGH`);
+      return { rule: "rule_1_validated_philid", result: "high" };
+    }
+
     const hasDirectOrCritical = findings.some(
       f => ENTITY_TIER[f.patternId] === "critical" ||
            ENTITY_TIER[f.patternId] === "direct"
@@ -162,6 +211,10 @@ const TrustScanner = (() => {
 
   function finalClass(preliminary, governance) {
     const { rule, result } = governance;
+
+    if (rule === "rule_1_validated_philid") {
+      return "high";
+    }
 
     if (rule === "critical_entity") {
       return "high";
@@ -302,6 +355,12 @@ const TrustScanner = (() => {
           continue;
         }
 
+        // TASK-4.4: Apply placeholder suppression for known test/dummy values
+        if (isKnownPlaceholder(pattern.id, raw)) {
+          console.log(`[TrustPrompt/placeholder] rejected known placeholder: ${raw.slice(0, 30)}`);
+          continue;
+        }
+
         // TASK-4.5: Entropy pre-check — reject low-entropy dummy values
         if (pattern.minEntropy !== undefined) {
           // Extract the value portion (after any label=... prefix) for entropy check
@@ -314,8 +373,20 @@ const TrustScanner = (() => {
           }
         }
 
-        const validated = TrustValidator.validate(pattern.validate, raw);
-        if (!validated) continue;
+        // TASK-7.2: Wire structural validators into finding creation
+        // When pattern.structuralValidate is defined, call it on matched value
+        let isValidated = false;
+        if (pattern.structuralValidate) {
+          isValidated = pattern.structuralValidate(raw);
+          if (!isValidated) {
+            console.log(`[TrustPrompt/validator] structural validation failed: ${pattern.id} - ${raw.slice(0, 30)}`);
+            continue;
+          }
+        } else {
+          // Fall back to TrustValidator for patterns without structuralValidate
+          isValidated = TrustValidator.validate(pattern.validate, raw);
+          if (!isValidated) continue;
+        }
 
         findings.push({
           patternId:   pattern.id,
@@ -323,7 +394,7 @@ const TrustScanner = (() => {
           risk:        pattern.risk,
           rawMatch:    raw,
           safeVersion: pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]",
-          validated:   true,
+          validated:   isValidated,  // TASK-7.2: Set validated:true if structuralValidate passed
           source:      "A_regex"
         });
       }

@@ -10,14 +10,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 1. Set Up ID Pattern Infrastructure
 
-- [ ] 1.1 Create helper functions for ID value extraction and normalization
+- [x] 1.1 Create helper functions for ID value extraction and normalization
   - Implement `extractPHIDValue(raw)` — strips prefixes, labels, quotes, and formatting
   - Implement `isPhIDPlaceholder(patternId, value)` — checks for known dummy/test values
   - Implement `normalizePHID(value, stripChars)` — removes separators consistently
   - Add to `patterns.js`
   - _Requirements: 15, 17_
 
-- [ ] 1.2 Define ID type metadata and configuration structure
+- [x] 1.2 Define ID type metadata and configuration structure
   - Create configuration object mapping ID types to validation rules (format, digit count, separators)
   - Define regex templates per ID type (with placeholders for digit counts, optional separators)
   - Include risk levels and sanitization templates
@@ -33,21 +33,21 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 2. Implement Validator Functions (Phase 1: Government ID Systems)
 
-- [ ] 2.1 Implement SSS (Social Security System) validator
+- [x] 2.1 Implement SSS (Social Security System) validator
   - Function: `structuralValidatePHID_SSS(raw)`
   - Validate: 10 numeric digits (after normalization)
   - Branch code check: first 2 digits (01–59)
   - Reference: Requirements 5, 15, 17
   - _Requirements: 5, 15, 17_
 
-- [ ] 2.2 Implement GSIS (Government Service Insurance System) validator
+- [x] 2.2 Implement GSIS (Government Service Insurance System) validator
   - Function: `structuralValidatePHID_GSIS(raw)`
   - Validate: 10 numeric digits (after normalization)
   - Agency code check: first 4 digits (0001–9999)
   - Reference: Requirements 6, 15, 17
   - _Requirements: 6, 15, 17_
 
-- [ ] 2.3 Implement UMID (Unified Multi-Purpose ID) validator
+- [x] 2.3 Implement UMID (Unified Multi-Purpose ID) validator
   - Function: `structuralValidatePHID_UMID(raw)`
   - Validate: 12 numeric digits
   - SSS system code check: first 4 digits (1000–1999)
@@ -55,7 +55,7 @@ Implement 14 structural validator functions for Philippine government ID types, 
   - Reference: Requirement 4
   - _Requirements: 4, 15, 17_
 
-- [ ] 2.4 Implement TIN (Taxpayer Identification Number) validator
+- [x] 2.4 Implement TIN (Taxpayer Identification Number) validator
   - Function: `structuralValidatePHID_TIN(raw)`
   - Validate: 9 numeric digits (after normalization)
   - Registration area code: first 3 digits (100–900)
@@ -74,14 +74,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 3. Implement Validator Functions (Phase 2: Benefit and Insurance IDs)
 
-- [ ] 3.1 Implement PhilHealth validator
+- [x] 3.1 Implement PhilHealth validator
   - Function: `structuralValidatePHID_PhilHealth(raw)`
   - Validate: 12 numeric digits (recent) or 15 alphanumeric (legacy RF card)
   - Character set check: alphanumeric only
   - Reference: Requirement 9
   - _Requirements: 9, 15, 17_
 
-- [ ] 3.2 Implement Pag-IBIG validator
+- [x] 3.2 Implement Pag-IBIG validator
   - Function: `structuralValidatePHID_PagIBIG(raw)`
   - Validate: 12 numeric digits
   - Optional Pag-IBIG specific format checks
@@ -98,21 +98,21 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 4. Implement Validator Functions (Phase 3: Travel and Professional IDs)
 
-- [ ] 4.1 Implement Passport validator
+- [x] 4.1 Implement Passport validator
   - Function: `structuralValidatePHID_Passport(raw)`
   - Validate: optional letter prefix + 6–8 digits (format P123456789 or similar)
   - Passport type check: first digit (1–3)
   - Reference: Requirement 3
   - _Requirements: 3, 15, 17_
 
-- [ ] 4.2 Implement Driver's License validator
+- [x] 4.2 Implement Driver's License validator
   - Function: `structuralValidatePHID_DriversLicense(raw)`
   - Validate: 11 characters (numeric or alphanumeric mix)
   - Region code: first 2 digits (01–16)
   - Reference: Requirement 2
   - _Requirements: 2, 15, 17_
 
-- [ ] 4.3 Implement PRC (Professional Regulation Commission) validator
+- [x] 4.3 Implement PRC (Professional Regulation Commission) validator
   - Function: `structuralValidatePHID_PRC(raw)`
   - Validate: 6–7 digits with optional year prefix (1900–2099)
   - Profession category: first 2 digits (01–99)
@@ -129,14 +129,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 5. Implement Validator Functions (Phase 4: Vital Records and Clearances)
 
-- [ ] 5.1 Implement PSA Certificate validator
+- [x] 5.1 Implement PSA Certificate validator
   - Function: `structuralValidatePHID_PSACertificate(raw)`
   - Validate: 8–13 digits
   - Certificate type: first 3 digits (101=birth, 201=marriage, 301=death)
   - Reference: Requirement 12
   - _Requirements: 12, 15, 17_
 
-- [ ] 5.2 Implement NBI Clearance validator
+- [x] 5.2 Implement NBI Clearance validator
   - Function: `structuralValidatePHID_NBIClearance(raw)`
   - Validate: 7–10 digits with optional "NBI" prefix
   - Year of issuance: first 2 digits (00–99)
@@ -144,21 +144,21 @@ Implement 14 structural validator functions for Philippine government ID types, 
   - Reference: Requirement 10
   - _Requirements: 10, 15, 17_
 
-- [ ] 5.3 Implement Police Clearance validator
+- [x] 5.3 Implement Police Clearance validator
   - Function: `structuralValidatePHID_PoliceClearance(raw)`
   - Validate: 6–10 alphanumeric characters with optional "PNP" prefix
   - Optional year prefix: 4 digits (1900–2099)
   - Reference: Requirement 11
   - _Requirements: 11, 15, 17_
 
-- [ ] 5.4 Implement Barangay Clearance validator
+- [x] 5.4 Implement Barangay Clearance validator
   - Function: `structuralValidatePHID_BarangayClearance(raw)`
   - Validate: 4–8 digits with optional year (YYYY-format)
   - Barangay code: 2 digits (01–99)
   - Reference: Requirement 13
   - _Requirements: 13, 15, 17_
 
-- [ ] 5.5 Implement COMELEC Voter's ID validator
+- [x] 5.5 Implement COMELEC Voter's ID validator
   - Function: `structuralValidatePHID_COMELECVoterID(raw)`
   - Validate: 10–14 digits
   - Province code: first 2 digits (01–82)
@@ -166,7 +166,7 @@ Implement 14 structural validator functions for Philippine government ID types, 
   - Reference: Requirement 14
   - _Requirements: 14, 15, 17_
 
-- [ ] 5.6 Implement PhilID (PSA National ID) validator
+- [x] 5.6 Implement PhilID (PSA National ID) validator
   - Function: `structuralValidatePHID_PhilID(raw)`
   - Validate: 12 numeric digits
   - Birth date: first 6 digits (YYMMDD format)
@@ -186,14 +186,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 6. Create Pattern Registry in patterns.js
 
-- [ ] 6.1 Add 14 pattern objects to TRUSTPROMPT_PATTERNS array
+- [x] 6.1 Add 14 pattern objects to TRUSTPROMPT_PATTERNS array
   - Each pattern includes: id, label, regex, risk, validate, structuralValidate, sanitize, reason
   - Follow naming convention: `ph_id_[type_kebab_case]` (e.g., `ph_id_philid`, `ph_id_drivers_license`)
   - Regex patterns to detect ID with optional separators and prefixes
   - Risk levels: HIGH for 13 types, MODERATE for barangay clearance (Requirement 13)
   - _Requirements: 15, 17_
 
-- [ ] 6.2 Implement sanitize functions for each ID type
+- [x] 6.2 Implement sanitize functions for each ID type
   - PhilID: redact to "12-****-90-12" format (first 2, middle redacted, last 2+2)
   - Driver's License: "12-*******-890" (first 2, middle 7 redacted, last 3)
   - Passport: "P1-****89" or "123-****789"
@@ -221,21 +221,21 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 7. Integrate into Scanner.js PATH A
 
-- [ ] 7.1 Update scanner.js to include Philippine ID patterns in runPathA()
+- [x] 7.1 Update scanner.js to include Philippine ID patterns in runPathA()
   - Ensure all 14 ph_id_* patterns are included in pattern iteration
   - Apply entropy check (TASK-4.5: shannonEntropy minimum)
   - Apply placeholder suppression (TASK-4.4: isKnownPlaceholder)
   - Reference: Requirements 18, 20
   - _Requirements: 18, 20_
 
-- [ ] 7.2 Wire structural validators into finding creation
+- [x] 7.2 Wire structural validators into finding creation
   - When pattern.structuralValidate is defined, call it on matched value
   - Set `validated: true` if structuralValidate returns true
   - Ensure `rawMatch` and `safeVersion` are populated correctly
   - Reference: Requirement 16
   - _Requirements: 16, 20_
 
-- [ ] 7.3 Add Philippine ID patterns to BASE_SCORES and ENTITY_TIER
+- [x] 7.3 Add Philippine ID patterns to BASE_SCORES and ENTITY_TIER
   - All 14 patterns: ENTITY_TIER = "critical" (government IDs are critical)
   - 13 patterns (all except barangay): BASE_SCORES = 10 (same as credit_card, jwt)
   - Barangay clearance: BASE_SCORES = 8 (less critical than national IDs)
@@ -253,7 +253,7 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 8. Implement Governance Rule 1 Escalation
 
-- [ ] 8.1 Update governance rule evaluation in scanner.js
+- [x] 8.1 Update governance rule evaluation in scanner.js
   - When evaluating a finding with `validated: true` and ENTITY_TIER = "critical"
   - Check if patternId matches any ph_id_* pattern
   - Escalate risk to "high" regardless of other scoring factors
@@ -261,7 +261,7 @@ Implement 14 structural validator functions for Philippine government ID types, 
   - Reference: Requirements 16, 20
   - _Requirements: 16, 20_
 
-- [ ] 8.2 Update risk scoring computation
+- [-] 8.2 Update risk scoring computation
   - Ensure escalated findings participate in risk score aggregation
   - Verify governance escalation does not interfere with duplicate merging or deduplication
   - Reference: Requirement 18
@@ -278,14 +278,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 9. Performance Testing and Optimization
 
-- [ ] 9.1 Measure structural validator performance
+- [-] 9.1 Measure structural validator performance
   - Profile each validator function with 100 iterations
   - Record execution time for each ID type
   - Target: each validator < 1ms per call
   - Overall structural validation for all 14 types < 10ms (Requirement 20)
   - _Requirements: 20_
 
-- [ ] 9.2 Optimize validators if needed
+- [-] 9.2 Optimize validators if needed
   - Use pre-compiled regex patterns (cache)
   - Minimize string operations (normalization, stripping)
   - Use early exits for invalid formats
@@ -301,14 +301,14 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 10. Comprehensive Testing and Calibration
 
-- [ ] 10.1 Create test dataset with representative samples
+- [-] 10.1 Create test dataset with representative samples
   - Generate 20 valid test cases per ID type (14 × 20 = 280 samples)
   - Include with/without separators, optional prefixes
   - Include edge cases (boundary digit values, alternate formats)
   - Reference: Requirement 20
   - _Requirements: 20_
 
-- [ ] 10.2 Create negative test dataset
+- [~] 10.2 Create negative test dataset
   - Generate 10 invalid cases per ID type (wrong length, invalid characters)
   - Generate plausible false positives (e.g., generic digit sequences)
   - Reference: Requirement 20
@@ -327,7 +327,7 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 11. Checkpoint — Ensure All Tests Pass
 
-- [ ] 11.1 Run full test suite
+- [~] 11.1 Run full test suite
   - Ensure all unit tests pass
   - Ensure all integration tests pass
   - Ensure all performance tests pass
@@ -338,13 +338,13 @@ Implement 14 structural validator functions for Philippine government ID types, 
 
 ### 12. Documentation and Code Review
 
-- [ ] 12.1 Add inline documentation to all validator functions
+- [~] 12.1 Add inline documentation to all validator functions
   - Document format, digit count, validation rules
   - Include example valid/invalid inputs
   - Add links to requirement references
   - _Requirements: 15, 19_
 
-- [ ] 12.2 Document integration points
+- [~] 12.2 Document integration points
   - Add comments to scanner.js explaining PATH A integration
   - Document governance rule 1 escalation logic
   - _Requirements: 18, 20_

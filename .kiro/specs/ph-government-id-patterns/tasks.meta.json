@@ -1,0 +1,472 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create helper functions for ID value extraction and normalization": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765797184
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765808332
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766314588
+      }
+    ],
+    "1.2 Define ID type metadata and configuration structure": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765797929
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765808730
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766314825
+      }
+    ],
+    "2.1 Implement SSS (Social Security System) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798185
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766319338
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767744344
+      }
+    ],
+    "2.2 Implement GSIS (Government Service Insurance System) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798316
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766319649
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767737401
+      }
+    ],
+    "2.3 Implement UMID (Unified Multi-Purpose ID) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798535
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766320024
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767744794
+      }
+    ],
+    "2.4 Implement TIN (Taxpayer Identification Number) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798635
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766320478
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767737635
+      }
+    ],
+    "3.1 Implement PhilHealth validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798738
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788766320834
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767745138
+      }
+    ],
+    "3.2 Implement Pag-IBIG validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798831
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767749981
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768315096
+      }
+    ],
+    "4.1 Implement Passport validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765798921
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767750224
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768321431
+      }
+    ],
+    "4.2 Implement Driver's License validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799003
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767750646
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768315146
+      }
+    ],
+    "4.3 Implement PRC (Professional Regulation Commission) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799071
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767750969
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768315371
+      }
+    ],
+    "5.1 Implement PSA Certificate validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799136
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788767751347
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768315691
+      }
+    ],
+    "5.2 Implement NBI Clearance validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799197
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768321716
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768841206
+      }
+    ],
+    "5.3 Implement Police Clearance validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799254
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768321766
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768841531
+      }
+    ],
+    "5.4 Implement Barangay Clearance validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799367
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768322046
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768842031
+      }
+    ],
+    "5.5 Implement COMELEC Voter's ID validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799429
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768322460
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768842283
+      }
+    ],
+    "5.6 Implement PhilID (PSA National ID) validator": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799487
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768323050
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788768842604
+      }
+    ],
+    "6.1 Add 14 pattern objects to TRUSTPROMPT_PATTERNS array": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799553
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788769443899
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770155543
+      }
+    ],
+    "6.2 Implement sanitize functions for each ID type": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799607
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788769444372
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770156003
+      }
+    ],
+    "7.1 Update scanner.js to include Philippine ID patterns in runPathA()": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799671
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788769444936
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770156404
+      }
+    ],
+    "7.2 Wire structural validators into finding creation": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799738
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788769445408
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770156947
+      }
+    ],
+    "7.3 Add Philippine ID patterns to BASE_SCORES and ENTITY_TIER": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799805
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788769445861
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770157396
+      }
+    ],
+    "8.1 Update governance rule evaluation in scanner.js": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799875
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770162926
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788771827550
+      }
+    ],
+    "8.2 Update risk scoring computation": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765799936
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770163255
+      }
+    ],
+    "9.1 Measure structural validator performance": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800004
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770163628
+      }
+    ],
+    "9.2 Optimize validators if needed": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800066
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770164110
+      }
+    ],
+    "10.1 Create test dataset with representative samples": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800137
+      },
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788770164469
+      }
+    ],
+    "10.2 Create negative test dataset": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800213
+      }
+    ],
+    "11.1 Run full test suite": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800266
+      }
+    ],
+    "12.1 Add inline documentation to all validator functions": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800348
+      }
+    ],
+    "12.2 Document integration points": [
+      {
+        "executionId": "eec1e515-757d-49f4-94d3-12c7cbddcd38",
+        "chatSessionId": "sess_7e938d01-a8ef-4ff8-bc68-00834d2afe4d",
+        "timestamp": 1788765800439
+      }
+    ]
+  }
+}

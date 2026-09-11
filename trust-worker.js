@@ -52,10 +52,27 @@ const BASE_SCORES = {
   api_key:          10,
   id_label:         10,
 
+  // ── Philippine Government IDs (all score 10) ────────────────────────────
+  ph_id_philid:              10,  // PhilID (PSA National ID)
+  ph_id_drivers_license:     10,  // Driver's License (LTO)
+  ph_id_passport:            10,  // Passport (BI)
+  ph_id_umid:                10,  // UMID (Unified Multi-Purpose ID)
+  ph_id_sss:                 10,  // SSS (Social Security System)
+  ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
+  ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
+  ph_id_tin:                 10,  // TIN (Taxpayer Identification Number)
+  ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
+  ph_id_nbi_clearance:       10,  // NBI Clearance
+  ph_id_police_clearance:    10,  // Police Clearance (PNP)
+  ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
+  ph_id_barangay_clearance:  10,  // Barangay Clearance
+  ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
+
   email:            5,
   ph_mobile:        5,
   phone_intl:       5,
   ph_address:       5,
+  source_code:      5,  // Source code blocks are significant-tier
 
   ipv4:             2,
   ipv6:             2,
@@ -66,15 +83,15 @@ const BASE_SCORES = {
   trigger_dob:         2,
   trigger_employer:    2,
   trigger_location:    2,
-  trigger_health:      2,
-  trigger_financial:   2,
-  gazetteer_medical:   2,
-  gazetteer_financial: 2,
+  trigger_religion:    2,  // Religion triggers are limited-tier
+
+  trigger_health:      0,  // FIXED: Context indicator, not scored
+  trigger_financial:   0,  // FIXED: Context indicator, not scored
+  gazetteer_medical:   0,  // FIXED: Context indicator, not scored
+  gazetteer_financial: 0,  // FIXED: Context indicator, not scored
   nlp_person_name:     2,  // PATH C linguistic
   nlp_job_title:       2,  // PATH C linguistic
   nlp_organization:    2,  // PATH C linguistic
-
-  source_code: 0
 };
 
 // ── Entity tiers ──────────────────────────────────────────────────────────────
@@ -85,29 +102,45 @@ const ENTITY_TIER = {
   api_key:          "critical",
   id_label:         "critical",
 
-  email:            "direct",
-  ph_mobile:        "direct",
-  phone_intl:       "direct",
-  ph_address:       "direct",
+  // ── Philippine Government IDs (all critical tier) ────────────────────────
+  ph_id_philid:              "critical",  // PhilID (PSA National ID)
+  ph_id_drivers_license:     "critical",  // Driver's License (LTO)
+  ph_id_passport:            "critical",  // Passport (BI)
+  ph_id_umid:                "critical",  // UMID (Unified Multi-Purpose ID)
+  ph_id_sss:                 "critical",  // SSS (Social Security System)
+  ph_id_gsis:                "critical",  // GSIS (Government Service Insurance System)
+  ph_id_prc:                 "critical",  // PRC (Professional Regulation Commission)
+  ph_id_tin:                 "critical",  // TIN (Taxpayer Identification Number)
+  ph_id_philhealth:          "critical",  // PhilHealth (Health Insurance)
+  ph_id_nbi_clearance:       "critical",  // NBI Clearance
+  ph_id_police_clearance:    "critical",  // Police Clearance (PNP)
+  ph_id_psa_certificate:     "critical",  // PSA Certificate (Vital Records)
+  ph_id_barangay_clearance:  "critical",  // Barangay Clearance
+  ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
 
-  ipv4:             "contextual",
-  ipv6:             "contextual",
-  mac_address:      "contextual",
-  personal_label:   "contextual",
-  trigger_person_name: "contextual",
-  trigger_age:         "contextual",
-  trigger_dob:         "contextual",
-  trigger_employer:    "contextual",
-  trigger_location:    "contextual",
+  email:            "significant",  // FIXED: Should be "significant", not "direct"
+  ph_mobile:        "significant",  // FIXED: Should be "significant", not "direct"
+  phone_intl:       "significant",  // FIXED: Should be "significant", not "direct"
+  ph_address:       "significant",  // FIXED: Should be "significant", not "direct"
+  source_code:      "significant",  // Source code is significant-tier
+
+  ipv4:             "limited",
+  ipv6:             "limited",
+  mac_address:      "limited",
+  personal_label:   "limited",
+  trigger_person_name: "limited",
+  trigger_age:         "limited",
+  trigger_dob:         "limited",
+  trigger_employer:    "limited",
+  trigger_location:    "limited",
+  trigger_religion:    "limited",  // Religion triggers are limited-tier
   trigger_health:      "contextual",
   trigger_financial:   "contextual",
   gazetteer_medical:   "contextual",
   gazetteer_financial: "contextual",
-  nlp_person_name:     "contextual",  // PATH C linguistic
-  nlp_job_title:       "contextual",  // PATH C linguistic
-  nlp_organization:    "contextual",  // PATH C linguistic
-
-  source_code: "container"
+  nlp_person_name:     "limited",  // PATH C linguistic
+  nlp_job_title:       "limited",  // PATH C linguistic
+  nlp_organization:    "limited",  // PATH C linguistic
 };
 
 const SENSITIVE_CONTEXT_IDS = new Set([
@@ -139,27 +172,44 @@ function preliminaryClass(score) {
 }
 
 // ── STEP 4: Governance rule evaluation ───────────────────────────────────────
+//
+// Rules are evaluated in strict decision order (Table 12 of risk-scoring spec).
+// Only the first matching rule determines the outcome — cascading if/else-if.
+//
+// Rule 1 — Critical Entity Escalation
+//   Any validated critical entity → HIGH (regardless of preliminary score)
+//
+// Rule 2 — Sensitive Context Co-occurrence
+//   Direct/critical entity + sensitive context indicator → raise preliminary by one level
+//
+// Rule 3 — Low-Impact Cap
+//   ALL of the following must be true:
+//     (a) every scored entity (BASE_SCORES > 0) has a base score of exactly 2
+//     (b) at least one scored entity exists
+//   Effect: cap final result at Moderate — prevents pure low-impact aggregation
+//   from escalating to High through the multiplier alone.
+//
+// Note: non-scorable findings (source_code, context-only gazetteer hits with
+// no base score) are excluded from the Rule 3 base-score check.
 
 function evaluateGovernance(findings, preliminary) {
+
+  // ── Rule 1: validated critical entity → HIGH ────────────────────────────
   const hasValidatedCritical = findings.some(
     f => ENTITY_TIER[f.patternId] === "critical" && f.validated === true
   );
-  const hasDirectOrCritical = findings.some(
-    f => ENTITY_TIER[f.patternId] === "critical" ||
-         ENTITY_TIER[f.patternId] === "direct"
-  );
-  const hasSensitiveContext = findings.some(
-    f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
-  );
-  const allContextualOrContainer = findings.every(
-    f => ENTITY_TIER[f.patternId] === "contextual" ||
-         ENTITY_TIER[f.patternId] === "container"
-  );
-
   if (hasValidatedCritical) {
     return { rule: "critical_entity", result: "high" };
   }
 
+  // ── Rule 2: significant/critical entity + sensitive context → raise one level ─
+  const hasDirectOrCritical = findings.some(
+    f => ENTITY_TIER[f.patternId] === "critical" ||
+         ENTITY_TIER[f.patternId] === "significant"  // FIXED: Should be "significant", not "direct"
+  );
+  const hasSensitiveContext = findings.some(
+    f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
+  );
   if (hasDirectOrCritical && hasSensitiveContext) {
     const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
       ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
@@ -167,12 +217,20 @@ function evaluateGovernance(findings, preliminary) {
     return { rule: "sensitive_context", result: raised };
   }
 
-  if (allContextualOrContainer && findings.some(
-    f => ENTITY_TIER[f.patternId] === "contextual")
-  ) {
-    return { rule: "contextual_ceiling", result: null };
+  // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
+  // Condition: every *scored* entity (BASE_SCORES > 0) has a base score of
+  // exactly 2, meaning no Moderate (5) or Critical (10) entity is present.
+  const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+  const hasAnyScoredEntity = scoredFindings.length > 0;
+  const allLowImpact = scoredFindings.every(
+    f => (BASE_SCORES[f.patternId] ?? 0) === 2
+  );
+
+  if (hasAnyScoredEntity && allLowImpact) {
+    return { rule: "low_impact_cap", result: null };
   }
 
+  // ── Rule 4: no governance rule applies → retain preliminary ─────────────
   return { rule: "none", result: null };
 }
 
@@ -183,7 +241,7 @@ function finalClass(preliminary, governance) {
 
   if (rule === "critical_entity")   return "high";
   if (rule === "sensitive_context") return result;
-  if (rule === "contextual_ceiling") {
+  if (rule === "low_impact_cap") {
     return RISK_ORDER[preliminary] > RISK_ORDER["moderate"] ? "moderate" : preliminary;
   }
   return preliminary;

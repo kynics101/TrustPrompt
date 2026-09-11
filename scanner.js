@@ -48,16 +48,17 @@ const TrustScanner = (() => {
     ph_id_nbi_clearance:       10,  // NBI Clearance
     ph_id_police_clearance:    10,  // Police Clearance (PNP)
     ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
-    ph_id_barangay_clearance:  8,   // Barangay Clearance (MODERATE risk - Requirement 13)
+     ph_id_barangay_clearance:  10,  // Barangay Clearance (MODERATE risk - Requirement 13)
     ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
 
-    // ── Direct personal identifiers (score 5) ────────────────────────────
+    // ── significant personal identifiers (score 5) ────────────────────────────
     email:            5,
     ph_mobile:        5,
     phone_intl:       5,
     ph_address:       5,
+    source_code:      5,
 
-    // ── Contextual indicators (score 2) ──────────────────────────────────
+    // ── limited indicators (score 2) ──────────────────────────────────
     ipv4:             2,
     ipv6:             2,
     mac_address:      2,
@@ -67,19 +68,24 @@ const TrustScanner = (() => {
     trigger_dob:         2,
     trigger_employer:    2,
     trigger_location:    2,
-    trigger_health:      2,
-    trigger_financial:   2,
-    gazetteer_medical:   2,
-    gazetteer_financial: 2,
+    trigger_religion:    2,
+
     nlp_person_name:     2,  // PATH C linguistic
     nlp_job_title:       2,  // PATH C linguistic
     nlp_organization:    2,  // PATH C linguistic
 
-    // ── Container (score 0) ───────────────────────────────────────────────
-    source_code: 0
+    //---non-scoring: context indicator (0) ----------------------------
+    trigger_health:      0,
+    trigger_financial:   0,
+
+    gazetteer_medical:   0,
+    gazetteer_financial: 0,
+ 
   };
 
   const ENTITY_TIER = {
+
+    // -----------------------------------------HIGH
     credit_card:      "critical",
     jwt:              "critical",
     api_key:          "critical",
@@ -101,29 +107,37 @@ const TrustScanner = (() => {
     ph_id_barangay_clearance:  "critical",  // Barangay Clearance (MODERATE risk but CRITICAL tier)
     ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
 
-    email:            "direct",
-    ph_mobile:        "direct",
-    phone_intl:       "direct",
-    ph_address:       "direct",
+    // -------------------------------------------Moderate
+    email:            "significant",
+    ph_mobile:        "significant",
+    phone_intl:       "significant",
+    ph_address:       "significant",
+    source_code:      "significant",             // if validated by the detect eng
+   
+    // -------------------------------------------low
+    ipv4:             "limited",
+    ipv6:             "limited",
+    mac_address:      "limited",
+    personal_label:   "limited",
 
-    ipv4:             "contextual",
-    ipv6:             "contextual",
-    mac_address:      "contextual",
-    personal_label:   "contextual",
-    trigger_person_name: "contextual",
-    trigger_age:         "contextual",
-    trigger_dob:         "contextual",
-    trigger_employer:    "contextual",
-    trigger_location:    "contextual",
+    trigger_person_name: "limited",
+    trigger_age:         "limited",
+    trigger_dob:         "limited",
+    trigger_employer:    "limited",
+    trigger_location:    "limited",
+    trigger_religion:    "limited",
+    nlp_person_name:     "limited",  // PATH C linguistic
+    nlp_job_title:       "limited",  // PATH C linguistic
+    nlp_organization:    "limited",  // PATH C linguistic
+
+    // --------------------------------------non-scoring context indicators
     trigger_health:      "contextual",
     trigger_financial:   "contextual",
     gazetteer_medical:   "contextual",
     gazetteer_financial: "contextual",
-    nlp_person_name:     "contextual",  // PATH C linguistic
-    nlp_job_title:       "contextual",  // PATH C linguistic
-    nlp_organization:    "contextual",  // PATH C linguistic
+    
 
-    source_code: "container"
+    
   };
 
   const SENSITIVE_CONTEXT_IDS = new Set([
@@ -131,6 +145,7 @@ const TrustScanner = (() => {
     "gazetteer_financial",
     "trigger_health",
     "trigger_financial"
+
   ]);
 
   // ── STEP 2: Distinct entity-type multiplier ───────────────────────────────
@@ -154,43 +169,44 @@ const TrustScanner = (() => {
 
   // ── STEP 4: Governance rule evaluation ───────────────────────────────────
   //
-  // TASK-8.1: Governance Rule 1 escalation for validated Philippine IDs
-  // When finding.validated:true and ENTITY_TIER="critical" and patternId matches ph_id_*,
-  // escalate risk to "high" regardless of other scoring factors.
+  // Rules are evaluated in strict decision order (Table 12 of risk-scoring spec).
+  // Only the first matching rule determines the outcome — cascading if/else-if.
+  //
+  // Rule 1 — Critical Entity Escalation
+  //   Any validated critical entity → HIGH (regardless of preliminary score)
+  //
+  // Rule 2 — Sensitive Context Co-occurrence
+  //   Direct/critical entity + sensitive context indicator → raise preliminary by one level
+  //
+  // Rule 3 — Low-Impact Cap  (replaces allContextualOrContainer tier-based check)
+  //   ALL of the following must be true:
+  //     (a) every scored entity has BASE_SCORES = 2  (no Moderate/Critical entities)
+  //     (b) at least one scored entity exists (score > 0 implies there is something to cap)
+  //   Effect: cap final result at Moderate — prevents pure low-impact aggregation
+  //   from escalating to High through the multiplier alone.
+  //
+  // Note: non-scorable findings (source_code, context-only gazetteer hits with
+  // no base score) are excluded from the Rule 3 base-score check.  Only findings
+  // that actually contributed to the numeric score are relevant to the cap.
 
   function evaluateGovernance(findings, preliminary) {
+
+    // ── Rule 1: validated critical entity → HIGH ────────────────────────────
     const hasValidatedCritical = findings.some(
       f => ENTITY_TIER[f.patternId] === "critical" && f.validated === true
     );
-    
-    // TASK-8.1: Check for validated Philippine Government IDs
-    const validatedPhilIDFinding = findings.find(
-      f => f.validated === true && 
-           ENTITY_TIER[f.patternId] === "critical" &&
-           f.patternId && f.patternId.startsWith("ph_id_")
-    );
-    
-    if (validatedPhilIDFinding) {
-      console.log(`[TrustPrompt/governance] Rule 1 escalation: ${validatedPhilIDFinding.patternId} (validated) → HIGH`);
-      return { rule: "rule_1_validated_philid", result: "high" };
-    }
-
-    const hasDirectOrCritical = findings.some(
-      f => ENTITY_TIER[f.patternId] === "critical" ||
-           ENTITY_TIER[f.patternId] === "direct"
-    );
-    const hasSensitiveContext = findings.some(
-      f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
-    );
-    const allContextualOrContainer = findings.every(
-      f => ENTITY_TIER[f.patternId] === "contextual" ||
-           ENTITY_TIER[f.patternId] === "container"
-    );
-
     if (hasValidatedCritical) {
       return { rule: "critical_entity", result: "high" };
     }
 
+    // ── Rule 2: any scored personal entity + sensitive context → raise one level ─
+    const hasDirectOrCritical = findings.some(
+      f => ENTITY_TIER[f.patternId] === "critical" ||
+           ENTITY_TIER[f.patternId] === "significant"
+    );
+    const hasSensitiveContext = findings.some(
+      f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
+    );
     if (hasDirectOrCritical && hasSensitiveContext) {
       const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
         ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
@@ -198,12 +214,22 @@ const TrustScanner = (() => {
       return { rule: "sensitive_context", result: raised };
     }
 
-    if (allContextualOrContainer && findings.some(
-      f => ENTITY_TIER[f.patternId] === "contextual")
-    ) {
-      return { rule: "contextual_ceiling", result: null };
+    // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
+    // Condition: every *scored* entity (BASE_SCORES > 0) has a base score of
+    // exactly 2, meaning no Moderate (5) or Critical (10) entity is present.
+    // This prevents multiplier-driven escalation to High when the prompt only
+    // contains Low-impact identifiers (names, job titles, orgs, IPs, etc.).
+    const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+    const hasAnyScoredEntity = scoredFindings.length > 0;
+    const allLowImpact = scoredFindings.every(
+      f => (BASE_SCORES[f.patternId] ?? 0) === 2
+    );
+
+    if (hasAnyScoredEntity && allLowImpact) {
+      return { rule: "low_impact_cap", result: null };
     }
 
+    // ── Rule 4: no governance rule applies → retain preliminary ─────────────
     return { rule: "none", result: null };
   }
 
@@ -211,10 +237,6 @@ const TrustScanner = (() => {
 
   function finalClass(preliminary, governance) {
     const { rule, result } = governance;
-
-    if (rule === "rule_1_validated_philid") {
-      return "high";
-    }
 
     if (rule === "critical_entity") {
       return "high";
@@ -224,7 +246,9 @@ const TrustScanner = (() => {
       return result;
     }
 
-    if (rule === "contextual_ceiling") {
+    // Rule 3 — Low-Impact Cap: cap at Moderate regardless of preliminary score.
+    // Preliminary of "high" is brought down; "moderate"/"low"/"none" are kept.
+    if (rule === "low_impact_cap") {
       return RISK_ORDER[preliminary] > RISK_ORDER["moderate"] ? "moderate" : preliminary;
     }
 
@@ -448,8 +472,14 @@ const TrustScanner = (() => {
     
     // PATH B and PATH C execute in parallel on the same textNLP input
     console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
-    const pathBFindings = TrustGazetteer.scan(textNLP);
-    console.log("[TrustPrompt/scanner] PATH B findings:", pathBFindings.length);
+    let pathBFindings = [];
+    try {
+      pathBFindings = TrustGazetteer.scan(textNLP);
+      console.log("[TrustPrompt/scanner] PATH B findings:", pathBFindings.length);
+    } catch (pathBError) {
+      console.error("[TrustPrompt/scanner] PATH B error:", pathBError);
+      pathBFindings = [];
+    }
     
     // ========== DIAGNOSTIC LOGGING ==========
     console.log("[DIAGNOSTIC] TrustLinguisticDetector type:", typeof TrustLinguisticDetector);

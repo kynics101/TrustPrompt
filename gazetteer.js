@@ -467,6 +467,15 @@ const TrustGazetteer = (() => {
   const NAT_WORD_RE        = _buildWordRegex(NATIONALITY_WORDS);
   const NAT_PHRASE_RE      = _buildPhraseRegex(NATIONALITY_PHRASES);
 
+  // ── GAZETTEER lookup object ───────────────────────────────────────────────
+  // Flat term arrays per category — consumed term-by-term in runGazetteerScan()
+  // and also passed as the third argument to grammarCheck() in runTriggerScan().
+  // Keys must match what grammarCheck() accesses: medical, financial, nationality_religion.
+  const GAZETTEER = {
+    medical:              [...MEDICAL_WORDS, ...MEDICAL_PHRASES],
+    financial:            [...FINANCIAL_WORDS, ...FINANCIAL_PHRASES],
+    nationality_religion: [...NATIONALITY_WORDS, ...NATIONALITY_PHRASES],
+  };
 
   // ── B2: TRIGGER PHRASES ───────────────────────────────────────────────────
   // Each entry:

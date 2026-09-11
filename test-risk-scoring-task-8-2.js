@@ -148,9 +148,9 @@ console.log("\n### Test 1: Single Validated PhilID Escalates to HIGH ###");
     `Expected: high, Got: ${result.riskLevel}`
   );
   test(
-    "Validated PhilID governance rule is 'rule_1_validated_philid'",
-    result.governance === "rule_1_validated_philid",
-    `Expected: rule_1_validated_philid, Got: ${result.governance}`
+    "Validated PhilID governance rule is 'critical_entity'",
+    result.governance === "critical_entity",
+    `Expected: critical_entity, Got: ${result.governance}`
   );
 }
 
@@ -191,8 +191,8 @@ console.log("\n### Test 2: Multiple Escalated Findings Aggregate ###");
   );
   test(
     "Governance rule is triggered for multiple critical validated findings",
-    result.governance === "rule_1_validated_philid",
-    `Expected: rule_1_validated_philid, Got: ${result.governance}`
+    result.governance === "critical_entity",
+    `Expected: critical_entity, Got: ${result.governance}`
   );
 }
 
@@ -223,8 +223,8 @@ console.log("\n### Test 3: Deduplication Preserves Escalation Status ###");
   );
   test(
     "Post-dedup escalation still applies",
-    result.riskLevel === "high" && result.governance === "rule_1_validated_philid",
-    `Expected: high + rule_1_validated_philid, Got: ${result.riskLevel} + ${result.governance}`
+    result.riskLevel === "high" && result.governance === "critical_entity",
+    `Expected: high + critical_entity, Got: ${result.riskLevel} + ${result.governance}`
   );
 }
 
@@ -288,8 +288,8 @@ console.log("\n### Test 5: Mix of Escalated and Non-Escalated Findings ###");
   );
   test(
     "Governance rule reflects escalation",
-    result.governance === "rule_1_validated_philid",
-    `Expected: rule_1_validated_philid, Got: ${result.governance}`
+    result.governance === "critical_entity",
+    `Expected: critical_entity, Got: ${result.governance}`
   );
 }
 
@@ -402,8 +402,8 @@ console.log("\n### Test 9: Escalation Priority Over Other Governance Rules ###")
   const result = computeRiskScore(findings);
   test(
     "Escalation rule takes priority",
-    result.governance === "rule_1_validated_philid",
-    `Expected: rule_1_validated_philid, Got: ${result.governance}`
+    result.governance === "critical_entity",
+    `Expected: critical_entity, Got: ${result.governance}`
   );
   test(
     "Priority results in 'high' risk level",

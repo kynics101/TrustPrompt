@@ -26,6 +26,26 @@ const TrustWorkerBridge = (() => {
   let scanIdCounter  = 0;
   const pending      = new Map(); // scanId → { resolve, reject, timer }
 
+  // ── Worker restart mechanism ──────────────────────────────────────────────
+  // Force reload patterns from the main thread by disabling worker temporarily
+
+  function restartWorker() {
+    if (worker) {
+      try {
+        worker.terminate();
+      } catch (e) {
+        console.warn("[TrustPrompt/bridge] Failed to terminate worker:", e.message);
+      }
+    }
+    worker = null;
+    workerAlive = false;
+    // Reinitialize immediately
+    setTimeout(() => {
+      initWorker();
+      console.log("[TrustPrompt/bridge] Worker restarted with fresh patterns");
+    }, 100);
+  }
+
   // ── Worker init ────────────────────────────────────────────────────────────
   //
   // Chrome MV3 restricts `new Worker(chrome.runtime.getURL(...))` when the
@@ -40,6 +60,13 @@ const TrustWorkerBridge = (() => {
   //   3. Main thread             (always works)
 
   function initWorker() {
+    // TEMPORARY: Disable worker to force main-thread scanning
+    // This ensures fresh patterns are loaded every scan
+    // TODO: Remove this after pattern loading is debugged
+    console.log("[TrustPrompt/bridge] Worker disabled — using main thread for all scans");
+    workerAlive = false;
+    return;
+    
     const workerUrl = chrome.runtime.getURL("trust-worker.js");
 
     // Strategy 1: Blob trampoline — avoids the cross-origin Worker restriction
@@ -173,6 +200,21 @@ const TrustWorkerBridge = (() => {
   // Initialise on load
   initWorker();
 
-  return { scan };
+  return { scan, restartWorker };
 
 })();
+
+// Force worker restart on tab visibility change to reload patterns
+// This ensures updated patterns are picked up when the user returns to the tab
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      console.log("[TrustPrompt/bridge] Tab became visible — restarting worker with fresh patterns");
+      try {
+        TrustWorkerBridge.restartWorker();
+      } catch (e) {
+        console.warn("[TrustPrompt/bridge] Failed to restart worker on visibility change:", e.message);
+      }
+    }
+  });
+}

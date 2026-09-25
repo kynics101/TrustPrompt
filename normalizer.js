@@ -269,3 +269,11 @@ const TrustNormalizer = (() => {
   return { normalize, sharedLayer, regexLayer, linguisticLayer };
 
 })();
+
+// ── Export TrustNormalizer to global scope ────────────────────────────────────
+if (typeof globalThis !== 'undefined') {
+  globalThis.TrustNormalizer = TrustNormalizer;
+}
+if (typeof window !== 'undefined') {
+  window.TrustNormalizer = TrustNormalizer;
+}

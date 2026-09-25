@@ -51,6 +51,7 @@ let lastScannedText = "";
 let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
 let lastScanResult  = null;
 let pendingSubmitResolver = null;
+let allowNextSubmit  = false; // Flag to allow submit after scan completes
 
 // ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
@@ -410,6 +411,7 @@ function showToast(message, duration = 3000) {
     border-left: 3px solid #f97316 !important;
     opacity: 1 !important;
     visibility: visible !important;
+    animation: slideUp 0.3s ease-out;
   `;
   
   toast.innerHTML = `
@@ -455,9 +457,22 @@ function runScan() {
     return;
   }
 
-  if (rawText === lastScannedText) return;
+  if (rawText === lastScannedText) {
+    // Text hasn't changed but state changed — likely re-entering after a keystroke
+    // Don't re-scan, but mark as DONE if we have a result
+    if (lastScanResult && scanState !== "DONE") {
+      scanState = "DONE";
+      console.log("[TrustPrompt/Claude] scan — skipping re-scan, state set to DONE");
+      if (pendingSubmitResolver) {
+        const resolve = pendingSubmitResolver;
+        pendingSubmitResolver = null;
+        resolve(lastScanResult);
+      }
+    }
+    return;
+  }
+
   lastScannedText = rawText;
-  
   scanState = "SCANNING";
 
   const findings  = scanText(rawText);
@@ -479,10 +494,11 @@ function runScan() {
   
   scanState = "DONE";
   
-  // If submit was blocked waiting for scan, notify it
+  // If submit was blocked waiting for scan, notify it immediately
   if (pendingSubmitResolver) {
     const resolve = pendingSubmitResolver;
     pendingSubmitResolver = null;
+    console.log("[TrustPrompt/Claude] scan complete — resolving pending submit");
     resolve({ findings, riskLevel });
   }
 }
@@ -529,42 +545,48 @@ function extractSafeVersion(rawText) {
   return safeText;
 }
 
-// Returns a Promise that resolves with the scan result
+// Returns a Promise that resolves with the scan result once scan completes
+// If the user presses Enter/clicks send before scan finishes, this waits for it
 function awaitScan() {
   const rawText = extractText(promptBox);
   if (!rawText.trim()) {
     return Promise.resolve({ findings: [], riskLevel: "none" });
   }
 
-  // Already done
+  console.log("[TrustPrompt/Claude] awaitScan called — current state:", scanState);
+
+  // State: DONE — scan already completed, return cached result
   if (scanState === "DONE" && lastScanResult) {
+    console.log("[TrustPrompt/Claude] awaitScan — scan already DONE, returning cached result");
     return Promise.resolve(lastScanResult);
   }
 
-  // Currently scanning — wait for it
+  // State: SCANNING — scan is in progress, wait for completion
   if (scanState === "SCANNING") {
+    console.log("[TrustPrompt/Claude] awaitScan — scan SCANNING, waiting for completion");
     return new Promise(resolve => {
       pendingSubmitResolver = resolve;
     });
   }
 
-  // Pending — wait for debounce to complete and scan to run
+  // State: PENDING — debounce timer is running, user typed but scan hasn't started yet
+  // This is the key case: user pressed Enter immediately after typing, before debounce fired
   if (scanState === "PENDING") {
+    console.log("[TrustPrompt/Claude] awaitScan — scan PENDING, cancelling debounce and triggering immediate scan");
     return new Promise(resolve => {
       pendingSubmitResolver = resolve;
-      // Don't clear the debounce timer — let it fire naturally
-      // This will trigger runScan() which will call the resolver
+      // Clear the debounce timer and trigger scan immediately (skip the delay)
+      clearTimeout(debounceTimer);
+      updateFloatingBadge("scanning");
+      sendToBackground({ type: "SCAN_SCANNING" });
+      runScan(); // This will immediately call resolve via the pendingSubmitResolver
     });
   }
 
-  // Idle — run scan immediately (skip debounce)
-  clearTimeout(debounceTimer);
-  return new Promise(resolve => {
-    pendingSubmitResolver = resolve;
-    scanState = "SCANNING";
-    updateFloatingBadge("scanning");
-    runScan();
-  });
+  // State: IDLE — nothing to scan, or text is empty
+  // This shouldn't normally happen, but handle it gracefully
+  console.log("[TrustPrompt/Claude] awaitScan — state is IDLE, nothing to scan");
+  return Promise.resolve({ findings: [], riskLevel: "none" });
 }
 
 // Find send button to click for release
@@ -591,33 +613,43 @@ function handleSubmitAttempt(e) {
     console.log("[TrustPrompt/Claude] handleSubmitAttempt called but no promptBox");
     return;
   }
+  
   const rawText = extractText(promptBox);
   if (!rawText.trim()) {
-    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but text is empty");
+    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but text is empty — allowing empty submission");
     return; // allow empty submissions
   }
 
-  e.preventDefault();
-  e.stopImmediatePropagation();
+  // Always prevent the event from propagating initially
+  if (e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+
+  // Mark flag so we can detect when it's our own release click
+  if (e?.type === "click") {
+    e.target.closest("button")?._tpSubmitBlocked = true;
+  }
 
   const safeVersion = extractSafeVersion(rawText);
   console.log("[TrustPrompt/Claude] submit intercepted — state:", scanState);
   console.log("[TrustPrompt/Claude] safe version:", safeVersion);
   
+  // Show blocking toast only if still scanning/scoring
   if (scanState === "PENDING" || scanState === "SCANNING") {
-    console.log("[TrustPrompt/Claude] showing toast - state is", scanState);
-    showToast("⏸ Message blocked — TrustPrompt is still scanning. Please wait…");
+    console.log("[TrustPrompt/Claude] showing blocking toast - state is", scanState);
+    showToast("⏸ Scanning… TrustPrompt is analyzing your prompt. Please wait.");
   }
 
   console.log("[TrustPrompt/Claude] awaiting scan...");
   awaitScan().then(result => {
-    console.log("[TrustPrompt/Claude] scan result received:", result);
-    if (result && result.riskLevel === "none") {
-      console.log("[TrustPrompt/Claude] scan clear — releasing submit");
-      releaseSubmit();
-    } else {
-      console.log("[TrustPrompt/Claude] submit blocked — risk level:", result?.riskLevel);
-    }
+    console.log("[TrustPrompt/Claude] scan complete:", result);
+    
+    // Badge now shows the risk level — user can see and decide
+    // Allow submission for ANY risk level (none/low/moderate/high)
+    console.log("[TrustPrompt/Claude] scan complete, badge updated with riskLevel:", result?.riskLevel);
+    console.log("[TrustPrompt/Claude] releasing submit — user has autonomy to proceed");
+    releaseSubmit();
   });
 }
 
@@ -640,24 +672,32 @@ function onPromptBoxKeydown(e) {
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
-  if (btn._tpRelease) { btn._tpRelease = false; return; } // our own release click
+  if (btn._tpRelease) { 
+    console.log("[TrustPrompt/Claude] send button clicked with _tpRelease flag, allowing through");
+    btn._tpRelease = false; 
+    return; 
+  }
   const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
   if (!label.includes("send")) return;
   if (!promptBox || !isVisible(promptBox)) return;
+  console.log("[TrustPrompt/Claude] send button clicked — intercepting");
   handleSubmitAttempt(e);
 }, true);
 
 // Document-level Enter key intercept (fallback for events outside promptBox)
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;
-  if (e._tpRelease) return;
+  if (e._tpRelease) {
+    console.log("[TrustPrompt/Claude] document keydown - release flag set, allowing through");
+    return;
+  }
   if (!promptBox || !isVisible(promptBox)) return;
   // If the event came from inside promptBox, skip (will be handled by onPromptBoxKeydown)
   if (promptBox.contains(e.target)) {
-    console.log("[TrustPrompt/Claude] document keydown - event from inside promptBox, skipping");
+    console.log("[TrustPrompt/Claude] document keydown - event from inside promptBox, skipping (will be handled by onPromptBoxKeydown)");
     return;
   }
-  console.log("[TrustPrompt/Claude] document keydown - calling handleSubmitAttempt");
+  console.log("[TrustPrompt/Claude] document keydown - calling handleSubmitAttempt (fallback)");
   handleSubmitAttempt(e);
 }, true);
 

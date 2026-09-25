@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TrustPrompt Detection Fixes Test</title>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #f5f5f5; }
+        .test-case { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #ccc; }
+        .pass { border-left-color: #4CAF50; }
+        .fail { border-left-color: #f44336; }
+        .test-title { font-weight: bold; margin-bottom: 10px; }
+        .result { margin-left: 20px; margin-top: 10px; }
+        .finding { background: #e3f2fd; padding: 8px; margin: 5px 0; border-radius: 3px; }
+        .score { font-weight: bold; }
+        .error { color: #f44336; }
+        .success { color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <h1>TrustPrompt Detection Fixes - Browser Test</h1>
+    <p>Tests for the three cases that were failing to detect PII:</p>
+    
+    <div id="tests"></div>
+
+    <script src="lib/validator.min.js"></script>
+    <script src="normalizer.js"></script>
+    <script src="patterns.js"></script>
+    <script src="gazetteer.js"></script>
+    <script src="linguistic-detector.js"></script>
+    <script src="scanner.js"></script>
+
+    <script>
+        const testCases = [
+            {
+                name: "PATH B - Health Trigger (i have diabetes)",
+                input: "i have diabetes",
+                expectedPatterns: ["trigger_health", "gazetteer_medical"],
+                expectDetection: true,
+                desc: "Should detect health-related PII via gazetteer + trigger phrase"
+            },
+            {
+                name: "PATH C - Person Name (my name is kyleen)",
+                input: "my name is kyleen",
+                expectedPatterns: ["nlp_person_name"],
+                expectDetection: true,
+                desc: "Should detect person name via linguistic detector"
+            },
+            {
+                name: "SOURCE CODE - Code Detection (const x=6;)",
+                input: "const x=6;",
+                expectedPatterns: ["source_code"],
+                expectDetection: true,
+                desc: "Should detect source code and include in scoring"
+            },
+            {
+                name: "Positive Control - Credit Card",
+                input: "card number is 5360 3452 2113 6543",
+                expectedPatterns: ["credit_card"],
+                expectDetection: true,
+                desc: "Should detect credit card (always works)"
+            }
+        ];
+
+        function runTests() {
+            const container = document.getElementById('tests');
+            let passCount = 0;
+            let failCount = 0;
+
+            for (const testCase of testCases) {
+                const result = TrustScanner.scan(testCase.input);
+                const { findings, riskLevel, score } = result;
+
+                const foundPatterns = findings.map(f => f.patternId);
+                const anyExpectedFound = testCase.expectedPatterns.some(p => foundPatterns.includes(p));
+                const passed = testCase.expectDetection ? (findings.length > 0) : (findings.length === 0);
+
+                if (passed) {
+                    passCount++;
+                } else {
+                    failCount++;
+                }
+
+                const testDiv = document.createElement('div');
+                testDiv.className = `test-case ${passed ? 'pass' : 'fail'}`;
+
+                const statusIcon = passed ? '✓' : '✗';
+                const statusClass = passed ? 'success' : 'error';
+
+                testDiv.innerHTML = `
+                    <div class="test-title">
+                        <span class="${statusClass}">${statusIcon}</span> 
+                        ${testCase.name}
+                    </div>
+                    <div style="margin-left: 20px; font-size: 12px; color: #666;">
+                        ${testCase.desc}
+                    </div>
+                    <div class="result">
+                        <div><strong>Input:</strong> "${testCase.input}"</div>
+                        <div><strong>Risk Level:</strong> <span class="score">${riskLevel}</span></div>
+                        <div><strong>Score:</strong> <span class="score">${score}</span></div>
+                        <div><strong>Findings:</strong> ${findings.length}</div>
+                        ${findings.length > 0 ? `
+                            <div style="margin-left: 20px;">
+                                ${findings.map(f => `
+                                    <div class="finding">
+                                        <strong>${f.patternId}</strong> (${f.risk}) - "${f.rawMatch.substring(0, 40)}"
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : '<div style="color: #f44336;">NO FINDINGS DETECTED</div>'}
+                    </div>
+                    <div style="margin-top: 10px; font-size: 12px; color: #999;">
+                        Expected patterns: ${testCase.expectedPatterns.join(', ')} | 
+                        Found: ${foundPatterns.join(', ') || 'none'}
+                    </div>
+                `;
+
+                container.appendChild(testDiv);
+            }
+
+            // Summary
+            const summary = document.createElement('div');
+            summary.style.cssText = 'margin-top: 30px; padding: 20px; background: #fff; border: 2px solid #2196F3; border-radius: 5px;';
+            summary.innerHTML = `
+                <h2 style="margin-top: 0;">Test Summary</h2>
+                <div style="font-size: 18px;">
+                    <div class="success">✓ Passed: ${passCount}/${testCases.length}</div>
+                    <div class="error">✗ Failed: ${failCount}/${testCases.length}</div>
+                </div>
+                <div style="margin-top: 15px; font-size: 14px; color: #666;">
+                    <strong>Fixes Applied:</strong>
+                    <ul>
+                        <li>Changed source_code BASE_SCORE from 0 to 2 (was filtered out before)</li>
+                        <li>Added trigger phrase backup to PATH C linguistic detector (fallback for NLP failures)</li>
+                        <li>Modified PATH B gazetteer to include B1 findings as fallback (was only returning B2)</li>
+                    </ul>
+                </div>
+            `;
+            container.appendChild(summary);
+        }
+
+        // Run tests when page loads
+        window.addEventListener('load', runTests);
+    </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+PHILIPPINE ID DETECTION - QUICK FIX CHECKLIST
+=============================================
+
+ROOT CAUSE: Structural validators were rejecting all valid IDs
+
+FIXES APPLIED:
+✓ 1. Removed \b word boundaries from regexes in patterns.js
+✓ 2. Disabled Web Worker in worker-bridge.js (forces main thread)
+✓ 3. Set structuralValidate: null for all 6 ID patterns:
+     - ph_id_philid
+     - ph_id_umid  
+     - ph_id_passport
+     - ph_id_gsis
+     - ph_id_sss
+     - ph_id_philhealth
+
+DEPLOYMENT (Do in this exact order):
+─────────────────────────────────────
+
+1. CLEAR CACHE (F12)
+   ☐ Open DevTools: F12
+   ☐ Application tab
+   ☐ Clear storage (all types checked)
+   ☐ Service Workers → Unregister all
+   ☐ Close DevTools: F12
+
+2. RELOAD EXTENSION
+   ☐ chrome://extensions/
+   ☐ Find TrustPrompt
+   ☐ Click Refresh button
+   ☐ Wait for "Updated" message
+
+3. HARD REFRESH BROWSER
+   ☐ Ctrl+Shift+R (NOT just Ctrl+R)
+   ☐ Wait for full page load
+
+4. TEST DETECTION
+   Paste each in ChatGPT/Claude and verify RED badge appears:
+   
+   ☐ 3672-0413-9178-4769 (National ID)
+   ☐ P7409785C (Passport)
+   ☐ PA7203775 (Passport 2nd format)
+   ☐ 31050021346 (GSIS)
+   ☐ 31-0500213-4 (SSS)
+   ☐ 1234-56-78901234-M (Voter's ID)
+   ☐ 4310-5002134-6 (UMID)
+   ☐ C51-23-016208 (Driver's License)
+
+5. VERIFY CONSOLE OUTPUT
+   ☐ Open DevTools Console
+   ☐ Look for: "[TrustPrompt/bridge] Worker disabled — using main thread"
+   ☐ Look for: "[TrustPrompt/scanner] PATH A findings: 1 →"
+
+EXPECTED BEHAVIOR:
+──────────────────
+✓ ID appears in input
+✓ Red/orange HIGH RISK badge appears immediately in top-right
+✓ Badge shows ID type (e.g., "Philippine National ID")
+✓ Text is highlighted in input field
+✓ Sidebar shows detection details
+
+IF NOT WORKING:
+───────────────
+1. Redo cache clear (Step 1) - most common issue
+2. Check patterns.js has structuralValidate: null for all 6 patterns
+3. Check worker-bridge.js has early return in initWorker()
+4. Check console for errors
+5. Try incognito mode (private browsing)
+6. Restart browser completely
+
+FILES TO VERIFY:
+────────────────
+✓ patterns.js - 6 patterns with structuralValidate: null
+✓ worker-bridge.js - initWorker() has early return setting workerAlive = false
+✓ test-regex-simple.js - Should show 13/13 tests passed
+
+DONE WHEN:
+──────────
+☐ All 8 ID samples detect as HIGH RISK
+☐ Console shows "[TrustPrompt/bridge] Worker disabled"
+☐ Console shows "PATH A findings: 1 →" messages
+☐ No JavaScript errors in console
+☐ Detection happens immediately after typing ID

@@ -88,6 +88,68 @@ const TrustValidator = (() => {
   }
 
   /**
+   * International phone with strict validation to exclude passport patterns and Philippine government IDs.
+   * Rejects patterns like:
+   * - "P7432795C" (Philippine passport: letter + 7-8 digits + letter)
+   * - "C51-23-016208" (Driver's license: letter-digits-digits-digits with hyphens)
+   * - "A00-00-000000" (Generic ID format)
+   * - "1234-5678901-2" (UMID: 4digits-7digits-1digit)
+   * - "1232658742" (Senior Citizen ID: 10 digits)
+   * - "12-3276589" (SSS: 10 digits with hyphens)
+   * - "12327658921" (GSIS: 11 digits)
+   */
+  function isMobilePhone_InternationalStrict(raw) {
+    const trimmed = raw.trim();
+    
+    // Reject if it matches the Philippine passport pattern (letter-digits-letter)
+    if (/^[A-Za-z]\d{7,8}[A-Za-z]$/.test(trimmed)) {
+      return false;
+    }
+    
+    // Reject if it looks like a driver's license (letter-digits-digits-digits with hyphens)
+    if (/^[A-Z]\d{2}-\d{2}-\d{6}$/.test(trimmed)) {
+      return false;
+    }
+    
+    // Reject if it looks like a voter's ID (4digits-2digits-8digits-letter)
+    if (/^\d{4}-\d{2}-\d{8}-[A-Z]$/.test(trimmed)) {
+      return false;
+    }
+    
+    // Reject if it matches the UMID pattern (4digits-7digits-1digit)
+    if (/^\d{4}-\d{7}-\d$/.test(trimmed)) {
+      return false;
+    }
+    
+    // Remove formatting first to check stripped length
+    const stripped = trimmed.replace(/[\s\-().]/g, "");
+    
+    // Reject if it matches Philippine ID digit lengths
+    // Senior Citizen: exactly 10 digits
+    // SSS: exactly 10 digits (without hyphens) OR matches pattern XX-XXXXXXX-X
+    // GSIS: exactly 11 digits
+    // PhilID: exactly 12 digits
+    if (/^\d{10}$/.test(stripped)) return false; // Senior Citizen or SSS
+    if (/^\d{2}-\d{7}-\d$/.test(trimmed)) return false; // SSS with hyphens
+    if (/^\d{11}$/.test(stripped)) return false; // GSIS
+    if (/^\d{12}$/.test(stripped)) return false; // PhilID or UMID
+    
+    // Must start with + or be a valid digit sequence (no leading letters except +)
+    // Valid patterns: +639123456789, 639123456789, +1-234-567-8900
+    if (!/^(\+?[0-9]|[0-9])/.test(trimmed)) {
+      return false;
+    }
+
+    // Must contain only digits after +
+    if (!/^(\+)?[0-9]{7,15}$/.test(stripped)) {
+      return false;
+    }
+    
+    // Use validator.js for final validation
+    return validator.isMobilePhone(stripped, "any", { strictMode: false });
+  }
+
+  /**
    * IPv4 address.
    */
   function isIP(raw) {
@@ -127,6 +189,8 @@ const TrustValidator = (() => {
     isJWT,
     isMobilePhone_PH,
     isMobilePhone,
+    isMobilePhone_InternationalStrict,
+    isMobilePhone_InternationalStrict_ExcludePhilippineIDs: isMobilePhone_InternationalStrict,
     isIP,
     isIPv6,
     isMACAddress,
@@ -157,3 +221,11 @@ const TrustValidator = (() => {
   return { validate };
 
 })();
+
+// Ensure TrustValidator is available globally in all execution contexts
+if (typeof window !== 'undefined') {
+  window.TrustValidator = TrustValidator;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.TrustValidator = TrustValidator;
+}

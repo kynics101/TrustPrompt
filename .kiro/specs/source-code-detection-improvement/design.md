@@ -2,816 +2,913 @@
 
 ## Overview
 
-This document specifies the architecture and implementation strategy for a multi-signal scoring framework that improves the detection and risk escalation of source code blocks containing embedded credentials, proprietary logic, or configuration data.
+This document specifies the architecture and implementation strategy for a **feature-based scoring system** that improves the detection and risk escalation of source code blocks containing embedded credentials, proprietary logic, or configuration data.
 
 ### Scope
 
 The feature improves detection and risk classification of source code blocks through:
-1. **Multi-signal scoring framework** — combines 5 independent signals
-2. **Signal computation algorithms** — each signal extracts specific code characteristics
-3. **Score normalization and aggregation** — combines signals into a composite score
-4. **Threshold calibration** — configurable detection thresholds
+1. **Feature-based detection framework** — identifies 6+ distinct code characteristics
+2. **Strong evidence classification** — separates critical indicators from supporting evidence
+3. **Composite scoring algorithm** — combines feature evidence into a confidence score
+4. **Dual threshold validation** — requires both score threshold AND strong evidence presence
 5. **Context-aware escalation** — raises risk when code contains embedded secrets
-6. **Markdown regex fallback** — integrates with existing code block detection
+6. **Markdown regex integration** — works alongside existing markdown fence detection
 7. **Logging and diagnostics** — comprehensive framework for debugging and tuning
 
 ### Goals
 
-- **Reduce False Negatives**: Detect code blocks that may not match classic markdown fence patterns (indented, HTML-escaped, inline code)
-- **Reduce False Positives**: Distinguish code blocks from normal prose containing curly braces, brackets, or technical terms
-- **Risk Escalation**: Elevate "low" code findings to "moderate" when they contain evidence of embedded secrets
+- **Reduce False Negatives**: Detect code blocks (formatted and unformatted) that contain executable logic or secrets
+- **Reduce False Positives**: Distinguish code from prose via strong evidence types; don't flag based on weak signals alone
+- **Strong Evidence Requirement**: Require at least one strong evidence type (keywords, imports, function calls, or braces) to classify as code
 - **Configurability**: Enable tuning of thresholds without code changes
-- **Transparency**: Log all signal computations and decisions for audit and tuning
+- **Transparency**: Log feature detection and scoring decisions for audit and debugging
 
 ---
 
 ## Architecture
 
-### 1. Multi-Signal Scoring Framework
+### 1. Feature-Based Detection Framework
 
-Each code block is analyzed through 5 independent signals:
+Each code block is analyzed for 6+ distinct features, classified as either **strong evidence** or **weak evidence**:
 
-#### Signal 1: Structure Density
+| Feature | Type | Points | Detection Method |
+|---------|------|--------|------------------|
+| **Code Keywords** | Strong | 3 | Regex match on control flow, declarations, type keywords |
+| **Import/Require Statements** | Strong | 3 | Regex pattern match on language-specific module loading |
+| **Braces (Density)** | Strong | 2 | Curly brace count relative to text length |
+| **Function Calls** | Strong | 2 | Regex pattern: `identifier(...)` with balanced parens |
+| **Semicolons** | Weak | 1 | Statement terminators (JavaScript, Java, C-family) |
+| **Operators** | Weak | 1 | Mathematical/logical operators: `+`, `-`, `*`, `/`, `%`, `&&`, `\|\|`, `!` |
+| **camelCase/snake_case** | Weak | 1 | Consistent naming conventions typical of code |
+| **Comments** | Weak | 1 | Language-specific comment markers: `//`, `#`, `/*`, `--` |
+| **Indentation Pattern** | Weak | 1 | Lines with leading whitespace (4+ space or tab indent) |
+| **Line Density Consistency** | Weak | 1 | Average characters per line (code: 40–120 chars/line) |
 
-**Purpose**: Detect syntactic characteristics typical of code (nested brackets, high punctuation concentration).
+**Strong Evidence Types**: Code Keywords, Import/Require Statements, Braces, Function Calls
 
-**Algorithm**:
-```javascript
-function computeStructureDensity(text) {
-  const BRACKET_PAIRS = [
-    ['(', ')'],
-    ['{', '}'],
-    ['[', ']'],
-    ['<', '>']
-  ];
-  
-  let bracketCount = 0;
-  for (const [open, close] of BRACKET_PAIRS) {
-    bracketCount += (text.match(new RegExp(`\\${open}`, 'g')) || []).length;
-    bracketCount += (text.match(new RegExp(`\\${close}`, 'g')) || []).length;
-  }
-  
-  // Lines with code-like punctuation: colon, semicolon, comma, arrow, equals
-  const lineCount = text.split('\n').length;
-  const codePunctuation = (text.match(/[:;,=→=>/\\]/g) || []).length;
-  const punctuationDensity = codePunctuation / Math.max(text.length, 1);
-  
-  const bracketDensity = bracketCount / Math.max(text.length, 1);
-  
-  // Normalize to 0–1
-  // Typical code has 0.01–0.05 punctuation density
-  // Typical code has 0.01–0.03 bracket density
-  const structureDensity = Math.min(1.0, bracketDensity + punctuationDensity);
-  
-  return {
-    signal: "structure_density",
-    value: structureDensity,
-    components: {
-      bracketDensity,
-      punctuationDensity,
-      bracketCount,
-      codePunctuation
-    }
-  };
-}
-```
-
-**Thresholds**:
-- `0.00–0.05`: Not code-like (normal prose)
-- `0.05–0.15`: Weakly code-like (may be code or punctuation-heavy prose)
-- `0.15–1.00`: Strongly code-like (brackets, operators, punctuation)
-
-**Reasoning**: Code has characteristic punctuation patterns (operators, delimiters) not found in natural language prose. Prose rarely has density >0.05.
+**Weak Evidence Features**: Semicolons, Operators, camelCase/snake_case, Comments, Indentation, Line Density
 
 ---
 
-#### Signal 2: Token Pattern Recognition
+### 1.1 Feature Detection: Strong Evidence
 
-**Purpose**: Identify language-specific keywords and syntax patterns (variable declarations, function definitions, imports, comments).
+#### Feature 1: Code Keywords
 
-**Algorithm**:
-```javascript
-const LANGUAGE_PATTERNS = {
-  javascript: {
-    weight: 1.2,
-    patterns: [
-      /\b(?:const|let|var|function|async|await|class|import|export|require)\b/i,
-      /\b(?:return|throw|try|catch|finally|if|else|for|while|do)\b/i,
-      /\b(?:new|instanceof|typeof|void|delete|in|of)\b/i,
-      /=>|[a-zA-Z0-9_]+\s*:\s*(?:function|async function|\(.*?\)|{)/,  // arrow fn or method
-      /\/\/.*$|\/\*[\s\S]*?\*\//  // single-line or block comment
-    ]
-  },
-  python: {
-    weight: 1.1,
-    patterns: [
-      /\b(?:def|class|import|from|return|async|await|if|elif|else|for|while|try|except|finally)\b/,
-      /^\s{4,}[a-zA-Z_]/m,  // indented blocks
-      /#.*$/m,              // comments
-      /^[a-zA-Z_][a-zA-Z0-9_]*\s*=/m  // assignments
-    ]
-  },
-  sql: {
-    weight: 1.0,
-    patterns: [
-      /\b(?:SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TABLE|DATABASE)\b/i,
-      /\b(?:AND|OR|NOT|IN|BETWEEN|LIKE|EXISTS)\b/i,
-      /;$/m  // SQL statement terminator
-    ]
-  },
-  shell: {
-    weight: 0.9,
-    patterns: [
-      /^\s*(?:#!/bin/bash|#!/bin/sh)$/m,  // shebang
-      /\b(?:if|then|else|fi|for|do|done|while|case|esac|function)\b/,
-      /\$\{[A-Za-z0-9_]+\}|\$[A-Za-z0-9_]+/,  // variable expansion
-      /\|\s*(?:grep|sed|awk|cut|sort|uniq)/  // pipelines
-    ]
-  },
-  json: {
-    weight: 0.8,
-    patterns: [
-      /^\s*\{[\s\S]*\}$/,  // top-level object
-      /"[^"]*"\s*:/,        // key-value pairs
-      /^\s*\[[\s\S]*\]$/m   // top-level array
-    ]
-  },
-  xml_html: {
-    weight: 0.7,
-    patterns: [
-      /<[a-zA-Z][^>]*>/,    // XML/HTML tags
-      /<!DOCTYPE|<html|<body|<div|<span/i,
-      /xmlns:|xsi:/,        // XML namespaces
-      /\/>/                 // self-closing tags
-    ]
-  }
-};
+**Purpose**: Identify programming language keywords that are extremely unlikely in prose.
 
-function computeTokenPattern(text) {
-  const langScores = {};
-  let maxScore = 0;
-  let detectedLanguage = null;
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectCodeKeywords(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or points)
   
-  for (const [lang, config] of Object.entries(LANGUAGE_PATTERNS)) {
-    let matches = 0;
-    for (const pattern of config.patterns) {
-      matches += (text.match(pattern) || []).length;
+  SEQUENCE
+    keywords ← {
+      // Control flow
+      "if", "else", "for", "while", "do", "switch", "case", "break", "continue",
+      "return", "try", "catch", "finally", "throw",
+      
+      // Declarations
+      "function", "class", "async", "await", "const", "let", "var",
+      "def", "async def", "struct", "interface", "enum", "namespace",
+      
+      // Type keywords
+      "int", "string", "boolean", "bool", "void", "null", "undefined",
+      "true", "false", "float", "double", "long", "short",
+      
+      // Module/Imports
+      "import", "export", "require", "from", "as", "use", "include",
+      
+      // Other language-specific
+      "this", "self", "super", "new", "delete", "instanceof", "typeof"
     }
     
-    const score = (matches / Math.max(text.split('\n').length, 1)) * config.weight;
-    langScores[lang] = { matches, score };
+    matches ← 0
+    FOR EACH keyword IN keywords DO
+      pattern ← "\b" + keyword + "\b"
+      matches ← matches + countMatches(text, pattern)  // case-insensitive
+    END FOR
     
-    if (score > maxScore) {
-      maxScore = score;
-      detectedLanguage = lang;
+    IF matches ≥ 1 THEN
+      RETURN 3 points  // strong evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
+
+**Scoring**:
+- 1+ keywords found → **3 points** (strong evidence)
+- 0 keywords → **0 points**
+
+**Reasoning**: Code keywords (`function`, `const`, `def`, `import`, `if`, `return`) virtually never appear in prose except in technical documentation about code itself. A single occurrence is strong evidence.
+
+---
+
+#### Feature 2: Import/Require Statements
+
+**Purpose**: Identify module loading syntax specific to languages.
+
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectImportStatements(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or points)
+  
+  SEQUENCE
+    patterns ← {
+      // JavaScript/TypeScript
+      /import\s+\{?[\w\.\,\s]+\}?\s+from\s+["'][\w\.\/-]+["']/,
+      /require\s*\(\s*["'][\w\.\/-]+["']\s*\)/,
+      /export\s+(?:default\s+)?(?:function|class|const|let|var)/,
+      
+      // Python
+      /^import\s+[\w\.]+/m,
+      /^from\s+[\w\.]+\s+import\s+[\w\,\s]+/m,
+      
+      // Java/C#
+      /^import\s+[\w\.]+;?/m,
+      /^using\s+[\w\.]+;?/m,
+      /^namespace\s+[\w\.]+/m,
+      
+      // C/C++
+      /#include\s+[<"][\w\.\/-]+[>"]/,
+      /#import\s+[<"][\w\.\/-]+[>"]/,
+      
+      // Go
+      /^import\s+\(/m,
+      /^import\s+"[\w\.\/-]+"/m,
+      
+      // Rust
+      /^use\s+[\w\:\:]+/m,
+      /^mod\s+[\w]+/m,
+      
+      // PHP
+      /(?:require|include|require_once|include_once)\s+["'][\w\.\/-]+["']/
     }
-  }
-  
-  // Normalize to 0–1: >3 language pattern matches = high confidence
-  const tokenPatternSignal = Math.min(1.0, maxScore / 3.0);
-  
-  return {
-    signal: "token_pattern",
-    value: tokenPatternSignal,
-    detectedLanguage,
-    components: langScores
-  };
-}
+    
+    matches ← 0
+    FOR EACH pattern IN patterns DO
+      matches ← matches + countMatches(text, pattern)
+    END FOR
+    
+    IF matches ≥ 1 THEN
+      RETURN 3 points  // strong evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
 ```
 
-**Thresholds**:
-- `0.00–0.20`: No code patterns detected
-- `0.20–0.50`: Weak language indicators
-- `0.50–1.00`: Strong language patterns
+**Scoring**:
+- 1+ import/require found → **3 points** (strong evidence)
+- 0 imports → **0 points**
 
-**Reasoning**: Code contains language-specific keywords, operators, and syntax that do not appear in normal prose. A JavaScript function declaration, Python import, or SQL SELECT is a strong indicator.
+**Reasoning**: Module loading syntax (`import`, `require`, `use`, `#include`) is virtually exclusive to code. Prose never uses these patterns.
 
 ---
 
-#### Signal 3: Entropy Distribution
+#### Feature 3: Braces (Density)
 
-**Purpose**: Detect variability in character composition (code has high entropy; repeated phrases have low entropy).
+**Purpose**: Detect curly braces that denote code blocks, functions, objects.
 
-**Algorithm**:
-```javascript
-function computeEntropyDistribution(text) {
-  // Compute Shannon entropy for the entire text
-  const fullEntropy = shannonEntropy(text);
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectBraces(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or points)
   
-  // Compute entropy for lines and take the median
-  const lines = text.split('\n').filter(l => l.length > 3);
-  const lineEntropies = lines.map(line => shannonEntropy(line));
-  lineEntropies.sort((a, b) => a - b);
-  const medianLineEntropy = lineEntropies[Math.floor(lineEntropies.length / 2)];
+  SEQUENCE
+    openBraces ← countOccurrences(text, "{")
+    closeBraces ← countOccurrences(text, "}")
+    
+    totalBraces ← openBraces + closeBraces
+    textLength ← length(text)
+    
+    braceDensity ← totalBraces / MAX(textLength, 1)
+    
+    // Code typically has 1 brace per 30–50 characters (density 0.02–0.03)
+    // Prose has 0 braces
+    
+    IF braceDensity ≥ 0.03 THEN
+      RETURN 2 points  // strong evidence
+    ELSE IF totalBraces ≥ 2 THEN
+      RETURN 2 points  // even low density with 2+ braces is code-like
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
+
+**Scoring**:
+- Brace density ≥ 0.03 OR 2+ braces found → **2 points** (strong evidence)
+- Fewer braces → **0 points**
+
+**Reasoning**: Curly braces are essential to code blocks in most languages (JavaScript, Java, C, Python, Go) but never appear in prose. Even a few braces are strong evidence.
+
+---
+
+#### Feature 4: Function Calls
+
+**Purpose**: Identify function/method invocation patterns.
+
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectFunctionCalls(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or points)
   
-  // Code typically has:
-  //   - Full entropy 3.5–5.5 bits/char (varied content)
-  //   - Median line entropy 2.5–4.0 bits/char (each line has some uniqueness)
-  // Prose typically has:
-  //   - Full entropy 4.0–5.0 bits/char (natural language is more predictable)
-  //   - Median line entropy 2.0–3.5 bits/char (repeated words lower entropy)
-  
-  const entropyScore = (fullEntropy + medianLineEntropy) / 2;
-  
-  // Normalize: score 3.0–5.5 → signal 0.0–1.0
-  const entropySignal = Math.min(1.0, Math.max(0, (entropyScore - 3.0) / 2.5));
-  
-  return {
-    signal: "entropy_distribution",
-    value: entropySignal,
-    components: {
-      fullEntropy,
-      medianLineEntropy,
-      lineCount: lines.length
+  SEQUENCE
+    // Pattern: identifier followed by parentheses with content
+    // Examples: foo(), console.log(), array.map(), obj.method()
+    
+    patterns ← {
+      /\b[a-zA-Z_$][\w$]*\s*\(/g,          // function calls: foo(
+      /\b[a-zA-Z_$][\w$]*\.[a-zA-Z_$][\w$]*\s*\(/g,  // method calls: obj.foo(
+      /\b(?:console|window|document|process)\.\w+\s*\(/g  // builtin objects
     }
-  };
-}
+    
+    matches ← 0
+    FOR EACH pattern IN patterns DO
+      matches ← matches + countMatches(text, pattern)
+    END FOR
+    
+    IF matches ≥ 2 THEN
+      RETURN 2 points  // strong evidence
+    ELSE IF matches = 1 THEN
+      RETURN 1 point   // weak evidence (could be prose with "()")
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
 ```
 
-**Thresholds**:
-- Entropy < 3.0: Very low (repeated content, pseudo-code)
-- Entropy 3.0–3.5: Low (code with repetitive patterns)
-- Entropy 3.5–4.5: Moderate (typical code or prose)
-- Entropy > 4.5: High (random-looking, encrypted, or highly varied)
+**Scoring**:
+- 2+ function calls detected → **2 points** (strong evidence)
+- 1 function call → **1 point** (weak evidence)
+- 0 function calls → **0 points**
 
-**Reasoning**: Code (especially credentials) tends to have higher entropy than prose due to character variety. However, this alone is not sufficient; regex patterns have high entropy but are code.
+**Reasoning**: Function call syntax (identifier followed by balanced parentheses) is specific to code and rarely appears in prose. Multiple occurrences confirm code.
 
 ---
 
-#### Signal 4: Credential Indicators
+### 1.2 Feature Detection: Weak Evidence
 
-**Purpose**: Detect evidence of embedded secrets (API keys, passwords, connection strings, environment variables).
+#### Feature 5: Semicolons
 
-**Algorithm**:
-```javascript
-function computeCredentialIndicators(text) {
-  const credentialPatterns = [
-    // Variable assignments with secret-like values
-    /(?:api[_-]?key|secret|password|pwd|token|auth|credential|bearer|api_secret|private_key)\s*[:=]\s*["']?[A-Za-z0-9\-_+\/=]{10,}["']?/gi,
-    // Environment variable references
-    /\$\{(?:API_KEY|SECRET|PASSWORD|TOKEN|BEARER|AUTH)\}/gi,
-    // Connection strings (mongodb://, postgresql://, mysql://)
-    /(?:mongodb|postgresql|mysql|mariadb|redis|amqp):\/\/[^\s]+/gi,
-    // AWS access key pattern (AKIA...)
-    /AKIA[A-Z0-9]{16}/g,
-    // GitHub token patterns
-    /(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{20,}/g,
-    // OpenAI key (sk-...)
-    /sk-[A-Za-z0-9\-]{20,}/g,
-    // JWT patterns (basic heuristic)
-    /eyJ[A-Za-z0-9\-_]{7,}\.eyJ[A-Za-z0-9\-_]{7,}\.[A-Za-z0-9\-_]{20,}/g,
-    // Base64-encoded data (long sequences of base64 chars)
-    /[A-Za-z0-9+\/]{40,}={0,3}(?:\n|$)/g,
-    // Private key markers
-    /-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----/g,
-    // URLs with embedded credentials
-    /https?:\/\/(?:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+@)?[^\s]+/g
-  ];
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectSemicolons(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
   
-  let credentialCount = 0;
-  for (const pattern of credentialPatterns) {
-    credentialCount += (text.match(pattern) || []).length;
-  }
+  SEQUENCE
+    semicolons ← countOccurrences(text, ";")
+    lines ← splitLines(text)
+    
+    // Semicolons terminate statements in JavaScript, Java, C, C++
+    // Prose rarely uses semicolons except in lists
+    
+    IF semicolons ≥ 1 THEN
+      RETURN 1 point  // weak evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
+
+**Scoring**: 1+ semicolons → **1 point** (weak evidence)
+
+---
+
+#### Feature 6: Operators
+
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectOperators(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
   
-  // Normalize: 0 indicators = 0.0, 1+ indicators = 0.5, 3+ = 1.0
-  const credentialSignal = Math.min(1.0, credentialCount * 0.33);
-  
-  return {
-    signal: "credential_indicators",
-    value: credentialSignal,
-    components: {
-      credentialCount,
-      patterns: credentialPatterns.length
+  SEQUENCE
+    operatorPatterns ← {
+      // Arithmetic: +, -, *, /, %, **
+      // Logical: &&, ||, !, ^, &, |, ~
+      // Comparison: ==, ===, !=, !==, <, >, <=, >=, <=>
+      // Assignment: =, +=, -=, *=, /=, %=, &&=, ||=, &=, |=, ^=, >>=, <<=
+      // Bitwise: <<, >>, &, |, ^, ~
+      
+      /(\+\+|--|\*\*|&&|\|\||<<|>>|===|!==|<=>|[+\-*\/%&|^!=<>]=|[+\-*\/%&|^<>!~])/g
     }
-  };
-}
+    
+    matches ← 0
+    FOR EACH pattern IN operatorPatterns DO
+      matches ← matches + countMatches(text, pattern)
+    END FOR
+    
+    IF matches ≥ 1 THEN
+      RETURN 1 point  // weak evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
 ```
 
-**Thresholds**:
-- `0.00`: No credential indicators
-- `0.33`: One potential credential indicator
-- `0.67`: Two potential indicators
-- `1.00`: Three or more indicators
-
-**Reasoning**: Finding credential patterns (API keys, connection strings, private keys) in code blocks is a strong indicator of embedded secrets and high risk.
+**Scoring**: 1+ operators → **1 point** (weak evidence)
 
 ---
 
-#### Signal 5: Markup and Formatting Consistency
+#### Feature 7: camelCase/snake_case Identifiers
 
-**Purpose**: Detect code-block markers and formatting (indentation, monospace escaping, HTML escaping).
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectCodingNamingConventions(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
+  
+  SEQUENCE
+    // camelCase: myVariable, userId, fetchUserData
+    // snake_case: my_variable, user_id, fetch_user_data
+    
+    camelCasePattern ← /\b[a-z]+([A-Z][a-z]+)+\b/g
+    snake_casePattern ← /\b[a-z_]+_[a-z_]+\b/g
+    
+    camelCaseMatches ← countMatches(text, camelCasePattern)
+    snake_caseMatches ← countMatches(text, snake_casePattern)
+    
+    totalMatches ← camelCaseMatches + snake_caseMatches
+    
+    IF totalMatches ≥ 2 THEN
+      RETURN 1 point  // weak evidence (consistent naming convention)
+    ELSE IF totalMatches = 1 THEN
+      RETURN 0 points // single match could be prose (e.g., "someword")
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
 
-**Algorithm**:
-```javascript
-function computeMarkupConsistency(text) {
-  // Count code-block markers
-  const backtickFences = (text.match(/```/g) || []).length;
-  const tildeIndentFences = (text.match(/~~~\n/g) || []).length;
-  const htmlCodeTags = (text.match(/<code>|<pre>/gi) || []).length;
-  const htmlEscapes = (text.match(/&lt;|&gt;|&amp;|&quot;/g) || []).length;
+**Scoring**: 2+ camelCase/snake_case identifiers → **1 point** (weak evidence)
+
+---
+
+#### Feature 8: Comments
+
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectComments(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
   
-  // Detect consistent indentation (4 spaces or tab)
-  const lines = text.split('\n');
-  const indentedLines = lines.filter(l => /^(\s{4,}|\t)/.test(l)).length;
-  const indentationRatio = indentedLines / Math.max(lines.length, 1);
-  
-  // Detect monospace rendering hints (two or more spaces on same line)
-  const monospacedLines = lines.filter(l => /\s{2,}/.test(l)).length;
-  const monospaceRatio = monospacedLines / Math.max(lines.length, 1);
-  
-  // Markup score: presence of code markers or high indentation suggests code
-  const markupScore = (
-    backtickFences * 0.3 +           // high weight for explicit markers
-    tildeIndentFences * 0.3 +
-    htmlCodeTags * 0.2 +
-    (htmlEscapes > 0 ? 0.1 : 0) +    // HTML-escaped code is very likely code
-    indentationRatio * 0.1 +         // consistent indentation suggests code
-    monospaceRatio * 0.1
-  );
-  
-  const markupSignal = Math.min(1.0, markupScore);
-  
-  return {
-    signal: "markup_consistency",
-    value: markupSignal,
-    components: {
-      backtickFences,
-      tildeIndentFences,
-      htmlCodeTags,
-      htmlEscapes,
-      indentationRatio: indentationRatio.toFixed(2),
-      monospaceRatio: monospaceRatio.toFixed(2)
+  SEQUENCE
+    commentPatterns ← {
+      /\/\/.*?$/gm,           // JavaScript/Java/C++ single-line
+      /#.*?$/gm,              // Python/Shell single-line
+      /--.*?$/gm,             // SQL/Lua single-line
+      /\/\*[\s\S]*?\*\//g,    // Block comments
+      /"""[\s\S]*?"""/g,      // Python docstrings
+      /'''[\s\S]*?'''/g,      // Python triple quotes
+      /<!--[\s\S]*?-->/g      // HTML comments
     }
-  };
-}
+    
+    matches ← 0
+    FOR EACH pattern IN commentPatterns DO
+      matches ← matches + countMatches(text, pattern)
+    END FOR
+    
+    IF matches ≥ 1 THEN
+      RETURN 1 point  // weak evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
 ```
 
-**Thresholds**:
-- `0.00`: No markup hints
-- `0.10–0.30`: Weak markup (some indentation)
-- `0.30–0.70`: Moderate markup (indented or partially escaped)
-- `0.70–1.00`: Strong markup (explicit code block markers)
-
-**Reasoning**: Presence of code-block markers, indentation, or HTML escaping is a strong indicator that the author intended the text to be interpreted as code.
+**Scoring**: 1+ comment markers → **1 point** (weak evidence)
 
 ---
 
-### 2. Score Aggregation
+#### Feature 9: Indentation Pattern
 
-After computing all 5 signals, combine them into a composite score:
-
-```javascript
-function aggregateSignals(signals) {
-  const SIGNAL_WEIGHTS = {
-    structure_density:       0.15,  // weak signal (prone to false positives)
-    token_pattern:           0.30,  // strong signal (language patterns are reliable)
-    entropy_distribution:    0.20,  // moderate signal (but entropy varies by language)
-    credential_indicators:   0.25,  // very strong signal (credentials are high-confidence)
-    markup_consistency:      0.10   // baseline signal (explicit markers are obvious)
-  };
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectIndentationPattern(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
   
-  let weightedSum = 0;
-  let weightSum = 0;
-  
-  for (const signal of signals) {
-    const weight = SIGNAL_WEIGHTS[signal.signal] || 0;
-    weightedSum += signal.value * weight;
-    weightSum += weight;
-  }
-  
-  const compositeScore = weightSum > 0 ? weightedSum / weightSum : 0;
-  
-  return {
-    compositeScore,
-    normalizedScore: Math.min(1.0, Math.max(0, compositeScore)),
-    signals: signals.map(s => ({
-      signal: s.signal,
-      value: s.value.toFixed(3),
-      weight: SIGNAL_WEIGHTS[s.signal]
-    }))
-  };
-}
+  SEQUENCE
+    lines ← splitLines(text)
+    indentedLines ← 0
+    
+    FOR EACH line IN lines DO
+      IF line starts with 4 spaces OR line starts with 1+ tabs THEN
+        indentedLines ← indentedLines + 1
+      END IF
+    END FOR
+    
+    indentationRatio ← indentedLines / MAX(length(lines), 1)
+    
+    IF indentationRatio ≥ 0.2 THEN  // at least 20% of lines indented
+      RETURN 1 point  // weak evidence
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
 ```
 
-**Composite Score Interpretation**:
-- `0.00–0.25`: Low confidence (not code)
-- `0.25–0.50`: Moderate confidence (may be code)
-- `0.50–0.75`: High confidence (likely code)
-- `0.75–1.00`: Very high confidence (definitely code)
+**Scoring**: 20%+ of lines indented → **1 point** (weak evidence)
 
 ---
 
-### 3. Threshold Calibration and Configuration
+#### Feature 10: Line Density Consistency
 
-Thresholds are configurable via a configuration object:
+**Detection Pseudocode**:
+```pascal
+FUNCTION detectLineDensity(text)
+  INPUT: text (string to analyze)
+  OUTPUT: score (0 or 1 point)
+  
+  SEQUENCE
+    lines ← splitLines(text)
+    
+    // Calculate average characters per line
+    totalChars ← 0
+    FOR EACH line IN lines DO
+      totalChars ← totalChars + length(line)
+    END FOR
+    
+    avgCharsPerLine ← totalChars / MAX(length(lines), 1)
+    
+    // Code typically: 40–120 chars per line
+    // Prose typically: 60–90 chars per line (can overlap)
+    // Minified code: 80–200 chars per line
+    // Short code lines (e.g., shell): 10–50 chars per line
+    
+    IF 30 ≤ avgCharsPerLine ≤ 150 AND length(lines) ≥ 3 THEN
+      RETURN 1 point  // weak evidence (code-like density)
+    ELSE
+      RETURN 0 points
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
+
+**Scoring**: 30–150 chars/line AND 3+ lines → **1 point** (weak evidence)
+
+---
+
+### 1.3 Composite Feature Scoring Algorithm
+
+**Main Algorithm**:
+```pascal
+FUNCTION computeSourceCodeScore(text)
+  INPUT: text (string to analyze)
+  OUTPUT: classification (code or prose), score (0–10+), strong_evidence_present (boolean)
+  
+  SEQUENCE
+    // ─── Detect all 10 features ──────────────────────────────────
+    feature_code_keywords ← detectCodeKeywords(text)
+    feature_imports ← detectImportStatements(text)
+    feature_braces ← detectBraces(text)
+    feature_function_calls ← detectFunctionCalls(text)
+    
+    feature_semicolons ← detectSemicolons(text)
+    feature_operators ← detectOperators(text)
+    feature_naming_conventions ← detectCodingNamingConventions(text)
+    feature_comments ← detectComments(text)
+    feature_indentation ← detectIndentationPattern(text)
+    feature_line_density ← detectLineDensity(text)
+    
+    // ─── Check for strong evidence ──────────────────────────────
+    strong_evidence_present ← (
+      feature_code_keywords > 0 OR
+      feature_imports > 0 OR
+      feature_braces > 0 OR
+      feature_function_calls ≥ 2
+    )
+    
+    // ─── Calculate total score ──────────────────────────────────
+    total_score ← (
+      feature_code_keywords +
+      feature_imports +
+      feature_braces +
+      feature_function_calls +
+      feature_semicolons +
+      feature_operators +
+      feature_naming_conventions +
+      feature_comments +
+      feature_indentation +
+      feature_line_density
+    )
+    
+    // ─── Classification rule: MUST meet BOTH conditions ──────────
+    // RULE: source code IF (total_score ≥ 6) AND (strong_evidence_present)
+    
+    IF total_score ≥ 6 AND strong_evidence_present THEN
+      RETURN {
+        classification: "code",
+        score: total_score,
+        strong_evidence: true,
+        reason: "✓ Meets threshold (score ≥ 6) AND has strong evidence"
+      }
+    ELSE IF total_score ≥ 6 AND NOT strong_evidence_present THEN
+      RETURN {
+        classification: "prose",
+        score: total_score,
+        strong_evidence: false,
+        reason: "✗ Meets score threshold but NO strong evidence type"
+      }
+    ELSE
+      RETURN {
+        classification: "prose",
+        score: total_score,
+        strong_evidence: strong_evidence_present,
+        reason: "✗ Below score threshold (< 6) OR no strong evidence"
+      }
+    END IF
+  END SEQUENCE
+END FUNCTION
+```
+
+**Scoring Summary**:
+- **Strong Evidence Required**: At least ONE of {Code Keywords, Imports, Braces, 2+ Function Calls}
+- **Score Threshold**: Total score ≥ 6
+- **Final Classification**:
+  - `code` IF (score ≥ 6) AND (strong_evidence_present = true)
+  - `prose` OTHERWISE
+
+**Examples**:
+- Score 8 with 1 keyword + 2 semicolons = **CODE** ✓ (meets both conditions)
+- Score 8 with only semicolons/operators (no keywords/imports/braces/calls) = **PROSE** ✗ (lacks strong evidence)
+- Score 5 with 1 keyword = **PROSE** ✗ (below score threshold)
+
+---
+
+### 1.4 Configuration
 
 ```javascript
 const CODE_DETECTION_CONFIG = {
-  // ── Global thresholds ────────────────────────────────────────
-  enableSourceCodeDetection:  true,
-  codeScoreThreshold:         0.50,    // composite score to trigger "code block" finding
-  credentialEscalationThreshold: 0.35, // credential signal alone triggers escalation
+  enableSourceCodeDetection: true,
+  scoreThreshold: 6,               // minimum total score
+  requireStrongEvidence: true,     // must have at least one strong type
   
-  // ── Signal-specific thresholds ────────────────────────────────
-  signals: {
-    structure_density: {
-      threshold: 0.10,
-      weight:    0.15,
-      enabled:   true
-    },
-    token_pattern: {
-      threshold: 0.25,
-      weight:    0.30,
-      enabled:   true
-    },
-    entropy_distribution: {
-      threshold: 0.40,
-      weight:    0.20,
-      enabled:   true
-    },
-    credential_indicators: {
-      threshold: 0.10,  // very sensitive; even one credential is concerning
-      weight:    0.25,
-      enabled:   true,
-      escalatesToModerate: true  // if this signal > threshold, escalate to moderate
-    },
-    markup_consistency: {
-      threshold: 0.20,
-      weight:    0.10,
-      enabled:   true
-    }
+  features: {
+    code_keywords: { enabled: true, strong: true, points: 3 },
+    import_statements: { enabled: true, strong: true, points: 3 },
+    braces: { enabled: true, strong: true, points: 2 },
+    function_calls: { enabled: true, strong: true, points: 2 },
+    
+    semicolons: { enabled: true, strong: false, points: 1 },
+    operators: { enabled: true, strong: false, points: 1 },
+    naming_conventions: { enabled: true, strong: false, points: 1 },
+    comments: { enabled: true, strong: false, points: 1 },
+    indentation: { enabled: true, strong: false, points: 1 },
+    line_density: { enabled: true, strong: false, points: 1 }
   },
   
-  // ── Logging and diagnostics ──────────────────────────────────
-  logScores:          true,
-  logSignalDetails:   true,
-  logEscalations:     true,
-  verbosity:          "info"  // "debug", "info", "warn", "error"
+  // Risk escalation
+  credentialPatterns: [
+    /(?:api[_-]?key|secret|password|pwd|token|auth|credential|bearer)/gi,
+    /AKIA[A-Z0-9]{16}/g,           // AWS access key
+    /(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{20,}/g,
+    /sk-[A-Za-z0-9\-]{20,}/g,      // OpenAI
+    /eyJ[A-Za-z0-9\-_]{7,}\.eyJ[A-Za-z0-9\-_]{7,}\./g  // JWT
+  ],
+  
+  escalateTo: {
+    credentialFound: "moderate",
+    credentialAndCode: "high"
+  },
+  
+  // Logging
+  logScores: true,
+  verbosity: "info"
 };
 ```
 
-Configuration can be updated at runtime:
-
-```javascript
-function updateCodeDetectionConfig(newConfig) {
-  Object.assign(CODE_DETECTION_CONFIG, newConfig);
-  console.log("[TrustPrompt/CodeDetection] Config updated:", CODE_DETECTION_CONFIG);
-}
-```
-
 ---
 
-### 4. Risk Escalation Logic
+## 2. Integration with Existing Scanner
 
-When credential indicators are detected, escalate code block risk:
+### 2.1 Placement in Pipeline
 
-```javascript
-function evaluateCodeRiskEscalation(signals, baseRisk) {
-  const credentialSignal = signals.find(s => s.signal === "credential_indicators");
+The code detection feature integrates into `scanner.js` as part of PATH A:
+
+```pascal
+FUNCTION runPathA(normalisedText)
+  INPUT: normalisedText (scanned text)
+  OUTPUT: findings (array of pattern matches)
   
-  if (credentialSignal && credentialSignal.value >= CODE_DETECTION_CONFIG.signals.credential_indicators.threshold) {
-    const escalateTo = CODE_DETECTION_CONFIG.signals.credential_indicators.escalatesToModerate;
-    if (escalateTo) {
-      console.log(`[TrustPrompt/CodeDetection] Credential escalation: ${baseRisk} → moderate`);
-      return "moderate";
-    }
-  }
-  
-  return baseRisk;
-}
-```
-
-**Escalation Rules**:
-1. If `credential_indicators > 0.10`, escalate finding from "low" to "moderate"
-2. If `credential_indicators > 0.35` AND composite score > 0.50, escalate to "high"
-3. If code contains API key / JWT patterns (detected by PATH A), finding is already "high"
-
----
-
-### 5. Integration with Existing Scanner
-
-#### 5.1 Placement in Pipeline
-
-The code detection improvement integrates into `scanner.js` as part of PATH A:
-
-```javascript
-function runPathA(normalisedText) {
-  const findings = [];
-  
-  for (const pattern of TRUSTPROMPT_PATTERNS) {
-    if (!pattern.regex) continue;
+  SEQUENCE
+    findings ← []
     
-    const re = new RegExp(pattern.regex.source, pattern.regex.flags);
-    let match;
-    
-    while ((match = re.exec(normalisedText)) !== null) {
-      const raw = match[0];
-      
-      // ... (existing entropy and context checks)
-      
-      // NEW: For source_code pattern, apply multi-signal scoring
-      if (pattern.id === "source_code") {
-        const signals = [
-          computeStructureDensity(raw),
-          computeTokenPattern(raw),
-          computeEntropyDistribution(raw),
-          computeCredentialIndicators(raw),
-          computeMarkupConsistency(raw)
-        ];
+    FOR EACH pattern IN TRUSTPROMPT_PATTERNS DO
+      IF pattern.id = "source_code" THEN
+        // ─── NEW: Multi-feature detection with dual threshold ───
         
-        const { compositeScore, signals: signalDetails } = aggregateSignals(signals);
+        matches ← applyRegex(pattern.regex, normalisedText)
         
-        if (compositeScore < CODE_DETECTION_CONFIG.codeScoreThreshold) {
-          console.log(`[TrustPrompt/CodeDetection] Low confidence (${compositeScore.toFixed(2)}); discarding`);
-          continue;  // Skip low-confidence matches
-        }
-        
-        let riskLevel = pattern.risk;
-        riskLevel = evaluateCodeRiskEscalation(signals, riskLevel);
-        
-        findings.push({
-          patternId:   pattern.id,
-          label:       pattern.label,
-          risk:        riskLevel,
-          rawMatch:    raw,
-          safeVersion: pattern.sanitize ? pattern.sanitize(raw) : "[CODE BLOCK REMOVED]",
-          validated:   true,  // Multi-signal scoring provides confidence
-          source:      "A_regex_scored",
-          codeMetrics: {
-            compositeScore,
-            signals: signalDetails
+        FOR EACH match IN matches DO
+          // Compute feature scores
+          features ← {
+            code_keywords: detectCodeKeywords(match),
+            imports: detectImportStatements(match),
+            braces: detectBraces(match),
+            function_calls: detectFunctionCalls(match),
+            semicolons: detectSemicolons(match),
+            operators: detectOperators(match),
+            naming_conventions: detectCodingNamingConventions(match),
+            comments: detectComments(match),
+            indentation: detectIndentationPattern(match),
+            line_density: detectLineDensity(match)
           }
-        });
-      } else {
-        // Existing pattern handling
-        findings.push({...});
-      }
-    }
-  }
-  
-  return findings;
-}
+          
+          score ← computeSourceCodeScore(match)
+          
+          // Check dual threshold
+          IF score.classification ≠ "code" THEN
+            log "[TrustPrompt/CodeDetection] Low confidence (score: " + score.score + ")"
+            continue  // Skip low-confidence matches
+          END IF
+          
+          // Assess risk escalation
+          risk ← pattern.risk
+          IF detectCredentials(match) THEN
+            risk ← "moderate"
+            log "[TrustPrompt/CodeDetection] Credentials detected; escalated to moderate"
+          END IF
+          
+          finding ← {
+            patternId: pattern.id,
+            label: pattern.label,
+            risk: risk,
+            rawMatch: match,
+            safeVersion: "[CODE BLOCK REMOVED]",
+            validated: true,
+            source: "A_regex_scored",
+            codeMetrics: {
+              score: score.score,
+              strong_evidence: score.strong_evidence,
+              classification: score.classification,
+              reason: score.reason,
+              features: features
+            }
+          }
+          
+          findings.push(finding)
+        END FOR
+      ELSE
+        // ─── Existing pattern handling ───
+        findings.push(...)
+      END IF
+    END FOR
+    
+    RETURN findings
+  END SEQUENCE
+END FUNCTION
 ```
 
-#### 5.2 Markdown Regex Fallback
+### 2.2 Credential Escalation Logic
 
-Preserve existing markdown detection and enhance it:
-
-```javascript
-// Keep existing regex to catch explicit markdown fences
-{
-  id: "source_code",
-  label: "Source Code Block",
-  reason: "Code blocks may contain hardcoded credentials, internal logic, proprietary algorithms, or configuration details that should not be shared externally. Even seemingly harmless code can reveal system architecture or security assumptions.",
-  regex: /```[\s\S]*?```|`[^`\n]{10,}`|^[ \t]{4,}.{1,}(?:\n[ \t]{4,}.+)*/gm,  // fences + indented
-  risk: "low",
-  validate: null,
-  sanitize: (_m) => "[CODE BLOCK REMOVED]"
-}
-```
-
-The regex matches:
-- Triple-backtick fences: ` ```...``` `
-- Inline code: `` `code` ``
-- Indented code blocks (4+ spaces): multiline indented text
-
-When a match is found, the multi-signal scoring framework evaluates it. If score is high, the risk escalates to "moderate". If credentials are detected, it may escalate to "high".
-
----
-
-## 6. Context-Aware Detection
-
-### 6.1 Contextual Heuristics
-
-```javascript
-function isCodeContextual(text, normalizedFullText, matchIndex) {
-  // Check if the match is surrounded by code-like context
-  const BEFORE_WINDOW = 100;
-  const AFTER_WINDOW = 100;
+```pascal
+FUNCTION detectCredentials(codeText)
+  INPUT: codeText (source code to analyze)
+  OUTPUT: hasCredentials (boolean)
   
-  const before = normalizedFullText.slice(
-    Math.max(0, matchIndex - BEFORE_WINDOW),
-    matchIndex
-  );
-  const after = normalizedFullText.slice(
-    matchIndex + text.length,
-    Math.min(normalizedFullText.length, matchIndex + text.length + AFTER_WINDOW)
-  );
-  
-  // Surrounding code indicators
-  const contextIndicators = [
-    /code|snippet|example|implementation|function|class|method|variable/gi,
-    /paste|gist|github|repo|repository|source/gi,
-    /python|javascript|java|bash|shell|sql|console|terminal|output/gi
-  ];
-  
-  const contextScore = contextIndicators.reduce((acc, pattern) => {
-    return acc + 
-      (before.match(pattern) || []).length +
-      (after.match(pattern) || []).length;
-  }, 0);
-  
-  return contextScore > 0;
-}
+  SEQUENCE
+    FOR EACH pattern IN CONFIG.credentialPatterns DO
+      IF pattern matches in codeText THEN
+        RETURN true
+      END IF
+    END FOR
+    RETURN false
+  END SEQUENCE
+END FUNCTION
 ```
 
 ---
 
-## 7. Logging and Diagnostics Framework
+## 3. Logging and Diagnostics
 
-### 7.1 Diagnostic Output
+### 3.1 Feature Detection Logging
 
-```javascript
-function logCodeDetection(findings, signals, compositeScore) {
-  if (!CODE_DETECTION_CONFIG.logScores) return;
+```pascal
+FUNCTION logFeatureDetection(text, features, score)
+  INPUT: text, features (detected features), score (classification result)
+  OUTPUT: log output to console
   
-  console.log(`[TrustPrompt/CodeDetection] Composite Score: ${compositeScore.toFixed(3)}`);
-  
-  if (CODE_DETECTION_CONFIG.logSignalDetails) {
-    for (const signal of signals) {
-      console.log(
-        `  [Signal] ${signal.signal}: ${signal.value.toFixed(3)} ` +
-        `(weight: ${signal.weight}, threshold: ${CODE_DETECTION_CONFIG.signals[signal.signal].threshold})`
-      );
-    }
-  }
-  
-  if (CODE_DETECTION_CONFIG.logEscalations && findings.length > 0) {
-    for (const f of findings) {
-      console.log(
-        `[TrustPrompt/CodeDetection] Escalation: ${f.patternId} ` +
-        `risk: ${f.risk}, metrics: ${JSON.stringify(f.codeMetrics, null, 2)}`
-      );
-    }
-  }
-}
+  SEQUENCE
+    IF NOT CONFIG.logScores THEN RETURN END IF
+    
+    log "[TrustPrompt/CodeDetection] Feature Analysis:"
+    
+    // Strong evidence
+    IF features.code_keywords > 0 THEN
+      log "  [Strong] Code Keywords: " + features.code_keywords + " points"
+    END IF
+    IF features.imports > 0 THEN
+      log "  [Strong] Imports: " + features.imports + " points"
+    END IF
+    IF features.braces > 0 THEN
+      log "  [Strong] Braces: " + features.braces + " points"
+    END IF
+    IF features.function_calls ≥ 2 THEN
+      log "  [Strong] Function Calls: " + features.function_calls + " points"
+    END IF
+    
+    // Weak evidence
+    log "  [Weak] Semicolons: " + features.semicolons
+    log "  [Weak] Operators: " + features.operators
+    log "  [Weak] Naming: " + features.naming_conventions
+    log "  [Weak] Comments: " + features.comments
+    log "  [Weak] Indentation: " + features.indentation
+    log "  [Weak] Line Density: " + features.line_density
+    
+    log ""
+    log "  Total Score: " + score.score + " (threshold: 6)"
+    log "  Strong Evidence: " + (score.strong_evidence ? "YES" : "NO")
+    log "  Classification: " + score.classification
+    log "  Reason: " + score.reason
+  END SEQUENCE
+END FUNCTION
 ```
 
-### 7.2 Debug Output Format
-
-Example output for a code block containing an API key:
+### 3.2 Example Output
 
 ```
-[TrustPrompt/CodeDetection] Processing source_code match (length 234)
-  [Signal] structure_density: 0.182 (weight: 0.15, threshold: 0.10)
-  [Signal] token_pattern: 0.680 (weight: 0.30, threshold: 0.25) — javascript detected
-  [Signal] entropy_distribution: 0.420 (weight: 0.20, threshold: 0.40)
-  [Signal] credential_indicators: 0.660 (weight: 0.25, threshold: 0.10) — 2 indicators found
-  [Signal] markup_consistency: 0.120 (weight: 0.10, threshold: 0.20)
-  Composite Score: 0.521 (threshold: 0.50) ✓ PASS
-[TrustPrompt/CodeDetection] Escalation: source_code → moderate
-  Reason: credential_indicators signal (0.660) exceeds escalation threshold (0.35)
-  Findings: 1
+[TrustPrompt/CodeDetection] Feature Analysis:
+  [Strong] Code Keywords: 3 points (function, return, const)
+  [Strong] Braces: 2 points (2 braces, density 0.032)
+  [Weak] Semicolons: 1 point (2 semicolons)
+  [Weak] Operators: 1 point (3 operators detected)
+  [Weak] Naming: 0 points
+  [Weak] Comments: 1 point (1 comment marker)
+  [Weak] Indentation: 1 point (40% of lines indented)
+  [Weak] Line Density: 1 point (avg 65 chars/line)
+
+  Total Score: 10 (threshold: 6)
+  Strong Evidence: YES
+  Classification: CODE
+  Reason: ✓ Meets threshold (score ≥ 6) AND has strong evidence
+
+[TrustPrompt/CodeDetection] Risk Escalation Check:
+  Credentials detected: API_KEY pattern found
+  Risk escalated: low → moderate
 ```
 
 ---
 
-## 8. Data Structures
+## 4. Data Structures
 
-### 8.1 Signal Structure
-
-```javascript
-{
-  signal: "credential_indicators",
-  value: 0.660,                    // normalized 0–1
-  components: {
-    credentialCount: 2,
-    patterns: 10
-  }
-}
-```
-
-### 8.2 Aggregated Score Structure
+### 4.1 Features Object
 
 ```javascript
 {
-  compositeScore: 0.521,
-  normalizedScore: 0.521,
-  signals: [
-    { signal: "structure_density", value: "0.182", weight: 0.15 },
-    { signal: "token_pattern", value: "0.680", weight: 0.30 },
-    { signal: "entropy_distribution", value: "0.420", weight: 0.20 },
-    { signal: "credential_indicators", value: "0.660", weight: 0.25 },
-    { signal: "markup_consistency", value: "0.120", weight: 0.10 }
-  ]
+  code_keywords: 3,          // strong evidence
+  import_statements: 3,      // strong evidence
+  braces: 2,                 // strong evidence
+  function_calls: 2,         // strong evidence
+  semicolons: 1,             // weak evidence
+  operators: 1,              // weak evidence
+  naming_conventions: 1,     // weak evidence
+  comments: 1,               // weak evidence
+  indentation: 1,            // weak evidence
+  line_density: 1            // weak evidence
 }
 ```
 
-### 8.3 Enhanced Finding Structure
+### 4.2 Score Object
+
+```javascript
+{
+  classification: "code",                    // "code" or "prose"
+  score: 10,                                 // total feature points
+  strong_evidence: true,                     // boolean
+  reason: "✓ Meets threshold AND has strong evidence"
+}
+```
+
+### 4.3 Enhanced Finding Structure
 
 ```javascript
 {
   patternId: "source_code",
   label: "Source Code Block",
-  risk: "moderate",                    // escalated from "low"
-  rawMatch: "const apiKey = 'sk-...'",
+  risk: "moderate",                         // escalated from "low"
+  rawMatch: "function foo() { return 42; }",
   safeVersion: "[CODE BLOCK REMOVED]",
   validated: true,
   source: "A_regex_scored",
-  codeMetrics: {                       // NEW
-    compositeScore: 0.521,
-    signals: [
-      { signal: "credential_indicators", value: "0.660", weight: 0.25 },
-      // ... other signals
-    ]
+  codeMetrics: {
+    score: 10,
+    strong_evidence: true,
+    classification: "code",
+    reason: "✓ Meets threshold (score ≥ 6) AND has strong evidence",
+    features: {
+      code_keywords: 3,
+      imports: 3,
+      braces: 2,
+      function_calls: 2,
+      // ... weak evidence features
+    }
   }
 }
 ```
 
 ---
 
-## 9. Integration Checklist
+## 5. Correctness Properties
 
-### 9.1 Code Changes Required
+### Property 1: Dual Threshold Validation
+*For any* text block, the system SHALL classify as code IF AND ONLY IF (total_score ≥ 6) AND (at least one strong evidence type present).
 
-- [ ] Add signal computation functions to `scanner.js` or new `code-detector.js` module
-- [ ] Add `aggregateSignals()` function
-- [ ] Add `CODE_DETECTION_CONFIG` configuration object
-- [ ] Update `runPathA()` to apply multi-signal scoring to `source_code` pattern
-- [ ] Add `evaluateCodeRiskEscalation()` to governance rule evaluation
-- [ ] Add helper function `isCodeContextual()`
-- [ ] Add logging framework functions
-- [ ] Update `BASE_SCORES` and `ENTITY_TIER` if needed for escalated findings
-- [ ] Update existing `source_code` pattern in `TRUSTPROMPT_PATTERNS`
+### Property 2: Strong Evidence Necessity
+*For any* prose text, the system SHALL NOT classify as code, even if weak features accumulate to score ≥ 6.
 
-### 9.2 Testing Requirements
+### Property 3: Code Recognition
+*For any* legitimate code block (JavaScript function, SQL query, Python script), the system SHALL detect at least one strong evidence type and compute score ≥ 6, resulting in classification as code.
 
-- **Unit Tests**: Each signal function with sample code and prose
-- **Integration Tests**: Full scan with mixed code blocks, verify escalation logic
+### Property 4: Credential Escalation
+*For any* code block containing credential patterns, the system SHALL elevate risk from "low" to "moderate" or "high".
+
+### Property 5: Prose Rejection
+*For any* natural language prose, the system SHALL score below 6 or lack strong evidence, resulting in classification as prose.
+
+---
+
+## 6. Edge Cases and Handling
+
+### 6.1 Minified Code
+**Challenge**: Minified code has no indentation, few comments, long lines.
+**Handling**: Strong feature detection (keywords, imports, braces) will catch minified code.
+
+### 6.2 Shell Scripts
+**Challenge**: Shell code has different syntax (no braces, different keywords).
+**Handling**: Import detection and comment markers will identify shell scripts.
+
+### 6.3 JSON/YAML Configuration Files
+**Challenge**: JSON and YAML may have braces/colons but are not executable code.
+**Handling**: Require strong evidence (keywords, imports, function calls). JSON alone won't trigger code classification.
+
+### 6.4 Mixed Code/Prose
+**Challenge**: Documentation explaining code snippets.
+**Handling**: Analyze each distinct code block separately; prose describing code won't meet strong evidence criteria.
+
+---
+
+## 7. Performance Optimization
+
+### 7.1 Benchmark Targets
+
+- **Per-feature analysis**: 50–100 character block in <0.5ms per feature
+- **All 10 features**: <5ms total computation
+- **Per-block classification**: <10ms (including feature + threshold check)
+- **Total PATH A overhead**: <5% slower than baseline
+
+### 7.2 Optimization Strategies
+
+1. **Pre-compiled Regex**: Cache all regex patterns
+2. **Early Exit**: If score already exceeds threshold and strong evidence found, skip remaining weak features
+3. **Lazy Evaluation**: Compute expensive features only if basic ones don't meet criteria
+4. **Line Sampling**: For very large blocks, sample representative lines instead of analyzing entire block
+
+---
+
+## 8. Integration Checklist
+
+### Code Changes Required
+
+- [ ] Implement 10 feature detection functions in `code-detector.js` or `scanner.js`
+- [ ] Implement `computeSourceCodeScore()` main algorithm
+- [ ] Update `runPathA()` to call multi-feature scoring for `source_code` pattern
+- [ ] Implement credential detection and risk escalation
+- [ ] Add logging and diagnostic output functions
+- [ ] Update configuration with feature points and thresholds
+- [ ] Preserve existing markdown regex as fallback
+- [ ] Update finding structure to include `codeMetrics` field
+
+### Testing Requirements
+
+- **Unit Tests**: Each feature function with code/prose samples
+- **Integration Tests**: Full scan with mixed code blocks, verify scoring and escalation
 - **Regression Tests**: Existing source_code detection still works
-- **Calibration Tests**: Verify threshold configuration changes behavior
-- **Performance Tests**: Multi-signal scoring adds minimal overhead (<5ms per code block)
+- **Edge Cases**: Minified code, shell scripts, JSON, HTML, mixed content
+- **Performance Tests**: Verify overhead < 5% on real scans
 
 ---
 
-## 10. Correctness Properties
+## 9. Future Extensions
 
-### Property 1: Valid Code Recognition
-*For any* legitimate code block (JavaScript function, SQL query, Python class), the multi-signal score SHALL exceed the threshold (0.50) and the block SHALL be flagged as `source_code`.
-
-### Property 2: Prose Rejection
-*For any* natural language prose (paragraph, bullet list, descriptive text), the composite score SHALL be below threshold and the text SHALL NOT be flagged as `source_code`.
-
-### Property 3: Credential Escalation
-*For any* code block that contains API key, JWT, or password pattern, the `credential_indicators` signal SHALL exceed 0.10 and the finding's `risk` SHALL be escalated to `moderate` or `high`.
-
-### Property 4: Threshold Configurability
-*For any* valid configuration update via `updateCodeDetectionConfig()`, subsequent scans SHALL apply the new thresholds and produce different results (higher threshold → fewer matches, lower threshold → more matches).
-
-### Property 5: Signal Independence
-*For any* code block, each signal SHALL be computed independently and SHALL NOT depend on other signals' values. The composite score SHALL be a weighted average of independent values.
-
----
-
-## 11. Performance Optimization
-
-### 11.1 Benchmark Targets
-
-- **Per-block analysis**: 50–100 character code block in <1ms
-- **Multi-signal computation**: 5 signals computed in <2ms
-- **Full source_code pattern**: 10 matches across 10KB text in <20ms
-- **Total PATH A overhead**: <5% slower than baseline (existing patterns only)
-
-### 11.2 Optimization Strategies
-
-1. **Lazy Evaluation**: Compute expensive signals only if basic signals already meet threshold
-2. **Regex Caching**: Pre-compile credential patterns
-3. **Early Exit**: If composite score falls below threshold midway, stop computing remaining signals
-4. **Sampling**: For very large code blocks, sample lines instead of analyzing entire block
-
----
-
-## 12. Configuration Example
-
-```javascript
-// Tuned for high sensitivity (more detections, may have false positives)
-const SENSITIVE_CONFIG = {
-  enableSourceCodeDetection: true,
-  codeScoreThreshold: 0.40,
-  signals: {
-    token_pattern: { weight: 0.40 },       // increase weight
-    credential_indicators: { weight: 0.30 }
-  }
-};
-
-// Tuned for high specificity (fewer detections, fewer false positives)
-const CONSERVATIVE_CONFIG = {
-  enableSourceCodeDetection: true,
-  codeScoreThreshold: 0.65,                // higher threshold
-  signals: {
-    token_pattern: { weight: 0.35 },       // decrease weight
-    structure_density: { threshold: 0.15 } // higher threshold
-  }
-};
-```
-
----
-
-## 13. Future Extensions
-
-1. **Machine Learning Classifier**: Train a model on labeled code/non-code examples
-2. **Language-Specific Parsers**: Use actual parsers for JavaScript, Python, etc. (if available)
-3. **AST Analysis**: Parse code blocks to extract structure (function definitions, variable assignments)
-4. **Semantic Credential Detection**: Cross-reference detected credentials with known patterns (Stripe test keys, etc.)
-5. **Differential Scoring**: Weight signals based on detected language (weight token_pattern higher for JavaScript than for natural language)
-
+1. **Machine Learning Classification**: Train on labeled code/non-code examples
+2. **Language-Specific Weighting**: Adjust feature weights based on detected language
+3. **AST Parsing**: Parse code blocks to extract structure (if available)
+4. **Semantic Credential Detection**: Cross-reference detected credentials with known patterns (Stripe, OpenAI, etc.)
+5. **Context Integration**: Consider surrounding text for intentional code sharing

@@ -1,0 +1,527 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create shared utilities for signal computation": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618348659
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618362675
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618978232
+      }
+    ],
+    "1.2 Define signal computation constants and configuration": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618349532
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618363040
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618978622
+      }
+    ],
+    "2.1 Implement `computeStructureDensity(text)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618349739
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618991476
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789622693235
+      }
+    ],
+    "3.1 Implement language pattern detection objects": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350012
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618991820
+      }
+    ],
+    "3.2 Implement `computeTokenPattern(text)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350155
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618992195
+      }
+    ],
+    "4.1 Implement `computeEntropyDistribution(text)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350299
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618992626
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789622695261
+      }
+    ],
+    "5.1 Create credential detection pattern collection": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350435
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618994212
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789622695417
+      }
+    ],
+    "5.2 Implement `computeCredentialIndicators(text)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350570
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789622709148
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789626402506
+      }
+    ],
+    "6.1 Implement `computeMarkupConsistency(text)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350665
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789622710775
+      },
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789626402680
+      }
+    ],
+    "7.1 Implement `aggregateSignals(signals)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350760
+      },
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631127473
+      }
+    ],
+    "8.1 Create CODE_DETECTION_CONFIG object": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350851
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917637320
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918933428
+      }
+    ],
+    "8.2 Implement `updateCodeDetectionConfig(newConfig)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618350947
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917637820
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918933760
+      }
+    ],
+    "9.1 Implement `evaluateCodeRiskEscalation(signals, baseRisk)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351034
+      }
+    ],
+    "10.1 Implement `isCodeContextual(text, normalizedFullText, matchIndex)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351123
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917638434
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918935660
+      }
+    ],
+    "10.2 Implement context-aware risk elevation": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351209
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917638933
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918935934
+      }
+    ],
+    "11.1 Implement `logCodeDetection(findings, signals, compositeScore)` function": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351292
+      }
+    ],
+    "11.2 Implement diagnostic output formatting": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351395
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917639359
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918936216
+      }
+    ],
+    "12.1 Update runPathA() to apply multi-signal scoring for source_code pattern": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351522
+      }
+    ],
+    "12.2 Implement unformatted code block extraction": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351643
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058669559
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058676255
+      }
+    ],
+    "12.3 Apply embedded credential detection within code blocks": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351725
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058670512
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058676795
+      }
+    ],
+    "13.1 Ensure markdown pattern continues to work": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351819
+      }
+    ],
+    "13.2 Implement deduplication logic": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351892
+      }
+    ],
+    "14.1 Measure baseline performance of signal computations": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618351987
+      }
+    ],
+    "14.2 Optimize signal computation if needed": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352091
+      }
+    ],
+    "15.1 Create positive test samples (code blocks)": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352191
+      }
+    ],
+    "15.2 Create negative test samples (prose)": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352295
+      }
+    ],
+    "15.3 Calibrate threshold and weights": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352388
+      }
+    ],
+    "16.1 Run full test suite": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352480
+      }
+    ],
+    "17.1 Add inline documentation to scanner.js": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352572
+      }
+    ],
+    "17.2 Create diagnostic examples in comments": [
+      {
+        "executionId": "ad88b303-a0a3-4b9d-aa01-ffbe166c6a7a",
+        "chatSessionId": "sess_24e2bbc4-07d7-4d7f-9c9a-d952491fcc3a",
+        "timestamp": 1789618352675
+      }
+    ],
+    "1.3 Write unit tests for shared utilities": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631115601
+      }
+    ],
+    "2.2 Write unit tests for structure density signal": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631115775
+      }
+    ],
+    "3.3 Write unit tests for token pattern signal": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631116029
+      }
+    ],
+    "4.2 Write unit tests for entropy distribution signal": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631116364
+      }
+    ],
+    "5.3 Write unit tests for credential indicators signal": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631116820
+      }
+    ],
+    "6.2 Write unit tests for markup consistency signal": [
+      {
+        "executionId": "13787e12-317d-463d-8e7e-12c0df653c93",
+        "chatSessionId": "sess_57e8f8e8-8989-4e33-92c6-2ef2d7771b99",
+        "timestamp": 1789631117039
+      }
+    ],
+    "9.1 Implement `evaluateCodeRiskEscalation(scoreObj, baseRisk)` function": [
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917638035
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918934345
+      }
+    ],
+    "11.1 Implement `logCodeDetection(scoreObj, findings)` function": [
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789917639240
+      },
+      {
+        "executionId": "470e4802-0439-4489-a16d-eed7c7dbe2e8",
+        "chatSessionId": "sess_17720701-abb8-46a3-8655-b101aa9f9251",
+        "timestamp": 1789918936080
+      }
+    ],
+    "7.1 Implement `computeSourceCodeScore(text)` main algorithm": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790057764249
+      }
+    ],
+    "7.2 Write unit tests for composite scoring algorithm": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790057777672
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058219116
+      }
+    ],
+    "8.3 Write tests for configuration management": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058236297
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058602064
+      }
+    ],
+    "9.2 Write tests for risk escalation": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058242900
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058602333
+      }
+    ],
+    "10.3 Write tests for context-aware detection": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058244054
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058602835
+      }
+    ],
+    "11.3 Write tests for logging and diagnostics": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058244850
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058603305
+      }
+    ],
+    "12.4 Write integration tests for PATH A + multi-feature": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058245255
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058603793
+      }
+    ],
+    "12.1 Update runPathA() to apply multi-feature scoring for source_code pattern": [
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058669312
+      },
+      {
+        "executionId": "6dd51a35-140f-41d5-883e-a0d280048869",
+        "chatSessionId": "sess_9e217fc5-3880-4e35-b87a-5bca592725e2",
+        "timestamp": 1790058675990
+      }
+    ]
+  }
+}

@@ -467,15 +467,6 @@ const TrustGazetteer = (() => {
   const NAT_WORD_RE        = _buildWordRegex(NATIONALITY_WORDS);
   const NAT_PHRASE_RE      = _buildPhraseRegex(NATIONALITY_PHRASES);
 
-  // ── GAZETTEER lookup object ───────────────────────────────────────────────
-  // Flat term arrays per category — consumed term-by-term in runGazetteerScan()
-  // and also passed as the third argument to grammarCheck() in runTriggerScan().
-  // Keys must match what grammarCheck() accesses: medical, financial, nationality_religion.
-  const GAZETTEER = {
-    medical:              [...MEDICAL_WORDS, ...MEDICAL_PHRASES],
-    financial:            [...FINANCIAL_WORDS, ...FINANCIAL_PHRASES],
-    nationality_religion: [...NATIONALITY_WORDS, ...NATIONALITY_PHRASES],
-  };
 
   // ── B2: TRIGGER PHRASES ───────────────────────────────────────────────────
   // Each entry:
@@ -530,6 +521,25 @@ const TrustGazetteer = (() => {
     { phrase: "my account number is", category: "financial",    risk: "high"   },
     { phrase: "my card number is",    category: "financial",    risk: "high"   }
   ];
+
+  // ── GAZETTEER OBJECT — Aggregated word/phrase lists for validation ─────────
+  // Used by runTriggerScan() to validate extracted spans against gazetteers.
+  // When trigger.requireGazetteer is set, the extracted value must contain
+  // at least one term from GAZETTEER[trigger.requireGazetteer].
+  const GAZETTEER = {
+    medical: [
+      ...MEDICAL_WORDS,
+      ...MEDICAL_PHRASES
+    ],
+    financial: [
+      ...FINANCIAL_WORDS,
+      ...FINANCIAL_PHRASES
+    ],
+    nationality_religion: [
+      ...NATIONALITY_WORDS,
+      ...NATIONALITY_PHRASES
+    ]
+  };
 
   // Stop words — extracting a span halts when one of these is the next word
   const STOP_WORDS = new Set([
@@ -713,7 +723,141 @@ const TrustGazetteer = (() => {
     }
   }
 
-  // ── B1: GAZETTEER SCAN ────────────────────────────────────────────────────
+  // ── CONTEXTUAL NLP ANALYSIS (COMPROMISE-LITE) ────────────────────────────
+  //
+  // Before flagging a bare gazetteer term as PII, analyze the semantic context:
+  //
+  // SAFE contexts (NOT PII):
+  //   - Information-seeking: "What does Filipino mean?", "How to learn Tagalog"
+  //   - Educational: "Turn 09098340056 grams into tons"
+  //   - Linguistic inquiry: "What is the Filipino term for beautiful?"
+  //   - Language discussion: "Translate this to Filipino", "Filipino grammar"
+  //   - Product/food: "I like Filipino cuisine", "Filipino restaurant"
+  //   - Generic reference: "Filipino culture", "Filipino history"
+  //
+  // RISKY contexts (IS PII):
+  //   - Personal identification: "I'm Filipino", "My friend is Filipino"
+  //   - Nationality/ethnicity disclosure: "A friend of mine is Filipino, I want to understand her language"
+  //   - Sensitive subject reference: "I have Filipino heritage", "As a Filipino woman..."
+  //   - Contact-related: "Please create an email with 09098340056"
+
+  /**
+   * Analyze the semantic context around a detected gazetteer term.
+   * Returns true if the term appears to be actual sensitive PII,
+   * false if it's safe (educational, informational, or generic reference).
+   *
+   * Uses heuristics based on:
+   *   - Preceding context (question markers, educational phrases)
+   *   - Following context (what comes after the term)
+   *   - Sentence structure (personal pronouns, disclosure markers)
+   *   - Term category (nationality/religion require stronger markers)
+   *
+   * @param {string} fullText - the complete text
+   * @param {number} matchIndex - character index where the term was found
+   * @param {number} matchLength - length of the matched term
+   * @param {string} category - gazetteer category (e.g., "nationality_religion")
+   * @returns {boolean} true if risky PII context, false if safe
+   */
+  function analyzeTermContext(fullText, matchIndex, matchLength, category) {
+    // Extract surrounding context: ~150 chars before and after
+    const contextBefore = fullText.substring(Math.max(0, matchIndex - 150), matchIndex);
+    const contextAfter = fullText.substring(matchIndex + matchLength, Math.min(fullText.length, matchIndex + matchLength + 150));
+    const fullContext = contextBefore + " [TERM] " + contextAfter;
+
+    // Normalize context for analysis
+    const contextLower = contextBefore.toLowerCase();  // Use contextBefore for more reliable matching
+    const contextAfterLower = contextAfter.toLowerCase();
+
+    // ── RISKY HEURISTICS (Check these FIRST to catch PII patterns) ──────────
+    
+    // 1. Direct personal disclosure: "I'm X" or "I am X" (appears anywhere in contextBefore)
+    if (/\b(i\s+am|i'm|im)\b/.test(contextLower)) {
+      return true;  // Risky: Direct personal identification like "I'm Filipino"
+    }
+
+    // 2. "Have diabetes", "have depression", etc. - personal possession
+    if (/\bhave\b/.test(contextLower) && category === "medical") {
+      return true;  // Risky: "I have diabetes"
+    }
+
+    // 3. Possessive personal disclosure: "My X is", "Our X"
+    if (/\b(my|our)\b/.test(contextLower)) {
+      return true;  // Risky: "My girlfriend is Filipino", "My heritage is Filipino"
+    }
+
+    // 4. Contact/sensitive information request
+    const contactMarkers = /\b(create|send|write|email|contact|call|phone|number|details|address)\b/;
+    if (contactMarkers.test(contextLower) || contactMarkers.test(contextAfterLower)) {
+      return true;  // Risky: Contact information context
+    }
+
+    // 5. Third-person personal disclosure: "Friend/Person/Someone is X"
+    // BUT only if combined with sensitivity markers (understanding, knowing, etc.)
+    if (/\b(friend|person|woman|man|girl|boy|someone|she|he)\b/.test(contextLower)) {
+      const disclosureVerb = /\b(is|are|was|were)\b/.test(contextLower);
+      const sensitivityMarker = /\b(understand|know|learn|relate|connect|talk to|discuss)\b/.test(contextAfterLower);
+      if (disclosureVerb && sensitivityMarker) {
+        return true;  // Risky: "My friend is Filipino, I want to understand her"
+      }
+    }
+
+    // 6. Self-identification pattern: "As a X [personal vulnerability/context]"
+    // e.g., "As a Filipino woman, I face unique challenges"
+    if (/\bas\s+(?:a|an)\s+/.test(contextLower)) {
+      const vulnerabilityMarker = /\b(face|experience|deal with|struggle|challenge|difficulty|issue|problem|concern)\b/.test(contextAfterLower);
+      if (vulnerabilityMarker) {
+        return true;  // Risky: Self-identification with personal context
+      }
+    }
+
+    // ── SAFE HEURISTICS (Check these AFTER risky to prevent safe from overriding) ──
+    
+    // 1. Question marks at the BEGINNING (pure information-seeking)
+    if (/^\s*(what|how|explain|describe|can you|tell me|show me|give me|search for|research|define|meaning)\b/.test(contextLower)) {
+      return false;  // Safe: Pure information-seeking question
+    }
+
+    // 2. Educational/linguistic context in BEFORE section (and no personal markers)
+    const educationalMarkers = [
+      /\b(translate|language|term|word|grammar|spell|pronounce|pronunciation|dialect|accent)\b/,
+    ];
+    const hasNoPersonal = !/(i|i'm|im|have|my|me|friend|person|she|he|as\s+(?:a|an))\b/.test(contextLower);
+    if (hasNoPersonal) {
+      for (const marker of educationalMarkers) {
+        if (marker.test(contextLower)) {
+          return false;  // Safe: Educational context without personal reference
+        }
+      }
+    }
+
+    // 3. Food/cuisine context
+    if (/\b(cuisine|food|restaurant|dish|cooking|recipe)\b/.test(contextAfterLower)) {
+      return false;  // Safe: Food reference like "Filipino cuisine"
+    }
+
+    // 4. Cultural/historical context
+    if (/\b(culture|history|tradition|music|art|dance|architecture)\b/.test(contextAfterLower)) {
+      // But exclude if there's personal possession before
+      if (!/\b(my|our|have|as\s+(?:a|an))\b/.test(contextLower)) {
+        return false;  // Safe: Cultural reference like "Filipino culture"
+      }
+    }
+
+    // 5. Unit conversion or mathematical context
+    if (/\b(gram|ton|unit|measure|convert|calculation)\b/.test(contextAfterLower)) {
+      return false;  // Safe: Unit conversion or measurement context
+    }
+
+    // ── DEFAULT: ALLOW unless explicitly risky ───────────────────────────────
+    // This prevents false positives on ambiguous contexts
+    return false;
+  }
+
+  // ── B1: GAZETTEER SCAN (INTERNAL HELPER ONLY) ────────────────────────────
+  // This function now produces full findings with all required fields.
+  // B1 findings serve as fallback when B2 trigger phrases don't match,
+  // ensuring contextual terms are always detected.
+  // ENHANCED: Context analysis to filter out non-PII references
 
   function runGazetteerScan(text) {
     const findings = [];
@@ -723,18 +867,34 @@ const TrustGazetteer = (() => {
       for (const term of terms) {
         // Use word boundary to avoid partial matches
         const re = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "i");
-        const match = re.exec(text);
-        if (match) {
-          const riskMap = { medical: "medium", financial: "medium", nationality_religion: "low", legal: "medium" };
-          const catMap  = { medical: "medical_term", financial: "fin_term", nationality_religion: "low", legal: "legal_term" };
-          const meta    = CATEGORY_META[catMap[category]] || { label: term, sanitize: () => "[REDACTED]" };
+        let match;
+        const globalRe = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "gi");
+        
+        // Check all occurrences of this term
+        while ((match = globalRe.exec(text)) !== null) {
+          // NEW: Analyze context before flagging as PII
+          const isRiskyContext = analyzeTermContext(text, match.index, match[0].length, category);
+          
+          if (!isRiskyContext) {
+            // Context analysis indicates this is safe/educational, skip it
+            console.log(
+              '[TrustPrompt/PATH_B/B1] Filtered safe context: "' + match[0] + 
+              '" in category "' + category + '"'
+            );
+            continue;  // Skip this match
+          }
+
+          // B1 findings: bare gazetteer terms detected in risky context
+          // These have proper structure for scoring and display
+          const meta = CATEGORY_META[category] || { label: category, sanitize: () => "[REDACTED]" };
           findings.push({
             patternId:   "gazetteer_" + category,
             label:       meta.label,
-            risk:        riskMap[category] || "low",
+            risk:        "low",  // Base risk for gazetteer terms
             rawMatch:    match[0],
-            safeVersion: meta.sanitize(match[0]),
-            source:      "B1_gazetteer"
+            safeVersion: meta.sanitize ? meta.sanitize(match[0]) : "[REDACTED]",
+            source:      "B1_gazetteer",
+            validated:   false
           });
         }
       }
@@ -743,7 +903,52 @@ const TrustGazetteer = (() => {
     return findings;
   }
 
-  // ── B2 + B3: TRIGGER-PHRASE SCAN + GRAMMAR CHECK ─────────────────────────
+  // ── B2 + B3: TRIGGER-PHRASE SCAN + GRAMMAR CHECK + NLP CONTEXT ──────────
+  //
+  // Enhanced with NLP context checking to distinguish:
+  //   - General information-seeking: "what foods for diabetes?" → NO finding
+  //   - Personal disclosure: "i have diabetes" → FINDING
+  //
+  // The NLP check examines text context (before the trigger) to detect:
+  //   - Question markers: "what are", "how to", "explain", etc. → info-seeking
+  //   - Personal markers: "i have", "i suffer", "my condition", etc. → PII
+
+  /**
+   * Check if the context around a trigger phrase indicates personal disclosure
+   * (actual PII) vs. general information-seeking.
+   *
+   * For example:
+   *   "what are good foods for diabetes?" → Question context, NOT personal
+   *   "i have diabetes and need help" → Personal disclosure, IS PII
+   */
+  function isPersonalContext(text, startIdx, triggerCategory) {
+    // Get the text leading up to the trigger
+    const beforeText = text.substring(0, startIdx).toLowerCase();
+
+    // Question markers that suggest info-seeking (NOT PII)
+    const isInformationSeeking = /\b(what|how|explain|describe|tell me|show me|give me|search for)\b/.test(beforeText);
+
+    // If preceded by question/info-seeking language, it's not personal PII
+    if (isInformationSeeking) {
+      return false;
+    }
+
+    // For specific categories, check for personal disclosure markers
+    if (triggerCategory === "health") {
+      return /\b(i|me|my)\b/.test(beforeText) || beforeText.match(/suffer|diagnosed|condition|illness/);
+    }
+
+    if (triggerCategory === "financial") {
+      return /\b(i|me|my)\b/.test(beforeText) || beforeText.match(/earn|salary|income|account|card/);
+    }
+
+    if (triggerCategory === "location") {
+      return /\b(i|me|my)\b/.test(beforeText) || beforeText.match(/live|address|home|stay|reside/);
+    }
+
+    // Default: allow (trigger itself suggests personal context)
+    return true;
+  }
 
   function runTriggerScan(text) {
     const findings = [];
@@ -753,6 +958,21 @@ const TrustGazetteer = (() => {
       const { matched, startWordIdx, endWordIdx } = fuzzyMatchPhrase(text, trigger.phrase);
       if (!matched) continue;
 
+      // Find character index where trigger phrase starts
+      let triggerCharIdx = 0;
+      let wordCount = 0;
+      for (let i = 0; i < text.length; i++) {
+        if (!/\s/.test(text[i])) {
+          if (wordCount === startWordIdx) {
+            triggerCharIdx = i;
+            break;
+          }
+          if (i === 0 || /\s/.test(text[i - 1])) {
+            wordCount++;
+          }
+        }
+      }
+
       // FIX #3: extract value without relying on punctuation
       const { span } = extractValue(textWords, endWordIdx, trigger);
       if (!span) continue;
@@ -761,6 +981,12 @@ const TrustGazetteer = (() => {
       if (trigger.requireGazetteer) {
         const terms = GAZETTEER[trigger.requireGazetteer] || [];
         if (!terms.some(t => span.toLowerCase().includes(t))) continue;
+      }
+
+      // NLP CONTEXT CHECK: Verify this is personal PII, not general information
+      if (!isPersonalContext(text, triggerCharIdx, trigger.category)) {
+        // Context suggests this is general info-seeking, not personal disclosure
+        continue;
       }
 
       // FIX #4: already handled — fuzzyMatchPhrase let this through
@@ -773,16 +999,16 @@ const TrustGazetteer = (() => {
 
       const meta = CATEGORY_META[trigger.category] || { label: trigger.category, sanitize: () => "[REDACTED]" };
 
-      // Build the rawMatch as "trigger + value" so the UI shows context
-      const triggerText = textWords.slice(startWordIdx, endWordIdx).join(" ");
-      const rawMatch    = triggerText + " " + span;
+      // Extract just the PII value (not the trigger phrase)
+      // rawMatch should be the actual PII, not the entire trigger+value phrase
+      const rawMatch = span;
 
       findings.push({
         patternId:   "trigger_" + trigger.category,
         label:       meta.label,
         risk:        trigger.risk,
-        rawMatch:    rawMatch,
-        safeVersion: triggerText + " " + meta.sanitize(recapSpan),
+        rawMatch:    rawMatch,  // Just the extracted value (e.g., "kyleen" not "my name is kyleen")
+        safeVersion: meta.sanitize(recapSpan),  // Just sanitized value
         source:      "B2_trigger"
       });
     }
@@ -793,16 +1019,51 @@ const TrustGazetteer = (() => {
   // ── Public API ────────────────────────────────────────────────────────────
 
   /**
-   * Run the full Path B scan (B1 + B2 + B3) on already-normalised text.
+   * Run the Path B scan on already-normalised text.
+   *
+   * Returns both B1 (bare gazetteer terms) and B2 (trigger-phrase + context) findings.
+   * B1 provides fallback detection when B2's trigger phrases don't match, ensuring
+   * contextual terms are always detected (e.g., "i have diabetes" where "diabetes" is
+   * explicitly a personal disclosure).
+   *
    * @param {string} normalisedText
-   * @returns {Array} findings array
+   * @returns {Array} Combined B1 + B2 findings array
    */
   function scan(normalisedText) {
+    // B1: Bare gazetteer term detection (internal validation tool + fallback)
     const gazetterFindings = runGazetteerScan(normalisedText);
-    const triggerFindings  = runTriggerScan(normalisedText);
-    return [...gazetterFindings, ...triggerFindings];
+
+    // B2: Trigger phrase + context check (primary detection)
+    const triggerFindings = runTriggerScan(normalisedText);
+
+    // Combine: Use B2 findings primarily, but include B1 as fallback
+    // This ensures contextual terms are detected even without trigger phrases
+    const combined = [...triggerFindings];
+    
+    // Add B1 findings that aren't already covered by B2 (deduplication by rawMatch)
+    const b2Matches = new Set(triggerFindings.map(f => f.rawMatch.toLowerCase().trim()));
+    for (const b1Finding of gazetterFindings) {
+      if (!b2Matches.has(b1Finding.rawMatch.toLowerCase().trim())) {
+        combined.push(b1Finding);
+      }
+    }
+
+    console.log(
+      '[TrustPrompt/PATH_B] Results: B2 triggers: ' + triggerFindings.length + 
+      ', B1 fallback: ' + (combined.length - triggerFindings.length)
+    );
+
+    return combined;
   }
 
   return { scan };
 
 })();
+
+// ── Export TrustGazetteer to global scope ────────────────────────────────────
+if (typeof globalThis !== 'undefined') {
+  globalThis.TrustGazetteer = TrustGazetteer;
+}
+if (typeof window !== 'undefined') {
+  window.TrustGazetteer = TrustGazetteer;
+}

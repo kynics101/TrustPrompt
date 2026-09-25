@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implement a multi-signal scoring framework that improves source code detection through five independent signals (structure density, token pattern, entropy distribution, credential indicators, markup consistency). This feature detects unformatted code blocks, distinguishes code from prose with higher accuracy, and escalates risk when credentials are detected. The framework is configurable, logged, and integrates seamlessly with the existing scanner.js PATH A pipeline.
+Implement a 10-feature scoring framework that improves source code detection through dual threshold validation (composite score ≥ 6 AND strong evidence required). Features are classified as strong evidence (Code Keywords, Imports, Braces, Function Calls) and weak evidence (Semicolons, Operators, Naming Conventions, Comments, Indentation, Line Density). This feature detects unformatted code blocks, distinguishes code from prose with higher accuracy, and escalates risk when credentials are detected. The framework is configurable, logged, and integrates seamlessly with the existing scanner.js PATH A pipeline.
 
 ---
 
@@ -10,7 +10,7 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 1. Set Up Signal Computation Infrastructure
 
-- [ ] 1.1 Create shared utilities for signal computation
+- [x] 1.1 Create shared utilities for signal computation
   - Implement `shannonEntropy(text)` — compute entropy in bits/char (if not already present)
   - Implement `extractWordsFromText(text)` — tokenize text for keyword matching
   - Implement `countLineIndentation(text)` — analyze indentation patterns
@@ -18,7 +18,7 @@ Implement a multi-signal scoring framework that improves source code detection t
   - Add to `scanner.js` or new `code-detector.js` module
   - _Requirements: 1, 7_
 
-- [ ] 1.2 Define signal computation constants and configuration
+- [x] 1.2 Define signal computation constants and configuration
   - Create `CODE_DETECTION_CONFIG` object with thresholds, weights, logging flags
   - Define language-specific keyword sets (JavaScript, Python, Java, SQL, Shell, JSON, XML/HTML)
   - Define credential pattern collection (API key, JWT, passwords, connection strings, etc.)
@@ -26,7 +26,7 @@ Implement a multi-signal scoring framework that improves source code detection t
   - Add to `scanner.js`
   - _Requirements: 1, 15_
 
-- [ ]* 1.3 Write unit tests for shared utilities
+- [x]* 1.3 Write unit tests for shared utilities
   - Test `shannonEntropy()` with known values (uniform string H=0, random H≈2.0)
   - Test `extractWordsFromText()` with various punctuation
   - Test `countLineIndentation()` with tabs, spaces, mixed indentation
@@ -34,169 +34,188 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ---
 
-### 2. Implement Signal 1 — Structure Density
+### 2. Implement Feature 1 — Code Keywords (Strong Evidence)
 
-- [ ] 2.1 Implement `computeStructureDensity(text)` function
-  - Count opening/closing brackets: (), {}, [], <>
-  - Count code-specific punctuation: :, ;, comma, =, arrow, /
-  - Compute bracket density: bracket_count / total_chars
-  - Compute punctuation density: punctuation_count / total_chars
-  - Normalize to 0.0–1.0 signal value
-  - Return signal object with components: bracketDensity, punctuationDensity, counts
-  - Reference: Design Section 1 (Signal 1)
+- [x] 2.1 Implement `detectCodeKeywords(text)` function
+  - Create comprehensive keyword list: control flow (if, else, for, while, return), declarations (function, class, const, let, var, def), type keywords (int, string, boolean, void), module keywords (import, export, require, from, use), language-specific (this, self, new, instanceof)
+  - Count keyword matches (case-insensitive word boundary matching)
+  - Return 3 points if 1+ keyword found (strong evidence), 0 points otherwise
+  - Return feature object with: score, keywordMatches (array), count
+  - Reference: Design Section 1.1 (Feature 1: Code Keywords)
   - _Requirements: 2, 7_
 
-- [ ]* 2.2 Write unit tests for structure density signal
-  - Test with JavaScript function (expect high density ~0.18)
-  - Test with English prose (expect low density ~0.02)
-  - Test with pseudo-code and mixed punctuation
-  - Test boundary cases (empty string, single character)
+- [x]* 2.2 Write unit tests for code keywords feature
+  - Test with JavaScript code containing function, const, return (expect 3 points)
+  - Test with Python code containing def, import, return (expect 3 points)
+  - Test with English prose (expect 0 points, no keyword matches)
+  - Test boundary cases: empty string, single keyword, multiple keywords
   - _Requirements: 13, 14_
 
 ---
 
-### 3. Implement Signal 2 — Token Pattern Recognition
+### 3. Implement Feature 2 — Import/Require Statements (Strong Evidence)
 
-- [ ] 3.1 Implement language pattern detection objects
-  - Create LANGUAGE_PATTERNS object with JavaScript, Python, SQL, Shell, JSON, XML/HTML entries
-  - Each entry: weight (language prevalence factor) + array of regex patterns (keywords, syntax)
-  - Include control flow, declarations, type keywords, module/import, common objects
-  - Reference: Design Section 1 (Signal 2)
+- [x] 3.1 Implement `detectImportStatements(text)` function
+  - Create language-specific import patterns: JavaScript (import, require, export), Python (import, from...import), Java/C# (import, using, namespace), C/C++ (#include, #import), Go (import), Rust (use, mod), PHP (require, include)
+  - Count import statement matches using regex patterns
+  - Return 3 points if 1+ import found (strong evidence), 0 points otherwise
+  - Return feature object with: score, importMatches (array), languages detected
+  - Reference: Design Section 1.2 (Feature 2: Import/Require Statements)
   - _Requirements: 3, 7_
 
-- [ ] 3.2 Implement `computeTokenPattern(text)` function
-  - Iterate through LANGUAGE_PATTERNS
-  - For each language, count keyword pattern matches
-  - Compute score: (matches / line_count) * language_weight
-  - Normalize to 0.0–1.0 signal value
-  - Return signal object with detectedLanguage and langScores components
-  - Reference: Design Section 1 (Signal 2)
-  - _Requirements: 3, 7_
-
-- [ ]* 3.3 Write unit tests for token pattern signal
-  - Test with JavaScript code (expect language detection + high score ~0.68)
-  - Test with Python code (expect Python detection)
-  - Test with SQL query (expect SQL detection)
-  - Test with English prose (expect low scores for all languages)
+- [x]* 3.2 Write unit tests for import statements feature
+  - Test with JavaScript import/require (expect 3 points)
+  - Test with Python import statements (expect 3 points)
+  - Test with Java import statements (expect 3 points)
+  - Test with English prose (expect 0 points, no import matches)
+  - Test edge cases: malformed imports, comments containing import keyword
   - _Requirements: 13, 14_
 
 ---
 
-### 4. Implement Signal 3 — Entropy Distribution
+### 4. Implement Feature 3 — Braces (Strong Evidence)
 
-- [ ] 4.1 Implement `computeEntropyDistribution(text)` function
-  - Compute Shannon entropy for entire text (using existing shannonEntropy utility)
-  - Split into lines, compute entropy for each line
-  - Calculate median line entropy (sort and pick middle value)
-  - Combine full entropy + median line entropy into composite score
-  - Normalize to 0.0–1.0 signal value using formula: (entropy - 3.0) / 2.5 clamped to [0, 1]
-  - Return signal object with fullEntropy, medianLineEntropy, lineCount
-  - Reference: Design Section 1 (Signal 3)
+- [x] 4.1 Implement `detectBraces(text)` function
+  - Count opening and closing curly braces: {, }
+  - Compute brace density: (totalBraces / textLength)
+  - Return 2 points if braceDensity ≥ 0.03 OR totalBraces ≥ 2 (strong evidence), 0 points otherwise
+  - Return feature object with: score, openBraces, closeBraces, density
+  - Reference: Design Section 1.3 (Feature 3: Braces)
   - _Requirements: 7_
 
-- [ ]* 4.2 Write unit tests for entropy distribution signal
-  - Test with code (expect entropy 3.5–5.5 bits/char)
-  - Test with prose (expect entropy 4.0–5.0 bits/char)
-  - Test with repeated patterns (expect low entropy)
-  - Test with random/encrypted data (expect high entropy)
+- [x]* 4.2 Write unit tests for braces feature
+  - Test with JavaScript function with multiple braces (expect 2 points)
+  - Test with code containing single pair of braces (expect 2 points)
+  - Test with prose (expect 0 points, no braces)
+  - Test with edge cases: mismatched braces, braces in strings
   - _Requirements: 13, 14_
 
 ---
 
-### 5. Implement Signal 4 — Credential Indicators
+### 5. Implement Feature 4 — Function Calls (Strong Evidence)
 
-- [ ] 5.1 Create credential detection pattern collection
-  - API key patterns: api_key=..., secret=..., secret_key=..., api_secret=...
-  - Environment variables: ${API_KEY}, ${SECRET}, etc.
-  - Connection strings: mongodb://, postgresql://, mysql://, redis://, etc.
-  - AWS keys: AKIA[A-Z0-9]{16}
-  - GitHub tokens: ghp_*, gho_*, github_pat_*
-  - OpenAI keys: sk-[A-Za-z0-9]{20,}
-  - JWT patterns: eyJ[A-Za-z0-9-_]*.eyJ[A-Za-z0-9-_]*.eyJ[A-Za-z0-9-_]*
-  - Base64 data: [A-Za-z0-9+/]{40,}
-  - Private keys: -----BEGIN.*PRIVATE KEY-----
-  - URLs with embedded credentials: https://user:pass@host
-  - Reference: Design Section 1 (Signal 4)
+- [x] 5.1 Implement `detectFunctionCalls(text)` function
+  - Define patterns for function/method invocation: identifier(...), obj.method(...), builtin objects (console.log, window.alert, etc.)
+  - Count matches using regex: /\b[a-zA-Z_$][\w$]*\s*\(/ and /\b[a-zA-Z_$][\w$]*\.[a-zA-Z_$][\w$]*\s*\(/
+  - Return 2 points if 2+ function calls found (strong evidence), 1 point if 1 call (weak evidence), 0 points otherwise
+  - Return feature object with: score, functionCallMatches (array), count
+  - Reference: Design Section 1.4 (Feature 4: Function Calls)
   - _Requirements: 4, 7_
 
-- [ ] 5.2 Implement `computeCredentialIndicators(text)` function
-  - Iterate through credential patterns
-  - Count total matches across all patterns
-  - Normalize to 0.0–1.0 signal value: min(1.0, credentialCount * 0.33)
-  - Return signal object with credentialCount, patterns array
-  - Reference: Design Section 1 (Signal 4)
-  - _Requirements: 4, 7_
-
-- [ ]* 5.3 Write unit tests for credential indicators signal
-  - Test with code containing API key (expect high score ~0.5+)
-  - Test with code containing JWT (expect high score)
-  - Test with connection string (expect signal detection)
-  - Test with prose containing "password" (expect no matches)
+- [x]* 5.2 Write unit tests for function calls feature
+  - Test with code containing multiple function calls (expect 2 points)
+  - Test with code containing single function call (expect 1 point)
+  - Test with prose (expect 0 points, no function calls)
+  - Test edge cases: method chaining, builtin object calls, parentheses in prose
   - _Requirements: 13, 14_
 
 ---
 
-### 6. Implement Signal 5 — Markup and Formatting Consistency
+### 6. Implement Features 5–10 — Weak Evidence Features (1 point each)
 
-- [ ] 6.1 Implement `computeMarkupConsistency(text)` function
-  - Count code-block markers: backtick fences (```), tilde indents (~~~), HTML tags (<code>, <pre>)
-  - Count HTML escapes: &lt;, &gt;, &amp;, &quot;
-  - Analyze indentation: count indented lines, compute indentation_ratio
-  - Analyze monospace hints: count lines with 2+ consecutive spaces
-  - Compute markup score using weighted formula (0.3 backticks + 0.3 tildes + 0.2 HTML + 0.1 escapes + 0.1 indent + 0.1 monospace)
-  - Normalize to 0.0–1.0 signal value
-  - Return signal object with component breakdowns
-  - Reference: Design Section 1 (Signal 5)
+- [x] 6.1 Implement `detectSemicolons(text)` function
+  - Count semicolon occurrences (;)
+  - Return 1 point if 1+ semicolon found (weak evidence), 0 points otherwise
+  - Return feature object with: score, semicolonCount
+  - Reference: Design Section 1.2 (Feature 5: Semicolons)
   - _Requirements: 7_
 
-- [ ]* 6.2 Write unit tests for markup consistency signal
-  - Test with markdown fenced code (expect high score ~0.8+)
-  - Test with indented code (expect moderate score)
-  - Test with HTML-escaped code (expect high score)
-  - Test with plain prose (expect low score)
+- [x] 6.2 Implement `detectOperators(text)` function
+  - Define operator patterns: arithmetic (+, -, *, /, %), logical (&&, ||, !), bitwise (&, |, ^), assignment (=, +=, -=, etc.)
+  - Count operator matches using regex: /(\+\+|--|\*\*|&&|\|\||<<|>>|===|!==|[+\-*\/%&|^!=<>]=|[+\-*\/%&|^<>!~])/g
+  - Return 1 point if 1+ operator found (weak evidence), 0 points otherwise
+  - Return feature object with: score, operatorCount, operatorTypes
+  - Reference: Design Section 1.2 (Feature 6: Operators)
+  - _Requirements: 7_
+
+- [x] 6.3 Implement `detectCodingNamingConventions(text)` function
+  - Define patterns for camelCase (/\b[a-z]+([A-Z][a-z]+)+\b/) and snake_case (/\b[a-z_]+_[a-z_]+\b/)
+  - Count total matches for both patterns
+  - Return 1 point if 2+ naming convention matches found (weak evidence), 0 points otherwise
+  - Return feature object with: score, camelCaseMatches, snake_caseMatches
+  - Reference: Design Section 1.2 (Feature 7: camelCase/snake_case)
+  - _Requirements: 7_
+
+- [x] 6.4 Implement `detectComments(text)` function
+  - Define comment patterns: //, #, --, /*, */, """, ''', <!--
+  - Count comment marker matches
+  - Return 1 point if 1+ comment marker found (weak evidence), 0 points otherwise
+  - Return feature object with: score, commentCount, commentTypes
+  - Reference: Design Section 1.2 (Feature 8: Comments)
+  - _Requirements: 7_
+
+- [x] 6.5 Implement `detectIndentationPattern(text)` function
+  - Count lines starting with 4+ spaces or tabs
+  - Compute indentation ratio: indentedLines / totalLines
+  - Return 1 point if indentationRatio ≥ 0.2 (weak evidence), 0 points otherwise
+  - Return feature object with: score, indentedLineCount, ratio
+  - Reference: Design Section 1.2 (Feature 9: Indentation)
+  - _Requirements: 7_
+
+- [x] 6.6 Implement `detectLineDensity(text)` function
+  - Compute average characters per line
+  - Return 1 point if 30 ≤ avgCharsPerLine ≤ 150 AND 3+ lines (weak evidence), 0 points otherwise
+  - Return feature object with: score, avgCharsPerLine, lineCount
+  - Reference: Design Section 1.2 (Feature 10: Line Density)
+  - _Requirements: 7_
+
+- [x]* 6.7 Write unit tests for weak evidence features
+  - Test detectSemicolons with JavaScript (expect 1 point)
+  - Test detectOperators with code (expect 1 point)
+  - Test detectCodingNamingConventions with camelCase code (expect 1 point)
+  - Test detectComments with code containing comments (expect 1 point)
+  - Test detectIndentationPattern with indented code (expect 1 point)
+  - Test detectLineDensity with code-like line lengths (expect 1 point)
+  - Test all with English prose (expect 0 points)
   - _Requirements: 13, 14_
 
 ---
 
-### 7. Implement Score Aggregation
+### 7. Implement Composite Feature Scoring Algorithm
 
-- [ ] 7.1 Implement `aggregateSignals(signals)` function
-  - Define SIGNAL_WEIGHTS object: structure_density 0.15, token_pattern 0.30, entropy 0.20, credential 0.25, markup 0.10
-  - Compute weighted sum: Σ(signal.value × weight)
-  - Normalize by sum of weights
-  - Return object with: compositeScore, normalizedScore (0–100), signals array with weights
-  - Reference: Design Section 2
-  - _Requirements: 7_
+- [x] 7.1 Implement `computeSourceCodeScore(text)` main algorithm
+  - Call all 10 feature detection functions: detectCodeKeywords, detectImportStatements, detectBraces, detectFunctionCalls, detectSemicolons, detectOperators, detectCodingNamingConventions, detectComments, detectIndentationPattern, detectLineDensity
+  - Compute total score: sum of all feature points (max 3+3+2+2+1+1+1+1+1+1 = 16)
+  - Determine strong_evidence_present: true if (code_keywords > 0 OR imports > 0 OR braces > 0 OR function_calls ≥ 2)
+  - Apply dual threshold classification rule:
+    - IF (total_score ≥ 6) AND (strong_evidence_present = true) THEN classification = "code"
+    - ELSE classification = "prose"
+  - Return score object with: classification, score, strong_evidence, reason, features object
+  - Reference: Design Section 1.3 (Composite Feature Scoring Algorithm)
+  - _Requirements: 7, 9_
 
-- [ ]* 7.2 Write unit tests for score aggregation
-  - Test with code signals (expect composite > 0.50)
-  - Test with prose signals (expect composite < 0.50)
-  - Test weight distribution and normalization
-  - Verify total weights sum correctly
+- [x]* 7.2 Write unit tests for composite scoring algorithm
+  - Test with JavaScript code (expect score ≥ 6 + strong evidence = "code" classification)
+  - Test with prose containing high weak feature scores (expect classification = "prose" due to no strong evidence)
+  - Test with score = 8 but no strong evidence (expect "prose")
+  - Test with score = 4 + strong evidence (expect "prose" due to low score)
+  - Test edge cases: empty string, single keyword, minimum threshold crossing
   - _Requirements: 13, 14_
 
 ---
 
 ### 8. Implement Threshold Calibration and Configuration
 
-- [ ] 8.1 Create CODE_DETECTION_CONFIG object
+- [x] 8.1 Create CODE_DETECTION_CONFIG object
   - Define `enableSourceCodeDetection: true`
-  - Define `codeScoreThreshold: 0.50` (configurable)
-  - Define `credentialEscalationThreshold: 0.35`
-  - Define signal-specific configuration (thresholds, weights, enabled flags)
-  - Define logging flags: logScores, logSignalDetails, logEscalations, verbosity
-  - Reference: Design Section 3
+  - Define `scoreThreshold: 6` (configurable, dual threshold with strong evidence requirement)
+  - Define `requireStrongEvidence: true`
+  - Define feature-specific configuration: each feature has {enabled, strong (boolean), points}
+  - Define credential escalation patterns: API keys, JWT, passwords, connection strings, private keys, AWS keys, GitHub tokens
+  - Define risk escalation thresholds: credentialFound escalates to "moderate", credentialAndCode escalates to "high"
+  - Define logging flags: logScores, verbosity
+  - Reference: Design Section 1.4
   - _Requirements: 8, 15_
 
-- [ ] 8.2 Implement `updateCodeDetectionConfig(newConfig)` function
+- [x] 8.2 Implement `updateCodeDetectionConfig(newConfig)` function
   - Accept partial config update object
   - Merge with existing CODE_DETECTION_CONFIG
   - Log updated values
-  - Validate threshold ranges (0–1.0)
-  - Reference: Design Section 3
+  - Validate threshold ranges (1–16 for score, boolean for requireStrongEvidence)
+  - Reference: Design Section 1.4
   - _Requirements: 8, 15_
 
-- [ ]* 8.3 Write tests for configuration management
+- [x]* 8.3 Write tests for configuration management
   - Test config update with valid parameters
   - Test config merge (partial updates)
   - Test threshold validation (reject invalid ranges)
@@ -206,27 +225,29 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 9. Implement Risk Escalation Logic
 
-- [ ] 9.1 Implement `evaluateCodeRiskEscalation(signals, baseRisk)` function
-  - Extract credential_indicators signal from signals array
-  - If credentialSignal > credentialEscalationThreshold, escalate LOW → MODERATE
-  - If credentialSignal > 0.35 AND compositeScore > 0.50, escalate to HIGH
-  - If code contains API key/JWT patterns, finding already HIGH (maintained)
-  - Log escalation decision with reason
+- [x] 9.1 Implement `evaluateCodeRiskEscalation(scoreObj, baseRisk)` function
+  - Extract features object from scoreObj
+  - Check if credential patterns detected (credentialIndicators feature, if present in feature set)
+  - If credentials detected AND code classification, escalate LOW → MODERATE or HIGH based on credential severity
+  - If code block contains API key/JWT patterns, escalate to HIGH
+  - If code block without credentials, maintain base risk (LOW)
+  - Log escalation decision with reason and pattern detected
   - Return escalated risk level
-  - Reference: Design Section 4
+  - Reference: Design Section 2.2 (Credential Escalation Logic)
   - _Requirements: 10, 12_
 
-- [ ]* 9.2 Write tests for risk escalation
-  - Test escalation from LOW → MODERATE with credentials
-  - Test escalation from LOW → HIGH with high credential signals
-  - Test log message format
+- [x]* 9.2 Write tests for risk escalation
+  - Test escalation from LOW → MODERATE with credentials detected
+  - Test escalation from LOW → HIGH with critical credentials (API keys, JWT)
+  - Test no escalation for code without credentials (maintain LOW)
+  - Test log message format and detail
   - _Requirements: 10, 12_
 
 ---
 
 ### 10. Implement Context-Aware Detection
 
-- [ ] 10.1 Implement `isCodeContextual(text, normalizedFullText, matchIndex)` function
+- [x] 10.1 Implement `isCodeContextual(text, normalizedFullText, matchIndex)` function
   - Extract 100 characters before and after match
   - Define context trigger phrases: "here is", "like this", "code:", "function:", "example:", etc.
   - Search for trigger phrases in lookahead/lookbehind windows
@@ -234,13 +255,13 @@ Implement a multi-signal scoring framework that improves source code detection t
   - Reference: Design Section 6
   - _Requirements: 10_
 
-- [ ] 10.2 Implement context-aware risk elevation
+- [x] 10.2 Implement context-aware risk elevation
   - When context is positive (trigger phrases present), increase risk from LOW → MODERATE
   - Log context detection result
   - Reference: Requirements 10
   - _Requirements: 10_
 
-- [ ]* 10.3 Write tests for context-aware detection
+- [x]* 10.3 Write tests for context-aware detection
   - Test with code + trigger phrase (expect elevated risk)
   - Test with code + no trigger phrase (expect base risk)
   - Test with multiple trigger phrases
@@ -250,79 +271,86 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 11. Implement Logging and Diagnostics Framework
 
-- [ ] 11.1 Implement `logCodeDetection(findings, signals, compositeScore)` function
+- [x] 11.1 Implement `logCodeDetection(scoreObj, findings)` function
   - Check CODE_DETECTION_CONFIG.logScores flag
   - Log composite score with timestamp
-  - If logSignalDetails enabled, log each signal (name, value, weight, threshold)
-  - If logEscalations enabled, log any risk elevations with reasons
-  - Use verbosity level (debug, info, warn, error) to control output
-  - Reference: Design Section 7
+  - If verbosity enabled, log feature detection results: each feature (name, score, threshold, pass/fail)
+  - Log strong evidence presence (YES/NO) and list strong features detected
+  - Log classification result (CODE or PROSE) and reason
+  - If risk escalation occurred, log escalation details
+  - Use verbosity level (info, debug) to control output detail
+  - Reference: Design Section 3 (Logging and Diagnostics)
   - _Requirements: 16_
 
-- [ ] 11.2 Implement diagnostic output formatting
-  - Format: [TrustPrompt/CodeDetection] Signal: value (threshold: X)
-  - Include component breakdowns where relevant
-  - Include pass/fail indicators (✓ PASS / ✗ FAIL)
-  - Reference: Design Section 7.2 (example output)
+- [x] 11.2 Implement diagnostic output formatting
+  - Format: [TrustPrompt/CodeDetection] Feature: name score/max (threshold: X) [✓ PASS / ✗ FAIL]
+  - Include strong evidence section: "Strong Evidence: CODE_KEYWORDS (3 pts), IMPORTS (3 pts)"
+  - Include total score and threshold comparison
+  - Example: "[TrustPrompt/CodeDetection] Total Score: 10 (threshold: 6) | Strong Evidence: YES | Classification: CODE"
+  - Reference: Design Section 3 (Example Output)
   - _Requirements: 16_
 
-- [ ]* 11.3 Write tests for logging and diagnostics
-  - Test log output format
-  - Test verbosity level filtering (debug > info > warn > error)
+- [x]* 11.3 Write tests for logging and diagnostics
+  - Test log output format with code block
+  - Test verbosity level filtering (debug vs info)
   - Test with logScores disabled (expect no output)
+  - Test escalation logging format
   - _Requirements: 16_
 
 ---
 
 ### 12. Integrate into Scanner.js PATH A
 
-- [ ] 12.1 Update runPathA() to apply multi-signal scoring for source_code pattern
-  - When pattern.id === "source_code", apply multi-signal scoring before creating finding
-  - Compute all 5 signals using helper functions
-  - Aggregate signals into composite score
-  - Compare composite score against CODE_DETECTION_CONFIG.codeScoreThreshold
-  - If below threshold, skip (discard low-confidence match)
-  - If above threshold, proceed to finding creation
-  - Reference: Design Section 5.1, Requirements 9, 11
+- [x] 12.1 Update runPathA() to apply multi-feature scoring for source_code pattern
+  - When pattern.id === "source_code", apply multi-feature scoring via computeSourceCodeScore()
+  - Compute all 10 features for matched code block
+  - Aggregate into total score and check dual threshold (score ≥ 6 AND strong_evidence_present)
+  - If classification = "prose" (below threshold or no strong evidence), skip finding
+  - If classification = "code" (meets dual threshold), proceed to finding creation
+  - Create finding object with enhanced codeMetrics field including all feature scores
+  - Reference: Design Section 2.1 (Integration), Requirements 9, 11
   - _Requirements: 9, 11, 17_
 
-- [ ] 12.2 Implement unformatted code block extraction
-  - When multi-signal scoring triggers (score ≥ threshold), extract code block boundaries
-  - Start: first line with code-like characteristics (indentation + keyword/brace)
-  - End: last consecutive line with code-like characteristics
+- [x] 12.2 Implement unformatted code block extraction
+  - When multi-feature scoring triggers (classification = "code"), extract code block boundaries
+  - Start: first line with code characteristics (keywords OR imports OR braces OR function calls)
+  - End: last consecutive line with code characteristics
   - Maximum 20 lines per block (avoid capturing entire documents)
   - Preserve original indentation and line breaks
+  - Extract raw matched text for finding.rawMatch field
   - Reference: Requirements 11
   - _Requirements: 11_
 
-- [ ] 12.3 Apply embedded credential detection within code blocks
-  - After detecting code block via multi-signal, scan block for PATH A credential patterns
-  - If API key, JWT, or password found, escalate risk from LOW → HIGH
-  - Mark finding with escalation reason
-  - Log detection: "[TrustPrompt/code] code block + [credential_type] detected → HIGH risk"
+- [x] 12.3 Apply embedded credential detection within code blocks
+  - After detecting code block via multi-feature scoring, scan block for credential patterns
+  - Credential patterns: API keys, JWT tokens, passwords, connection strings, private keys, AWS keys, GitHub tokens
+  - If credential found, escalate risk from LOW → MODERATE or HIGH (depending on credential type)
+  - Mark finding with escalation reason and credential type
+  - Log detection: "[TrustPrompt/code] code block + [credential_type] detected → [ESCALATED_RISK]"
   - Reference: Requirements 12
   - _Requirements: 12_
 
-- [ ]* 12.4 Write integration tests for PATH A + multi-signal
-  - Mock text with unformatted JavaScript code (expect detection)
-  - Mock text with Python code (expect language detection)
-  - Mock text with English prose (expect rejection, score < threshold)
-  - Mock text with code containing credentials (expect escalation)
-  - Test with various markdown formats (should still work)
+- [x]* 12.4 Write integration tests for PATH A + multi-feature
+  - Mock text with unformatted JavaScript code (expect detection + code classification)
+  - Mock text with Python code (expect detection + code classification)
+  - Mock text with English prose (expect rejection, classification = "prose")
+  - Mock text with code containing API key (expect detection + HIGH risk escalation)
+  - Test with mixed markdown and unformatted code (expect both detected)
+  - Test deduplication if same block matches both markdown and multi-feature
   - _Requirements: 9, 11, 12, 17_
 
 ---
 
 ### 13. Implement Markdown Regex Fallback and Deduplication
 
-- [ ] 13.1 Ensure markdown pattern continues to work
+- [~] 13.1 Ensure markdown pattern continues to work
   - Keep existing source_code pattern: /```[\s\S]*?```|`[^`\n]{10,}`|^[ \t]{4,}.{1,}(?:\n[ \t]{4,}.+)*/gm
   - Pattern matches: triple-backtick fences, inline code, indented blocks
-  - Multi-signal scoring should complement, not replace, markdown matching
-  - Reference: Design Section 5.2, Requirement 9
+  - Multi-feature scoring should complement, not replace, markdown matching
+  - Reference: Design Section 2 (Integration), Requirement 9
   - _Requirements: 9, 17_
 
-- [ ] 13.2 Implement deduplication logic
+- [~] 13.2 Implement deduplication logic
   - When both markdown regex and multi-signal score detect same code block
   - Merge findings: keep one entry, prefer multi-signal match (contains more metadata)
   - Log deduplication: "[TrustPrompt/code] Deduplicated: markdown + multi-signal → 1 finding"
@@ -340,24 +368,24 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 14. Performance Testing and Optimization
 
-- [ ] 14.1 Measure baseline performance of signal computations
-  - Profile each signal function with 100 iterations (500-char blocks)
-  - Record per-signal execution time
-  - Target: each signal < 0.5ms, total < 2ms per block
-  - Reference: Requirements 13, Requirement 13 (5ms per block)
+- [~] 14.1 Measure baseline performance of feature computations
+  - Profile each feature function with 100 iterations (500-char blocks)
+  - Record per-feature execution time
+  - Target: each feature < 0.5ms, total < 5ms per block
+  - Reference: Requirements 13, Design Section 7 (Performance Optimization)
   - _Requirements: 13_
 
-- [ ] 14.2 Optimize signal computation if needed
+- [~] 14.2 Optimize feature computation if needed
   - Use pre-compiled regex patterns (cache at module load time)
-  - Implement lazy evaluation: compute expensive signals only if needed
+  - Implement lazy evaluation: compute expensive features only if needed
   - Implement early exit: if composite score falls below threshold mid-way, stop
   - For very large blocks (>1000 chars), implement sampling strategy
-  - Reference: Design Section 11
+  - Reference: Design Section 7
   - _Requirements: 13_
 
 - [ ]* 14.3 Write performance benchmarks
   - Benchmark 100 source_code pattern matches
-  - Measure multi-signal scoring latency per block
+  - Measure multi-feature scoring latency per block
   - Measure total PATH A latency overhead
   - Verify target met: < 5% overhead vs baseline
   - _Requirements: 13_
@@ -366,7 +394,7 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 15. Create Test Dataset and Calibration
 
-- [ ] 15.1 Create positive test samples (code blocks)
+- [~] 15.1 Create positive test samples (code blocks)
   - Generate 20+ valid JavaScript code samples
   - Generate 10+ valid Python code samples
   - Generate 10+ valid SQL code samples
@@ -375,7 +403,7 @@ Implement a multi-signal scoring framework that improves source code detection t
   - Reference: Requirements 14, 13 (test coverage)
   - _Requirements: 14_
 
-- [ ] 15.2 Create negative test samples (prose)
+- [~] 15.2 Create negative test samples (prose)
   - Generate 20+ English prose samples (paragraphs, documentation)
   - Generate 10+ technical documentation samples (may contain code-like punctuation)
   - Generate 10+ configuration file samples (YAML, JSON, TOML)
@@ -383,7 +411,7 @@ Implement a multi-signal scoring framework that improves source code detection t
   - Reference: Requirements 14, 13
   - _Requirements: 14_
 
-- [ ] 15.3 Calibrate threshold and weights
+- [~] 15.3 Calibrate threshold and weights
   - Run test suite against all samples
   - Compute True Positive Rate (TPR): detect code blocks correctly
   - Compute True Negative Rate (TNR): reject prose correctly
@@ -405,9 +433,9 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 16. Checkpoint — Ensure All Tests Pass
 
-- [ ] 16.1 Run full test suite
-  - Verify all unit tests pass (5 signal functions)
-  - Verify all integration tests pass (PATH A + multi-signal)
+- [~] 16.1 Run full test suite
+  - Verify all unit tests pass (10 feature functions)
+  - Verify all integration tests pass (PATH A + multi-feature)
   - Verify all performance benchmarks met
   - Verify calibration accuracy targets met (TPR/TNR)
   - Verify no regressions in existing scanner tests
@@ -417,21 +445,22 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ### 17. Documentation and Finalization
 
-- [ ] 17.1 Add inline documentation to scanner.js
-  - Document multi-signal scoring framework (how and why)
-  - Document each signal computation function (parameters, return value, interpretation)
-  - Document aggregation formula and weight reasoning
+- [~] 17.1 Add inline documentation to scanner.js
+  - Document multi-feature scoring framework (how and why)
+  - Document each of 10 feature detection functions (parameters, return value, interpretation)
+  - Document dual threshold classification rule (score ≥ 6 AND strong_evidence required)
   - Document configuration parameters and tuning recommendations
   - Add links to design document and requirements
   - Reference: Requirements 18, 16
   - _Requirements: 18, 16_
 
-- [ ] 17.2 Create diagnostic examples in comments
+- [~] 17.2 Create diagnostic examples in comments
   - Include example input: JavaScript function
-  - Show expected signal values for each signal
-  - Show aggregation calculation
-  - Show final score and classification
-  - Reference: Design Section 7.2 (example output)
+  - Show expected feature scores for each of 10 features
+  - Show strong evidence detection (keywords, imports, braces, function calls)
+  - Show final score calculation (sum of features)
+  - Show dual threshold evaluation and classification result
+  - Reference: Design Section 3 (Example Output)
   - _Requirements: 18, 16_
 
 - [ ]* 17.3 Create QA validation checklist
@@ -446,14 +475,17 @@ Implement a multi-signal scoring framework that improves source code detection t
 
 ## Notes
 
-- All 5 signal computation functions are independent; they can be computed in parallel if performance requires
+- All 10 feature computation functions are independent; they can be computed in parallel if performance requires
+- Strong evidence features (keywords, imports, braces, function calls ≥2) are critical for dual threshold validation
+- Weak evidence features (semicolons, operators, naming, comments, indentation, line density) provide supporting signals
 - Configuration is module-level constants in scanner.js (CODE_DETECTION_CONFIG); can be updated at runtime
 - Logging respects CODE_DETECTION_CONFIG.verbosity; avoid noise in production
-- Threshold default 0.50 is calibrated via test suite; may need tuning based on production false positive rate
+- Threshold default scoreThreshold: 6 is calibrated via test suite; may need tuning based on production false positive rate
+- Dual threshold rule: MUST have score ≥ 6 AND strong_evidence to classify as code
 - Credential escalation is critical for governance integration; HIGH-risk code blocks participate in risk scoring
 - Performance target < 5ms per block ensures scanner latency remains acceptable for typical documents
 - Integration maintains backward compatibility with existing markdown regex and other PATH A patterns
-- Multi-signal scoring is opt-in via CODE_DETECTION_CONFIG.enableSourceCodeDetection flag
+- Multi-feature scoring is opt-in via CODE_DETECTION_CONFIG.enableSourceCodeDetection flag
 
 ## Task Dependency Graph
 
@@ -461,15 +493,15 @@ Implement a multi-signal scoring framework that improves source code detection t
 {
   "waves": [
     { "id": 0, "tasks": ["1.1", "1.2"] },
-    { "id": 1, "tasks": ["1.3", "2.1", "3.1", "3.2", "4.1", "5.1", "5.2", "6.1"] },
-    { "id": 2, "tasks": ["2.2", "3.3", "4.2", "5.3", "6.2", "7.1"] },
+    { "id": 1, "tasks": ["1.3", "2.1", "3.1", "4.1", "5.1", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6"] },
+    { "id": 2, "tasks": ["2.2", "3.2", "4.2", "5.2", "6.7", "7.1"] },
     { "id": 3, "tasks": ["7.2", "8.1", "8.2", "9.1", "10.1", "10.2", "11.1", "11.2"] },
     { "id": 4, "tasks": ["8.3", "9.2", "10.3", "11.3"] },
     { "id": 5, "tasks": ["12.1", "12.2", "12.3"] },
     { "id": 6, "tasks": ["12.4", "13.1", "13.2"] },
     { "id": 7, "tasks": ["13.3", "14.1", "14.2"] },
     { "id": 8, "tasks": ["14.3", "15.1", "15.2", "15.3"] },
-    { "id": 9, "tasks": ["15.4"] },
+    { "id": 9, "tasks": ["15.4", "16.1"] },
     { "id": 10, "tasks": ["17.1", "17.2"] },
     { "id": 11, "tasks": ["17.3"] }
   ]

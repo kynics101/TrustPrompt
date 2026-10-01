@@ -1213,7 +1213,7 @@ const TrustScanner = (() => {
 
     // 3. Validation/Format/Verification contexts
     const validationMarkers = [
-      /\b(validate|check|verify|parse|format|validation)\b/,
+      /\b(validate|check|verify|parse|format|validation|valid|is this|is that)\b/,
       /\b(invalid|correct|valid format|proper format|pattern match)\b/,
       /\b(test format|check format|verify format)\b/,
     ];

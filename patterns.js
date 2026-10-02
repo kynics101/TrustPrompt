@@ -1504,7 +1504,7 @@ const TRUSTPROMPT_PATTERNS = [
     reason: "API keys and secret tokens authenticate your identity with a service — they are the equivalent of a password for software systems. Exposing one allows anyone who sees it to make requests on your behalf, potentially incurring charges, accessing private data, or compromising connected systems. This includes vendor-specific formats: OpenAI (sk-...), GitHub (ghp_...), Slack (xoxb-...), AWS (AKIA...), and Google (AIza...). Keys included in prompts may be logged by the AI provider.",
     // Labelled-key branch: tightened keyword list (no bare `secret` or `token`)
     // Vendor-prefix branch: structurally distinctive prefixes without requiring a label
-    regex: /(?:(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer)\s*[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{20,})["']?|(?:sk-[A-Za-z0-9\-_]{20,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xoxb-\d{9,}-[A-Za-z0-9\-]{20,}|xoxp-\d{9,}-[A-Za-z0-9\-]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9\-_]{35}|ya29\.[A-Za-z0-9\-_]{50,}))/g,
+    regex: /(?:(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer)\s*[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{20,})["']?|(?:sk-[A-Za-z0-9\-_]{20,}|sk_[A-Za-z0-9]{20,}|pk_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|xoxb-\d{9,}-[A-Za-z0-9\-]{20,}|xoxp-\d{9,}-[A-Za-z0-9\-]{20,}|xoxz-\d{9,}-[A-Za-z0-9\-]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9\-_]{35}|ya29\.[A-Za-z0-9\-_]{50,}|AC[A-Za-z0-9]{32}|SG\.[A-Za-z0-9\-_.]{20,}|key-[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{20,}))/g,
     risk: "high",
     validate: null,  // no single validator covers all key formats; entropy + structural checks used instead
     minEntropy: 3.5, // TASK-4.5: reject low-entropy dummy values
@@ -1809,7 +1809,12 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_senior_citizen",
     label: "Digital National Senior Citizen ID",
     reason: "Senior Citizen ID is an identification issued to Filipino senior citizens (60 years old and above). It provides identification and access to senior citizen benefits and privileges.",
-    regex: /\b\d{10}\b/g,
+    // Match 10 consecutive digits in two scenarios:
+    // 1. When preceded by context keywords (senior, citizen, osca, id, etc.) followed by separator
+    // 2. When standalone with word/non-alphanumeric boundaries (but NOT embedded in API keys)
+    // Matches: "senior citizen id: 2345678921", "OSCA: 1234567890", "ID 9876543210"
+    // Does NOT match: "AKIAJ7K2QM9ZX4LVR8TN" (no context, embedded in alphanumeric string)
+    regex: /(?:(?:senior|citizen|osca|id|number|no\.?|sc|sc\.)\s*[:\-\s]?\s*)(\d{10})|\b(\d{10})\b(?![A-Za-z0-9_\-])/gi,
     risk: "high",
     validate: null,
     structuralValidate: null,

@@ -3,9 +3,13 @@
  * test-linguistic-detector.js
  * Property-based tests for TrustLinguisticDetector (PATH C)
  * 
- * Validates: Requirements 2, 3, 4, 5, 6, 7
+ * Validates: Requirements 2, 3, 4, 5, 6, 7 + NEW Path C Improvements
  * 
  * Test Coverage:
+ * - Subject-position name detection (Maria is a..., Marie is a...)
+ * - Predicate job title extraction (human resource manager, manager alone)
+ * - Organization context detection (is the head of, works at)
+ * - Multi-word titles and single-word job indicator extraction
  * - 100+ generated test cases across all entity types
  * - 7 property-based test suites
  * - 3 consecutive runs for flakiness verification

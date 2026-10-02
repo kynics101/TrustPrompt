@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TrustPrompt Debug Test</title>
+</head>
+<body>
+    <h1>TrustPrompt Debug Test</h1>
+    <div id="results"></div>
+    
+    <script src="lib/validator.min.js"></script>
+    <script src="patterns.js"></script>
+    <script src="ph-address-db.js"></script>
+    <script src="scanner.js"></script>
+    <script src="trust-worker.js"></script>
+    
+    <script>
+    function log(message) {
+        const div = document.createElement('div');
+        div.textContent = message;
+        document.getElementById('results').appendChild(div);
+        console.log(message);
+    }
+
+    // Test 1: Check if computeSourceCodeScore is available
+    log("=== Test 1: Check computeSourceCodeScore availability ===");
+    if (typeof TrustScanner !== 'undefined' && TrustScanner.computeSourceCodeScore) {
+        log("✓ TrustScanner.computeSourceCodeScore is available");
+        
+        // Test with simple code
+        const testCode = `const apiKey = 'sk-abc123def456';
+function test() {
+    return 42;
+}`;
+        
+        const result = TrustScanner.computeSourceCodeScore(testCode);
+        log("Code classification: " + result.classification);
+        log("Code score: " + result.score);
+        log("Strong evidence: " + result.strong_evidence);
+        log("Reason: " + result.reason);
+    } else {
+        log("✗ computeSourceCodeScore NOT available");
+    }
+
+    // Test 2: Check multiplier function
+    log("\n=== Test 2: Check multiplier function ===");
+    if (typeof TrustScanner !== 'undefined' && TrustScanner.scan) {
+        // Test with multiple entity types to check multiplier
+        const testPrompt = `My name is John Doe.
+My email is john.doe@example.com.
+My phone number is 09123456789.`;
+        
+        const scanResult = TrustScanner.scan(testPrompt);
+        log("Scan result - Risk level: " + scanResult.riskLevel);
+        log("Scan result - Score: " + scanResult.score);
+        log("Scan result - Findings count: " + scanResult.findings.length);
+        
+        scanResult.findings.forEach((finding, i) => {
+            log(`Finding ${i+1}: ${finding.patternId} - ${finding.rawMatch} - risk: ${finding.risk}`);
+        });
+    } else {
+        log("✗ TrustScanner.scan NOT available");
+    }
+
+    // Test 3: Check source code detection specifically
+    log("\n=== Test 3: Source code detection test ===");
+    const codeWithCredentials = `function authenticate() {
+    const apiKey = 'sk-proj-abc123def456ghi789';
+    const response = await fetch('/api/data', {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+    });
+    return response.json();
+}`;
+    
+    const codeResult = TrustScanner.scan(codeWithCredentials);
+    log("Code scan - Risk level: " + codeResult.riskLevel);
+    log("Code scan - Score: " + codeResult.score);
+    log("Code scan - Findings count: " + codeResult.findings.length);
+    
+    codeResult.findings.forEach((finding, i) => {
+        log(`Code finding ${i+1}: ${finding.patternId} - risk: ${finding.risk} - validated: ${finding.validated}`);
+    });
+
+    // Test 4: Direct source code detection function
+    log("\n=== Test 4: Direct source code detection ===");
+    if (TrustScanner.runSourceCodeDetection) {
+        const directCodeResult = TrustScanner.runSourceCodeDetection(codeWithCredentials);
+        log("Direct source code detection findings: " + directCodeResult.length);
+        directCodeResult.forEach((finding, i) => {
+            log(`Direct finding ${i+1}: ${finding.patternId} - risk: ${finding.risk}`);
+        });
+    } else {
+        log("runSourceCodeDetection not available as public method");
+    }
+    </script>
+</body>
+</html>

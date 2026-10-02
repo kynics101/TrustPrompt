@@ -864,16 +864,24 @@ const TrustScanner = (() => {
   const RISK_ORDER = { none: 0, low: 1, moderate: 2, high: 3 };
 
   // ── STEP 1: Entity classification & base scores ───────────────────────────
+  //
+  // Base scores per manuscript Table 10 (NIST SP 800-122):
+  //   High (Critical)        = 10  — API keys, credit cards, Philippine Gov IDs
+  //   Moderate (Significant) = 5   — email, phone, address, source code
+  //   Low (Limited)          = 2   — names, orgs, job titles, IP/MAC
+  //   Context indicators     = 0   — medical/financial/ethnic terms (no independent score)
+  //
+  // NOTE: Scoring uses BASE_SCORES[patternId] exclusively.
+  //       The `risk` field on a finding is for UI display only — never used in scoring.
 
   const BASE_SCORES = {
-    // ── Critical / access-critical (score 10) ────────────────────────────
+    // ── High (Critical) — score 10 ───────────────────────────────────────
     credit_card:      10,
     jwt:              10,
     api_key:          10,
-    // password_inline:  10,
     id_label:         10,
 
-    // ── Philippine Government IDs (TASK-7.3) ───────────────────────────────
+    // ── Philippine Government IDs — all score 10 (Table 10) ──────────────
     ph_id_philid:              10,  // PhilID (PSA National ID)
     ph_id_drivers_license:     10,  // Driver's License (LTO)
     ph_id_passport:            10,  // Passport (BI)
@@ -886,16 +894,17 @@ const TrustScanner = (() => {
     ph_id_nbi_clearance:       10,  // NBI Clearance
     ph_id_police_clearance:    10,  // Police Clearance (PNP)
     ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
-    ph_id_barangay_clearance:  8,   // Barangay Clearance (MODERATE risk - Requirement 13)
+    ph_id_barangay_clearance:  10,  // Barangay Clearance
     ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
 
-    // ── Direct personal identifiers (score 5) ────────────────────────────
-    email:            5,
-    ph_mobile:        5,
-    phone_intl:       5,
-    ph_address:       5,
+    // ── Moderate (Significant) — score 5 (Table 10) ──────────────────────
+    email:       5,
+    ph_mobile:   5,
+    phone_intl:  5,
+    ph_address:  5,
+    source_code: 5,  // Source code blocks are Moderate-impact per Table 10
 
-    // ── Contextual indicators (score 2) ──────────────────────────────────
+    // ── Low (Limited) — score 2 (Table 10) ───────────────────────────────
     ipv4:             2,
     ipv6:             2,
     mac_address:      2,
@@ -905,75 +914,84 @@ const TrustScanner = (() => {
     trigger_dob:         2,
     trigger_employer:    2,
     trigger_location:    2,
-    trigger_health:      2,
-    trigger_financial:   2,
-    gazetteer_medical:   2,
-    gazetteer_financial: 2,
+    trigger_religion:    2,
     nlp_person_name:     2,  // PATH C linguistic
     nlp_job_title:       2,  // PATH C linguistic
     nlp_organization:    2,  // PATH C linguistic
 
-    // ── Container (score 2) ───────────────────────────────────────────────
-    // Changed from 0 to 2: Source code detection should contribute to risk scoring
-    // even without embedded credentials. Unformatted code itself is suspicious PII context.
-    source_code: 2
+    // ── Context indicators — score 0 (Table 11) ──────────────────────────
+    // Ethnic origin, medical, financial terms carry NO independent base score.
+    // They only participate in the Sensitive-Context Co-occurrence governance rule.
+    trigger_health:               0,
+    trigger_financial:            0,
+    gazetteer_medical:            0,
+    gazetteer_financial:          0,
+    gazetteer_nationality_religion: 0,  // Ethnic origin context — no independent score
   };
 
+  // ENTITY_TIER is used only for governance Rule 1 (critical entity check).
+  // Rule 2 and Rule 3 operate directly on BASE_SCORES values, not tier names.
   const ENTITY_TIER = {
+    // ── Critical (score 10) ──────────────────────────────────────────────
     credit_card:      "critical",
     jwt:              "critical",
     api_key:          "critical",
     id_label:         "critical",
 
-    // ── Philippine Government IDs (TASK-7.3) – all classified as CRITICAL ────
-    ph_id_philid:              "critical",  // PhilID (PSA National ID)
-    ph_id_drivers_license:     "critical",  // Driver's License (LTO)
-    ph_id_passport:            "critical",  // Passport (BI)
-    ph_id_umid:                "critical",  // UMID (Unified Multi-Purpose ID)
-    ph_id_sss:                 "critical",  // SSS (Social Security System)
-    ph_id_gsis:                "critical",  // GSIS (Government Service Insurance System)
-    ph_id_prc:                 "critical",  // PRC (Professional Regulation Commission)
-    ph_id_tin:                 "critical",  // TIN (Taxpayer Identification Number)
-    ph_id_philhealth:          "critical",  // PhilHealth (Health Insurance)
-    ph_id_nbi_clearance:       "critical",  // NBI Clearance
-    ph_id_police_clearance:    "critical",  // Police Clearance (PNP)
-    ph_id_psa_certificate:     "critical",  // PSA Certificate (Vital Records)
-    ph_id_barangay_clearance:  "critical",  // Barangay Clearance (MODERATE risk but CRITICAL tier)
-    ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
+    ph_id_philid:              "critical",
+    ph_id_drivers_license:     "critical",
+    ph_id_passport:            "critical",
+    ph_id_umid:                "critical",
+    ph_id_sss:                 "critical",
+    ph_id_gsis:                "critical",
+    ph_id_prc:                 "critical",
+    ph_id_tin:                 "critical",
+    ph_id_philhealth:          "critical",
+    ph_id_nbi_clearance:       "critical",
+    ph_id_police_clearance:    "critical",
+    ph_id_psa_certificate:     "critical",
+    ph_id_barangay_clearance:  "critical",
+    ph_id_comelec_voter_id:    "critical",
 
-    email:            "direct",
-    ph_mobile:        "direct",
-    phone_intl:       "direct",
-    ph_address:       "direct",
+    // ── Significant (score 5) ─────────────────────────────────────────────
+    email:       "significant",
+    ph_mobile:   "significant",
+    phone_intl:  "significant",
+    ph_address:  "significant",
+    source_code: "significant",
 
-    ipv4:             "contextual",
-    ipv6:             "contextual",
-    mac_address:      "contextual",
-    personal_label:   "contextual",
-    trigger_person_name: "contextual",
-    trigger_age:         "contextual",
-    trigger_dob:         "contextual",
-    trigger_employer:    "contextual",
-    trigger_location:    "contextual",
+    // ── Limited (score 2) ─────────────────────────────────────────────────
+    ipv4:             "limited",
+    ipv6:             "limited",
+    mac_address:      "limited",
+    personal_label:   "limited",
+    trigger_person_name: "limited",
+    trigger_age:         "limited",
+    trigger_dob:         "limited",
+    trigger_employer:    "limited",
+    trigger_location:    "limited",
+    trigger_religion:    "limited",
+    nlp_person_name:     "limited",
+    nlp_job_title:       "limited",
+    nlp_organization:    "limited",
+
+    // ── Contextual — context indicators (score 0) ─────────────────────────
     trigger_health:      "contextual",
     trigger_financial:   "contextual",
     gazetteer_medical:   "contextual",
     gazetteer_financial: "contextual",
-    nlp_person_name:     "contextual",  // PATH C linguistic
-    nlp_job_title:       "contextual",  // PATH C linguistic
-    nlp_organization:    "contextual",  // PATH C linguistic
-
-    source_code: "container"
   };
 
+  // IDs of findings that qualify as sensitive-context indicators for Rule 2.
   const SENSITIVE_CONTEXT_IDS = new Set([
     "gazetteer_medical",
     "gazetteer_financial",
+    "gazetteer_nationality_religion",  // Ethnic origin — Rule 2 context indicator
     "trigger_health",
-    "trigger_financial"
+    "trigger_financial",
   ]);
 
-  // ── STEP 2: Distinct entity-type multiplier ───────────────────────────────
+  // ── STEP 2: Distinct entity-type multiplier (Table 12) ───────────────────
 
   function getMultiplier(distinctTypeCount) {
     if (distinctTypeCount >= 5) return 2.00;
@@ -983,67 +1001,78 @@ const TrustScanner = (() => {
     return 1.00;
   }
 
-  // ── STEP 3: Preliminary classification ───────────────────────────────────
+  // ── STEP 3: Preliminary classification (Table 13) ────────────────────────
+  //
+  // Thresholds per manuscript Table 13:
+  //   No Risk  = 0
+  //   Low      = 2 – 4.99
+  //   Moderate = 5 – 14.99
+  //   High     = 15+
 
   function preliminaryClass(score) {
-    if (score >= 10) return "high";
+    if (score >= 15) return "high";
     if (score >= 5)  return "moderate";
     if (score >= 2)  return "low";
     return "none";
   }
 
-  // ── STEP 4: Governance rule evaluation ───────────────────────────────────
+  // ── STEP 4: Governance rule evaluation (Table 15) ────────────────────────
   //
-  // TASK-8.1: Governance Rule 1 escalation for validated Philippine IDs
-  // When finding.validated:true and ENTITY_TIER="critical" and patternId matches ph_id_*,
-  // escalate risk to "high" regardless of other scoring factors.
+  // Rules are evaluated in strict decision order — cascading if/else-if.
+  // Only the first matching rule applies.
+  //
+  // Rule 1 — Strongly Validated Critical-Entity Rule
+  //   Any finding where ENTITY_TIER = "critical" AND validated = true → HIGH
+  //
+  // Rule 2 — Sensitive-Context Co-occurrence Rule
+  //   At least one scored entity (BASE_SCORES > 0) AND at least one context
+  //   indicator (SENSITIVE_CONTEXT_IDS) → raise preliminary by one level
+  //
+  // Rule 3 — Low-Impact Entity Cap
+  //   ALL scored entities have BASE_SCORES === 2 (no moderate or high entity)
+  //   → cap final result at Moderate
+  //
+  // Rule 4 — No governance rule applies → retain preliminary
 
   function evaluateGovernance(findings, preliminary) {
+
+    // ── Rule 1: validated critical entity → HIGH ─────────────────────────
     const hasValidatedCritical = findings.some(
       f => ENTITY_TIER[f.patternId] === "critical" && f.validated === true
     );
-    
-    // TASK-8.1: Check for validated Philippine Government IDs
-    const validatedPhilIDFinding = findings.find(
-      f => f.validated === true && 
-           ENTITY_TIER[f.patternId] === "critical" &&
-           f.patternId && f.patternId.startsWith("ph_id_")
-    );
-    
-    if (validatedPhilIDFinding) {
-      console.log(`[TrustPrompt/governance] Rule 1 escalation: ${validatedPhilIDFinding.patternId} (validated) → HIGH`);
-      return { rule: "rule_1_validated_philid", result: "high" };
-    }
-
-    const hasDirectOrCritical = findings.some(
-      f => ENTITY_TIER[f.patternId] === "critical" ||
-           ENTITY_TIER[f.patternId] === "direct"
-    );
-    const hasSensitiveContext = findings.some(
-      f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
-    );
-    const allContextualOrContainer = findings.every(
-      f => ENTITY_TIER[f.patternId] === "contextual" ||
-           ENTITY_TIER[f.patternId] === "container"
-    );
-
     if (hasValidatedCritical) {
       return { rule: "critical_entity", result: "high" };
     }
 
-    if (hasDirectOrCritical && hasSensitiveContext) {
+    // ── Rule 2: any scored entity + sensitive context → raise one level ──
+    // Condition 1: at least one finding with BASE_SCORES > 0 (any impact tier)
+    const hasScoredEntity = findings.some(
+      f => (BASE_SCORES[f.patternId] ?? 0) > 0
+    );
+    // Condition 2: at least one non-scoring context indicator present
+    const hasSensitiveContext = findings.some(
+      f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
+    );
+    if (hasScoredEntity && hasSensitiveContext) {
       const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
         ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
         : "high";
       return { rule: "sensitive_context", result: raised };
     }
 
-    if (allContextualOrContainer && findings.some(
-      f => ENTITY_TIER[f.patternId] === "contextual")
-    ) {
-      return { rule: "contextual_ceiling", result: null };
+    // ── Rule 3: Low-Impact Entity Cap ─────────────────────────────────────
+    // Condition: every *scored* entity has BASE_SCORES === 2 (no moderate or
+    // critical entity present). Uses base score value directly, not tier name.
+    const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+    const hasAnyScoredEntity = scoredFindings.length > 0;
+    const allLowImpact = scoredFindings.every(
+      f => (BASE_SCORES[f.patternId] ?? 0) === 2
+    );
+    if (hasAnyScoredEntity && allLowImpact) {
+      return { rule: "low_impact_cap", result: null };
     }
 
+    // ── Rule 4: no governance rule applies → retain preliminary ───────────
     return { rule: "none", result: null };
   }
 
@@ -1052,22 +1081,11 @@ const TrustScanner = (() => {
   function finalClass(preliminary, governance) {
     const { rule, result } = governance;
 
-    if (rule === "rule_1_validated_philid") {
-      return "high";
-    }
-
-    if (rule === "critical_entity") {
-      return "high";
-    }
-
-    if (rule === "sensitive_context") {
-      return result;
-    }
-
-    if (rule === "contextual_ceiling") {
+    if (rule === "critical_entity")   return "high";
+    if (rule === "sensitive_context") return result;
+    if (rule === "low_impact_cap") {
       return RISK_ORDER[preliminary] > RISK_ORDER["moderate"] ? "moderate" : preliminary;
     }
-
     return preliminary;
   }
 
@@ -1094,7 +1112,8 @@ const TrustScanner = (() => {
     const riskLevel         = finalClass(preliminary, governance);
 
     console.log(
-      `[TrustPrompt/scorer] base:${baseTotal} ×${multiplier} = ${preScore.toFixed(2)}`,
+      `[TrustPrompt/scorer] distinctTypes:${distinctTypeCount} [${[...seenTypes].join(", ")}]`,
+      `| base:${baseTotal} ×${multiplier} = ${preScore.toFixed(2)}`,
       `| prelim:${preliminary} | gov:${governance.rule}(${governance.result})`,
       `| final:${riskLevel}`
     );
@@ -2184,35 +2203,49 @@ const TrustScanner = (() => {
   // ── Merge + deduplicate ───────────────────────────────────────────────────────
   //
   // Merges findings from all three paths (A: regex, B: gazetteer, C: linguistic).
-  // When the same rawMatch appears in multiple paths, the finding with the highest
-  // risk level is preserved (highest RISK_ORDER value wins).
+  // Deduplication key is (patternId + rawMatch) — NOT rawMatch alone.
+  // This preserves distinct entity types that happen to match the same raw text
+  // (e.g. Path B sees "John" as trigger_person_name, Path C as nlp_person_name —
+  // both must survive so the multiplier reflects 2 distinct types, not 1).
+  // When the SAME (patternId, rawMatch) pair appears in multiple paths, the
+  // finding with the highest risk level is preserved (RISK_ORDER wins).
   // Special handling: UMID takes precedence over SSS for overlapping matches.
 
   function mergeAndDedupe(pathA, pathB, pathC, sourceCode = []) {
     const allFindings = [...pathA, ...pathB, ...pathC, ...sourceCode];
-    
-    // First pass: collect all findings by rawMatch
+
+    // ── First pass: deduplicate per (patternId × rawMatch) pair ───────────────
+    //
+    // KEY DESIGN: the deduplication key is "patternId:rawMatch" — NOT rawMatch alone.
+    //
+    // Using only rawMatch as the key was the root cause of the multiplier bug:
+    // if Path B detects "John" as trigger_person_name and Path C detects "John"
+    // as nlp_person_name, the old key would collapse both into ONE finding,
+    // reducing distinctTypeCount by 1 and applying the wrong (lower) multiplier.
+    //
+    // With the composite key, each (patternId, rawMatch) pair is kept as an
+    // independent finding. Two paths detecting the same raw text as the same
+    // entity type are still collapsed (higher-risk one wins), but two paths
+    // detecting the same raw text as DIFFERENT entity types both survive —
+    // correctly contributing two distinct types to the multiplier.
     const seen = new Map();
     for (const f of allFindings) {
-      const key = f.rawMatch.trim().toLowerCase();
+      const key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
       const ex  = seen.get(key);
       if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
     }
-    
-    // Second pass: Remove SSS findings that are substrings of UMID findings
-    // This prevents "10-5002134-6" (SSS match) from appearing when it's part of "4310-5002134-6" (UMID)
+
+    // ── Second pass: UMID/SSS overlap suppression ─────────────────────────────
+    // Remove SSS findings that are substrings of UMID findings.
+    // e.g. "10-5002134-6" (SSS match) is part of "4310-5002134-6" (UMID).
     const result = [...seen.values()];
     return result.filter(f => {
       if (f.patternId === 'ph_id_sss') {
-        // Check if this SSS finding is a substring of any UMID finding
         const sssMatch = f.rawMatch.trim();
-        const hasUmidParent = result.some(other => 
-          other.patternId === 'ph_id_umid' && 
-          other.rawMatch.includes(sssMatch)
+        const hasUmidParent = result.some(
+          other => other.patternId === 'ph_id_umid' && other.rawMatch.includes(sssMatch)
         );
-        if (hasUmidParent) {
-          return false; // Filter out this SSS finding
-        }
+        if (hasUmidParent) return false;
       }
       return true;
     });

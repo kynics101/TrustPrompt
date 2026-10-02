@@ -476,9 +476,11 @@ const TrustGazetteer = (() => {
 
   const TRIGGERS = [
     // Identity
-    { phrase: "my name is",          category: "person_name",  risk: "medium" },
-    { phrase: "my full name is",      category: "person_name",  risk: "medium" },
-    { phrase: "i am called",          category: "person_name",  risk: "medium" },
+    // NOTE: risk values must be "low", "moderate", or "high" only.
+    // "medium" is not a valid RISK_ORDER key and causes deduplication failures.
+    { phrase: "my name is",          category: "person_name",  risk: "low" },
+    { phrase: "my full name is",      category: "person_name",  risk: "low" },
+    { phrase: "i am called",          category: "person_name",  risk: "low" },
     { phrase: "call me",              category: "person_name",  risk: "low"    },
     { phrase: "my nickname is",       category: "person_name",  risk: "low"    },
     // Age / DOB
@@ -489,22 +491,23 @@ const TrustGazetteer = (() => {
     { phrase: "my birthday is",       category: "dob",          risk: "low"    },
     { phrase: "date of birth",        category: "dob",          risk: "low"    },
     // Location
-    { phrase: "i live in",            category: "location",     risk: "medium" },
-    { phrase: "i live at",            category: "location",     risk: "medium" },
-    { phrase: "i stay at",            category: "location",     risk: "medium" },
-    { phrase: "i reside at",          category: "location",     risk: "medium" },
-    { phrase: "my address is",        category: "location",     risk: "medium" },
-    { phrase: "my home address is",   category: "location",     risk: "medium" },
+    // NOTE: "medium" is not a valid RISK_ORDER key — all values must be "low", "moderate", or "high".
+    { phrase: "i live in",            category: "location",     risk: "low" },
+    { phrase: "i live at",            category: "location",     risk: "low" },
+    { phrase: "i stay at",            category: "location",     risk: "low" },
+    { phrase: "i reside at",          category: "location",     risk: "low" },
+    { phrase: "my address is",        category: "location",     risk: "low" },
+    { phrase: "my home address is",   category: "location",     risk: "low" },
     { phrase: "i am from",            category: "location",     risk: "low"    },
-    { phrase: "nakatira ako sa",      category: "location",     risk: "medium" }, // Filipino
-    { phrase: "nakatira sa",          category: "location",     risk: "medium" },
-    { phrase: "address ko",           category: "location",     risk: "medium" },
+    { phrase: "nakatira ako sa",      category: "location",     risk: "low" }, // Filipino
+    { phrase: "nakatira sa",          category: "location",     risk: "low" },
+    { phrase: "address ko",           category: "location",     risk: "low" },
     // Health
-    { phrase: "i have",               category: "health",       risk: "medium", requireGazetteer: "medical" },
-    { phrase: "i was diagnosed",      category: "health",       risk: "medium" },
-    { phrase: "i am diagnosed",       category: "health",       risk: "medium" },
-    { phrase: "i suffer from",        category: "health",       risk: "medium" },
-    { phrase: "my condition is",      category: "health",       risk: "medium" },
+    { phrase: "i have",               category: "health",       risk: "low", requireGazetteer: "medical" },
+    { phrase: "i was diagnosed",      category: "health",       risk: "low" },
+    { phrase: "i am diagnosed",       category: "health",       risk: "low" },
+    { phrase: "i suffer from",        category: "health",       risk: "low" },
+    { phrase: "my condition is",      category: "health",       risk: "low" },
     // Occupation / employer
     { phrase: "i work at",            category: "employer",     risk: "low"    },
     { phrase: "i work for",           category: "employer",     risk: "low"    },
@@ -515,9 +518,9 @@ const TrustGazetteer = (() => {
     { phrase: "i am a",               category: "religion",     risk: "low",   requireGazetteer: "nationality_religion" },
     { phrase: "i believe in",         category: "religion",     risk: "low",   requireGazetteer: "nationality_religion" },
     // Financial
-    { phrase: "my salary is",         category: "financial",    risk: "medium" },
-    { phrase: "i earn",               category: "financial",    risk: "medium" },
-    { phrase: "my income is",         category: "financial",    risk: "medium" },
+    { phrase: "my salary is",         category: "financial",    risk: "low" },
+    { phrase: "i earn",               category: "financial",    risk: "low" },
+    { phrase: "my income is",         category: "financial",    risk: "low" },
     { phrase: "my account number is", category: "financial",    risk: "high"   },
     { phrase: "my card number is",    category: "financial",    risk: "high"   }
   ];
@@ -556,18 +559,24 @@ const TrustGazetteer = (() => {
   ]);
 
   // Category → display label + sanitize function
+  // Keys here must match both GAZETTEER object keys (for B1 scan) and TRIGGERS category values (for B2 scan).
   const CATEGORY_META = {
-    person_name:  { label: "Person Name",         sanitize: (v) => v[0] + "***"                   },
-    age:          { label: "Age / Date of Birth",  sanitize: (_) => "[AGE REDACTED]"                },
-    dob:          { label: "Date of Birth",        sanitize: (_) => "[DOB REDACTED]"                },
-    location:     { label: "Location / Address",   sanitize: (_) => "[LOCATION REDACTED]"           },
-    health:       { label: "Health Condition",     sanitize: (_) => "[HEALTH INFO REDACTED]"        },
-    employer:     { label: "Employer / Workplace", sanitize: (_) => "[EMPLOYER REDACTED]"           },
-    religion:     { label: "Religion / Belief",    sanitize: (_) => "[BELIEF INFO REDACTED]"        },
-    financial:    { label: "Financial Information",sanitize: (_) => "[FINANCIAL INFO REDACTED]"     },
-    medical_term: { label: "Medical Term",         sanitize: (v) => "[MEDICAL: " + v + "]"          },
-    fin_term:     { label: "Financial Term",       sanitize: (v) => "[FINANCIAL TERM: " + v + "]"  },
-    legal_term:   { label: "Legal Term",           sanitize: (v) => "[LEGAL TERM: " + v + "]"      }
+    // ── B2 trigger categories ─────────────────────────────────────────────
+    person_name:  { label: "Person Name",          sanitize: (v) => v[0] + "***"                   },
+    age:          { label: "Age / Date of Birth",   sanitize: (_) => "[AGE REDACTED]"                },
+    dob:          { label: "Date of Birth",         sanitize: (_) => "[DOB REDACTED]"                },
+    location:     { label: "Location / Address",    sanitize: (_) => "[LOCATION REDACTED]"           },
+    health:       { label: "Health Condition",      sanitize: (_) => "[HEALTH INFO REDACTED]"        },
+    employer:     { label: "Employer / Workplace",  sanitize: (_) => "[EMPLOYER REDACTED]"           },
+    religion:     { label: "Religion / Belief",     sanitize: (_) => "[BELIEF INFO REDACTED]"        },
+    financial:    { label: "Financial Information", sanitize: (_) => "[FINANCIAL INFO REDACTED]"     },
+    // ── B1 gazetteer scan categories (must match GAZETTEER object keys) ───
+    medical:             { label: "Medical Term",            sanitize: (v) => "[MEDICAL: " + v + "]"          },
+    nationality_religion: { label: "Nationality / Religion", sanitize: (v) => "[NATIONALITY/RELIGION: " + v + "]" },
+    // Legacy aliases kept for backwards compat
+    medical_term: { label: "Medical Term",          sanitize: (v) => "[MEDICAL: " + v + "]"          },
+    fin_term:     { label: "Financial Term",        sanitize: (v) => "[FINANCIAL TERM: " + v + "]"  },
+    legal_term:   { label: "Legal Term",            sanitize: (v) => "[LEGAL TERM: " + v + "]"      },
   };
 
   // ── Levenshtein similarity (≥ 0.80 threshold per architecture diagram) ──────

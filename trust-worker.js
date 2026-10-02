@@ -85,10 +85,11 @@ const BASE_SCORES = {
   trigger_location:    2,
   trigger_religion:    2,  // Religion triggers are limited-tier
 
-  trigger_health:      0,  // FIXED: Context indicator, not scored
-  trigger_financial:   0,  // FIXED: Context indicator, not scored
-  gazetteer_medical:   0,  // FIXED: Context indicator, not scored
-  gazetteer_financial: 0,  // FIXED: Context indicator, not scored
+  trigger_health:      0,  // Context indicator, not scored
+  trigger_financial:   0,  // Context indicator, not scored
+  gazetteer_medical:   0,  // Context indicator, not scored
+  gazetteer_financial: 0,  // Context indicator, not scored
+  gazetteer_nationality_religion: 0,  // Ethnic origin context — no independent score
   nlp_person_name:     2,  // PATH C linguistic
   nlp_job_title:       2,  // PATH C linguistic
   nlp_organization:    2,  // PATH C linguistic
@@ -138,6 +139,7 @@ const ENTITY_TIER = {
   trigger_financial:   "contextual",
   gazetteer_medical:   "contextual",
   gazetteer_financial: "contextual",
+  gazetteer_nationality_religion: "contextual",  // Ethnic origin context indicator
   nlp_person_name:     "limited",  // PATH C linguistic
   nlp_job_title:       "limited",  // PATH C linguistic
   nlp_organization:    "limited",  // PATH C linguistic
@@ -146,8 +148,9 @@ const ENTITY_TIER = {
 const SENSITIVE_CONTEXT_IDS = new Set([
   "gazetteer_medical",
   "gazetteer_financial",
+  "gazetteer_nationality_religion",  // Ethnic origin — Rule 2 context indicator
   "trigger_health",
-  "trigger_financial"
+  "trigger_financial",
 ]);
 
 const RISK_ORDER = { none: 0, low: 1, moderate: 2, high: 3 };
@@ -162,35 +165,38 @@ function getMultiplier(distinctTypeCount) {
   return 1.00;
 }
 
-// ── STEP 3: Preliminary classification ───────────────────────────────────────
+// ── STEP 3: Preliminary classification (Table 13) ────────────────────────────
+//
+// Thresholds per manuscript Table 13:
+//   No Risk  = 0
+//   Low      = 2 – 4.99
+//   Moderate = 5 – 14.99
+//   High     = 15+
 
 function preliminaryClass(score) {
-  if (score >= 10) return "high";
+  if (score >= 15) return "high";
   if (score >= 5)  return "moderate";
   if (score >= 2)  return "low";
   return "none";
 }
 
-// ── STEP 4: Governance rule evaluation ───────────────────────────────────────
+// ── STEP 4: Governance rule evaluation (Table 15) ────────────────────────────
 //
-// Rules are evaluated in strict decision order (Table 12 of risk-scoring spec).
-// Only the first matching rule determines the outcome — cascading if/else-if.
+// Rules are evaluated in strict decision order — cascading if/else-if.
+// Only the first matching rule applies.
 //
-// Rule 1 — Critical Entity Escalation
-//   Any validated critical entity → HIGH (regardless of preliminary score)
+// Rule 1 — Strongly Validated Critical-Entity Rule
+//   Any finding where ENTITY_TIER = "critical" AND validated = true → HIGH
 //
-// Rule 2 — Sensitive Context Co-occurrence
-//   Direct/critical entity + sensitive context indicator → raise preliminary by one level
+// Rule 2 — Sensitive-Context Co-occurrence Rule
+//   At least one scored entity (BASE_SCORES > 0) AND at least one context
+//   indicator (SENSITIVE_CONTEXT_IDS) → raise preliminary by one level
 //
 // Rule 3 — Low-Impact Cap
-//   ALL of the following must be true:
-//     (a) every scored entity (BASE_SCORES > 0) has a base score of exactly 2
-//     (b) at least one scored entity exists
-//   Effect: cap final result at Moderate — prevents pure low-impact aggregation
-//   from escalating to High through the multiplier alone.
+//   ALL scored entities have BASE_SCORES === 2 (no moderate or high entity)
+//   → cap final result at Moderate
 //
-// Note: non-scorable findings (source_code, context-only gazetteer hits with
-// no base score) are excluded from the Rule 3 base-score check.
+// Rule 4 — No governance rule applies → retain preliminary
 
 function evaluateGovernance(findings, preliminary) {
 
@@ -202,15 +208,16 @@ function evaluateGovernance(findings, preliminary) {
     return { rule: "critical_entity", result: "high" };
   }
 
-  // ── Rule 2: significant/critical entity + sensitive context → raise one level ─
-  const hasDirectOrCritical = findings.some(
-    f => ENTITY_TIER[f.patternId] === "critical" ||
-         ENTITY_TIER[f.patternId] === "significant"  // FIXED: Should be "significant", not "direct"
+  // ── Rule 2: any scored entity + sensitive context → raise one level ──────
+  // Condition 1: at least one finding with BASE_SCORES > 0 (any impact tier)
+  const hasScoredEntity = findings.some(
+    f => (BASE_SCORES[f.patternId] ?? 0) > 0
   );
+  // Condition 2: at least one non-scoring context indicator present
   const hasSensitiveContext = findings.some(
     f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
   );
-  if (hasDirectOrCritical && hasSensitiveContext) {
+  if (hasScoredEntity && hasSensitiveContext) {
     const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
       ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
       : "high";
@@ -268,6 +275,13 @@ function computeRiskScore(findings) {
   const preliminary       = preliminaryClass(preScore);
   const governance        = evaluateGovernance(findings, preliminary);
   const riskLevel         = finalClass(preliminary, governance);
+
+  console.log(
+    `[TrustPrompt/worker/scorer] distinctTypes:${distinctTypeCount} [${[...seenTypes].join(", ")}]`,
+    `| base:${baseTotal} ×${multiplier} = ${preScore.toFixed(2)}`,
+    `| prelim:${preliminary} | gov:${governance.rule}(${governance.result})`,
+    `| final:${riskLevel}`
+  );
 
   return {
     score:      Math.round(preScore * 100) / 100,
@@ -363,9 +377,23 @@ function runPathA(normalisedText) {
 // ── Merge + deduplicate ───────────────────────────────────────────────────────
 
 function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings) {
+  // ── Deduplicate per (patternId × rawMatch) pair ──────────────────────────────
+  //
+  // KEY DESIGN: the deduplication key is "patternId:rawMatch" — NOT rawMatch alone.
+  //
+  // Using only rawMatch as the key was the root cause of the multiplier bug:
+  // if Path B detects "John" as trigger_person_name and Path C detects "John"
+  // as nlp_person_name, the old key would collapse both into ONE finding,
+  // reducing distinctTypeCount by 1 and applying the wrong (lower) multiplier.
+  //
+  // With the composite key, each (patternId, rawMatch) pair is kept independently.
+  // Two paths detecting the same raw text as the same entity type are still
+  // collapsed (higher-risk one wins), but two paths detecting the same raw text
+  // as DIFFERENT entity types both survive — correctly contributing two distinct
+  // types to the multiplier calculation.
   const seen = new Map();
   for (const f of [...pathAFindings, ...pathBFindings, ...pathCFindings]) {
-    const key = f.rawMatch.trim().toLowerCase();
+    const key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
     const ex  = seen.get(key);
     if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
   }

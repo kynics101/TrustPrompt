@@ -376,7 +376,7 @@ function runPathA(normalisedText) {
 
 // ── Merge + deduplicate ───────────────────────────────────────────────────────
 
-function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings) {
+function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings = []) {
   // ── Deduplicate per (patternId × rawMatch) pair ──────────────────────────────
   //
   // KEY DESIGN: the deduplication key is "patternId:rawMatch" — NOT rawMatch alone.
@@ -392,7 +392,7 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings) {
   // as DIFFERENT entity types both survive — correctly contributing two distinct
   // types to the multiplier calculation.
   const seen = new Map();
-  for (const f of [...pathAFindings, ...pathBFindings, ...pathCFindings]) {
+  for (const f of [...pathAFindings, ...pathBFindings, ...pathCFindings, ...sourceCodeFindings]) {
     const key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
     const ex  = seen.get(key);
     if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
@@ -425,7 +425,13 @@ self.onmessage = function (e) {
     }
   }
   
-  const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
+  // SOURCE CODE DETECTION — runs on masked text, parallel with all paths
+  // Note: Trust-worker currently doesn't have full code detection capability
+  // This is a placeholder for future enhancement; main-thread fallback handles it
+  let sourceCodeFindings = [];
+  // TODO: Implement runSourceCodeDetection in worker if needed
+  
+  const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings);
   const findings      = suppressPlaceholders(merged);  // TASK-4.4
 
   const { score, riskLevel, governance } = computeRiskScore(findings);

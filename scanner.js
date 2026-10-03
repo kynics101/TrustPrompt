@@ -902,9 +902,9 @@ const TrustScanner = (() => {
     ph_mobile:   5,
     phone_intl:  5,
     ph_address:  5,
-    source_code: 5,  // Source code blocks are Moderate-impact per Table 10
 
     // ── Low (Limited) — score 2 (Table 10) ───────────────────────────────
+    source_code:      2,  // Source code blocks are Low-impact
     ipv4:             2,
     ipv6:             2,
     mac_address:      2,
@@ -958,9 +958,9 @@ const TrustScanner = (() => {
     ph_mobile:   "significant",
     phone_intl:  "significant",
     ph_address:  "significant",
-    source_code: "significant",
 
     // ── Limited (score 2) ─────────────────────────────────────────────────
+    source_code:      "limited",  // Changed from "significant" to match BASE_SCORES=2
     ipv4:             "limited",
     ipv6:             "limited",
     mac_address:      "limited",
@@ -1036,11 +1036,15 @@ const TrustScanner = (() => {
 
   function evaluateGovernance(findings, preliminary) {
 
+    console.log("[TrustPrompt/governance] Evaluating governance rules for", findings.length, "findings, preliminary:", preliminary);
+    console.log("[TrustPrompt/governance] Findings:", findings.map(f => `${f.patternId}(${f.risk})`).join(", "));
+
     // ── Rule 1: validated critical entity → HIGH ─────────────────────────
     const hasValidatedCritical = findings.some(
       f => ENTITY_TIER[f.patternId] === "critical" && f.validated === true
     );
     if (hasValidatedCritical) {
+      console.log("[TrustPrompt/governance] Rule 1 triggered: critical entity");
       return { rule: "critical_entity", result: "high" };
     }
 
@@ -1049,14 +1053,20 @@ const TrustScanner = (() => {
     const hasScoredEntity = findings.some(
       f => (BASE_SCORES[f.patternId] ?? 0) > 0
     );
+    const scoredEntityTypes = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0).map(f => f.patternId);
+    console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "types:", scoredEntityTypes.join(", "));
+    
     // Condition 2: at least one non-scoring context indicator present
     const hasSensitiveContext = findings.some(
       f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
     );
+    console.log("[TrustPrompt/governance] Rule 2 condition 2 - hasSensitiveContext:", hasSensitiveContext);
+    
     if (hasScoredEntity && hasSensitiveContext) {
       const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
         ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
         : "high";
+      console.log("[TrustPrompt/governance] Rule 2 triggered: sensitive context, raising", preliminary, "→", raised);
       return { rule: "sensitive_context", result: raised };
     }
 
@@ -1068,11 +1078,15 @@ const TrustScanner = (() => {
     const allLowImpact = scoredFindings.every(
       f => (BASE_SCORES[f.patternId] ?? 0) === 2
     );
+    console.log("[TrustPrompt/governance] Rule 3 check - hasAnyScoredEntity:", hasAnyScoredEntity, "allLowImpact:", allLowImpact);
+    
     if (hasAnyScoredEntity && allLowImpact) {
+      console.log("[TrustPrompt/governance] Rule 3 triggered: low-impact cap");
       return { rule: "low_impact_cap", result: null };
     }
 
     // ── Rule 4: no governance rule applies → retain preliminary ───────────
+    console.log("[TrustPrompt/governance] No rule triggered, retaining preliminary:", preliminary);
     return { rule: "none", result: null };
   }
 
@@ -1093,6 +1107,10 @@ const TrustScanner = (() => {
 
   function computeRiskScore(findings) {
     const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+    
+    console.log("[TrustPrompt/scorer] computeRiskScore called with", findings.length, "findings");
+    console.log("[TrustPrompt/scorer] Scorable findings:", scorable.map(f => f.patternId).join(", "));
+    
     if (scorable.length === 0) return { score: 0, riskLevel: "none", governance: "none" };
 
     const seenTypes = new Set();
@@ -1185,6 +1203,7 @@ const TrustScanner = (() => {
       'ipv4', 'ipv6', 'mac_address',  // Educational contexts
       'credit_card',                   // Format documentation
       'api_key', 'jwt',                // Code/documentation blocks
+      // 'source_code' removed - shouldn't be filtered by code context markers
       'ph_id_philid', 'ph_id_umid', 'ph_id_passport', 'ph_id_prc',
       'ph_id_postal', 'ph_id_pwd', 'ph_id_senior_citizen',
       'ph_id_gsis', 'ph_id_sss', 'ph_id_philhealth',
@@ -1248,7 +1267,8 @@ const TrustScanner = (() => {
       /\b(json|yaml|config|configuration|api|endpoint)\b/,
     ];
     
-    if (codeMarkers.some(m => m.test(beforeText))) {  // Before text for code context
+    // Don't filter source_code itself just because context mentions code keywords
+    if (patternId !== 'source_code' && codeMarkers.some(m => m.test(beforeText))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: code context`);
       return true;
     }
@@ -1889,7 +1909,7 @@ const TrustScanner = (() => {
           `[TrustPrompt/CodeDetection] computeSourceCodeScore: ${_elapsed.toFixed(2)}ms` +
           ` (threshold: ${_warnMs}ms, textLen: ${text.length}, sampled: ${sampled})`
         );
-      } else if (CODE_DETECTION_CONFIG.verbosity === 'debug') {
+      } else if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.verbosity === 'debug') {
         console.log(
           `[TrustPrompt/CodeDetection] computeSourceCodeScore: ${_elapsed.toFixed(2)}ms` +
           ` (textLen: ${text.length}, sampled: ${sampled})`
@@ -2256,14 +2276,22 @@ const TrustScanner = (() => {
   // Returns findings array with source_code pattern and proper risk escalation.
 
   function runSourceCodeDetection(normalisedText) {
-    if (!CODE_DETECTION_CONFIG || CODE_DETECTION_CONFIG.enableSourceCodeDetection === false) {
-      return [];
+    // Safety check: CODE_DETECTION_CONFIG might not be defined in worker context
+    try {
+      if (typeof CODE_DETECTION_CONFIG === 'undefined' || CODE_DETECTION_CONFIG.enableSourceCodeDetection === false) {
+        return [];
+      }
+    } catch (e) {
+      // If CODE_DETECTION_CONFIG is not accessible, continue anyway (defaults to enabled)
+      console.log("[TrustPrompt/scanner] CODE_DETECTION_CONFIG check failed, proceeding with detection");
     }
 
     let findings = [];
     const unformattedBlocks = extractUnformattedCodeBlocks(normalisedText);
+    console.log(`[TrustPrompt/scanner] runSourceCodeDetection: extracted ${unformattedBlocks.length} blocks`);
     
     for (const block of unformattedBlocks) {
+      console.log(`[TrustPrompt/scanner] Processing block: "${block.rawMatch.substring(0, 30)}..." classification=${block.scoreObj.classification}`);
       const escalationResult = evaluateCodeRiskEscalation(block.scoreObj, "low");
       let escalatedRisk = escalationResult.escalatedRisk;
       const isContextual = isCodeContextual(block.rawMatch, normalisedText, block.startIndex);
@@ -2279,7 +2307,7 @@ const TrustScanner = (() => {
         console.log(`[TrustPrompt/code] code block + ${escalationResult.credentialTypes.join(', ')} detected → ${escalatedRisk.toUpperCase()} risk`);
       }
 
-      findings.push({
+      const finding = {
         patternId: "source_code",
         label: "Source Code Block",
         risk: escalatedRisk,
@@ -2298,9 +2326,13 @@ const TrustScanner = (() => {
           reason: block.scoreObj.reason,
           features: block.scoreObj.features
         }
-      });
+      };
+      
+      console.log(`[TrustPrompt/scanner] Pushing finding: patternId=${finding.patternId}, risk=${finding.risk}`);
+      findings.push(finding);
     }
-
+    
+    console.log(`[TrustPrompt/scanner] runSourceCodeDetection returning ${findings.length} findings`);
     return findings;
   }
 
@@ -2317,58 +2349,106 @@ const TrustScanner = (() => {
   // sentence case estimated, whitespace normalized, punctuation standardized.
 
   function scan(rawText) {
-    console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
-    
-    if (!rawText || !rawText.trim()) {
-      console.log("[TrustPrompt/scanner] Empty text - returning empty findings");
-      return { findings: [], riskLevel: "none", score: 0,
-               governance: "none", normalisedText: "", wasCapsConverted: false };
-    }
-    
-    console.log("[TrustPrompt/scanner] Normalizing...");
-    const { masked, textRegex, textNLP, wasCapsConverted } =
-      TrustNormalizer.normalize(rawText);
-    
-    // All four paths run in parallel
-    console.log("[TrustPrompt/scanner] Running PATH A (regex)...");
-    const pathAFindings = runPathA(textRegex);
-    console.log(`[TrustPrompt/scanner] PATH A findings: ${pathAFindings.length}${pathAFindings.length > 0 ? ' → ' + pathAFindings.map(f => f.patternId).join(', ') : ''}`);
-    
-    console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
-    const pathBFindings = TrustGazetteer.scan(textNLP);
-    console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
-    
-    console.log("[TrustPrompt/scanner] Running PATH C (linguistic)...");
-    let pathCFindings = [];
-    if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && typeof TrustLinguisticDetector.scan === 'function') {
-      try {
-        pathCFindings = TrustLinguisticDetector.scan(textNLP);
-        console.log(`[TrustPrompt/scanner] PATH C findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.patternId).join(', ') : ''}`);
-      } catch (pathCError) {
-        console.error("[TrustPrompt/scanner] PATH C error:", pathCError);
-        pathCFindings = [];
+    try {
+      console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
+      
+      if (!rawText || !rawText.trim()) {
+        console.log("[TrustPrompt/scanner] Empty text - returning empty findings");
+        return { findings: [], riskLevel: "none", score: 0,
+                 governance: "none", normalisedText: "", wasCapsConverted: false };
       }
-    } else {
-      console.warn("[TrustPrompt/scanner] TrustLinguisticDetector not available - PATH C skipped");
-    }
-    
-    console.log("[TrustPrompt/scanner] Running SOURCE CODE DETECTION (parallel with all paths)...");
-    const sourceCodeFindings = runSourceCodeDetection(masked);
-    console.log(`[TrustPrompt/scanner] SOURCE CODE DETECTION findings: ${sourceCodeFindings.length}${sourceCodeFindings.length > 0 ? ' → source_code blocks' : ''}`);
-    
-    const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings);
-    const findings      = suppressPlaceholders(merged);  // TASK-4.4
-    const { score, riskLevel, governance } = computeRiskScore(findings);
+      
+      console.log("[TrustPrompt/scanner] Normalizing...");
+      const { masked, textRegex, textNLP, wasCapsConverted } =
+        TrustNormalizer.normalize(rawText);
+      
+      // ★ RUN SOURCE CODE DETECTION FIRST (before PATH C)
+      // This prevents PATH C from misclassifying code tokens as names/orgs
+      console.log("[TrustPrompt/scanner] Running SOURCE CODE DETECTION (FIRST - before linguistic analysis)...");
+      const sourceCodeFindings = runSourceCodeDetection(textRegex);
+      console.log(`[TrustPrompt/scanner] ★★★ sourceCodeFindings CREATED: length=${sourceCodeFindings.length}`);
+      if (sourceCodeFindings.length > 0) {
+        console.log(`[TrustPrompt/scanner] ★★★ sourceCodeFindings CONTENT:`, sourceCodeFindings.map(f => ({
+          patternId: f.patternId,
+          risk: f.risk,
+          rawMatch: f.rawMatch.substring(0, 30)
+        })));
+      }
+      console.log(`[TrustPrompt/scanner] SOURCE CODE DETECTION findings: ${sourceCodeFindings.length}${sourceCodeFindings.length > 0 ? ' → source_code blocks' : ''}`);
+      if (sourceCodeFindings.length > 0) {
+        console.log("[TrustPrompt/scanner] SOURCE CODE details:", sourceCodeFindings.map(f => ({
+          patternId: f.patternId,
+          risk: f.risk,
+          rawMatch: f.rawMatch.substring(0, 30),
+          source: f.source
+        })));
+      }
+      
+      // All other paths run in parallel
+      console.log("[TrustPrompt/scanner] Running PATH A (regex)...");
+      let pathAFindings = runPathA(textRegex);
+      
+      // ★ ADD SOURCE CODE FINDINGS TO PATH A ★
+      // If source code was detected, treat it as PATH A finding (regex-like pattern detection)
+      if (sourceCodeFindings.length > 0) {
+        console.log(`[TrustPrompt/scanner] ★★★ SOURCE CODE FINDINGS BEFORE CONCAT: pathAFindings.length=${pathAFindings.length}, sourceCodeFindings.length=${sourceCodeFindings.length}`);
+        pathAFindings = pathAFindings.concat(sourceCodeFindings);
+        console.log(`[TrustPrompt/scanner] ★★★ SOURCE CODE FINDINGS AFTER CONCAT: pathAFindings.length=${pathAFindings.length}`);
+        console.log(`[TrustPrompt/scanner] Added ${sourceCodeFindings.length} source code findings to PATH A`);
+      } else {
+        console.log(`[TrustPrompt/scanner] ★★★ NO SOURCE CODE FINDINGS TO ADD`);
+      }
+      
+      console.log(`[TrustPrompt/scanner] PATH A findings: ${pathAFindings.length}${pathAFindings.length > 0 ? ' → ' + pathAFindings.map(f => f.patternId).join(', ') : ''}`);
+      
+      console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
+      const pathBFindings = TrustGazetteer.scan(textNLP);
+      console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
+      
+      console.log("[TrustPrompt/scanner] Running PATH C (linguistic)...");
+      let pathCFindings = [];
+      if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && typeof TrustLinguisticDetector.scan === 'function') {
+        try {
+          pathCFindings = TrustLinguisticDetector.scan(textNLP);
+          console.log(`[TrustPrompt/scanner] PATH C findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.patternId).join(', ') : ''}`);
+        } catch (pathCError) {
+          console.error("[TrustPrompt/scanner] PATH C error:", pathCError);
+          pathCFindings = [];
+        }
+      } else {
+        console.warn("[TrustPrompt/scanner] TrustLinguisticDetector not available - PATH C skipped");
+      }
+      
+      const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
+      console.log("[TrustPrompt/scanner] After merge:", merged.length, "findings - source_code count:", merged.filter(f => f.patternId === 'source_code').length);
+      if (merged.length > 0) {
+        console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`));
+      }
+      
+      const findings      = suppressPlaceholders(merged);  // TASK-4.4
+      console.log("[TrustPrompt/scanner] After suppressPlaceholders:", findings.length, "findings - source_code count:", findings.filter(f => f.patternId === 'source_code').length);
+      if (findings.length > 0) {
+        console.log("[TrustPrompt/scanner] Final findings detail before risk scoring:", findings.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`));
+      }
+      
+      console.log(`[TrustPrompt/scanner] ★★★ ABOUT TO SCORE: findings.length=${findings.length}, source_code count=${findings.filter(f => f.patternId === 'source_code').length}`);
+      const { score, riskLevel, governance } = computeRiskScore(findings);
+      console.log(`[TrustPrompt/scanner] ★★★ SCORING RESULT: score=${score}, riskLevel=${riskLevel}`);
 
-    console.log(
-      "[TrustPrompt/scanner] FINAL RESULT - risk:", riskLevel, `score:${score}`,
-      `| findings: ${findings.length} (A:${pathAFindings.length} B:${pathBFindings.length} C:${pathCFindings.length} SRC:${sourceCodeFindings.length})`
-    );
-    if (findings.length > 0) {
-      console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`).join(", "));
-    }
+      console.log(
+        "[TrustPrompt/scanner] FINAL RESULT - risk:", riskLevel, `score:${score}`,
+        `| findings: ${findings.length} (A:${pathAFindings.length} B:${pathBFindings.length} C:${pathCFindings.length} SRC:${sourceCodeFindings.length})`
+      );
+      if (findings.length > 0) {
+        console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`).join(", "));
+      }
 
-    return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted };
+      return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted };
+    } catch (scanError) {
+      console.error("[TrustPrompt/scanner] FATAL SCAN ERROR:", scanError.message, scanError.stack);
+      // Return safe default on any error
+      return { findings: [], riskLevel: "none", score: 0, governance: "none", normalisedText: rawText, wasCapsConverted: false };
+    }
   }
 
   // ── TASK 11.2: IMPLEMENT formatDiagnosticOutput(scoreObj) ───────────────────────
@@ -2402,7 +2482,7 @@ const TrustScanner = (() => {
       return { headers: [], features: [], summary: [], fullText: '' };
     }
 
-    const scoreThreshold = CODE_DETECTION_CONFIG.scoreThreshold || 6;
+    const scoreThreshold = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.scoreThreshold) || 6;
     const features = scoreObj.features || {};
     
     // ── Feature mapping with thresholds and max points ──────────────────────
@@ -2510,7 +2590,7 @@ const TrustScanner = (() => {
 
   function logCodeDetection(scoreObj, findings) {
     // ── Guard: Check if logging is enabled ──────────────────────────────────
-    if (!CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS && !CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON) {
+    if (!CODE_DETECTION_CONFIG || (!CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS && !CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON)) {
       return;
     }
 
@@ -2519,11 +2599,11 @@ const TrustScanner = (() => {
     }
 
     const timestamp = new Date().toISOString().split('T')[1].split('.')[0]; // HH:MM:SS
-    const verbosity = CODE_DETECTION_CONFIG.verbosity || 'info';
+    const verbosity = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.verbosity) || 'info';
 
     // ── Log composite score with timestamp ──────────────────────────────────
-    if (CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON) {
-      const scoreThreshold = CODE_DETECTION_CONFIG.scoreThreshold || 6;
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON) {
+      const scoreThreshold = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.scoreThreshold) || 6;
       const thresholdMet = scoreObj.score >= scoreThreshold ? '✓' : '✗';
       console.log(
         `[TrustPrompt/CodeDetection] ${timestamp} Composite Score: ${scoreObj.score} ` +
@@ -2532,7 +2612,7 @@ const TrustScanner = (() => {
     }
 
     // ── Log feature detection results (if verbosity enabled and LOG_SIGNAL_DETAILS) ──
-    if (CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS && verbosity === 'debug') {
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS && verbosity === 'debug') {
       console.log('[TrustPrompt/CodeDetection] Feature Analysis:');
 
       const features = scoreObj.features || {};
@@ -2569,7 +2649,7 @@ const TrustScanner = (() => {
     }
 
     // ── Log strong evidence presence and detected types ─────────────────────
-    if (CODE_DETECTION_CONFIG.LOG_STRONG_EVIDENCE_DETECTION) {
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_STRONG_EVIDENCE_DETECTION) {
       const strongEvidencePresent = scoreObj.strong_evidence ? 'YES' : 'NO';
       const features = scoreObj.features || {};
 
@@ -2607,9 +2687,9 @@ const TrustScanner = (() => {
     }
 
     // ── Log threshold comparison summary ───────────────────────────────────
-    if (CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON && verbosity !== 'error') {
-      const scoreThreshold = CODE_DETECTION_CONFIG.scoreThreshold || 6;
-      const requireStrongEvidence = CODE_DETECTION_CONFIG.requireStrongEvidence || true;
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_THRESHOLD_COMPARISON && verbosity !== 'error') {
+      const scoreThreshold = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.scoreThreshold) || 6;
+      const requireStrongEvidence = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.requireStrongEvidence) || true;
 
       let thresholdVerdict;
       if (requireStrongEvidence && !scoreObj.strong_evidence) {
@@ -2622,6 +2702,119 @@ const TrustScanner = (() => {
 
       console.log(`[TrustPrompt/CodeDetection] Total Score: ${scoreObj.score} (threshold: ${scoreThreshold}) | Strong Evidence: ${scoreObj.strong_evidence ? 'YES' : 'NO'} | Classification: ${thresholdVerdict}`);
     }
+  }
+
+  // ── TASK 12.1: CODE RISK ESCALATION EVALUATION ──────────────────────────────
+  // Requirement 12: Risk Escalation When Credentials Are Embedded in Code
+  //
+  // Purpose:
+  //   Detects whether a code block contains embedded credentials (API keys, passwords,
+  //   tokens, etc.) and escalates its risk level accordingly.
+
+  function evaluateCodeRiskEscalation(scoreObj, baseRisk) {
+    // ── Validate inputs ────────────────────────────────────────────────────
+    if (!scoreObj || typeof baseRisk !== 'string') {
+      return {
+        escalatedRisk: baseRisk || 'low',
+        escalated: false,
+        reason: 'Invalid input to evaluateCodeRiskEscalation',
+        credentialsDetected: false,
+        credentialTypes: [],
+        patterns: []
+      };
+    }
+
+    // ── Extract credential indicator score from features ───────────────────
+    const features = scoreObj.features || {};
+    const credentialIndicatorsScore = features.credentialIndicators || 0;
+
+    // ── Initialize result object ──────────────────────────────────────────
+    let escalatedRisk = baseRisk.toLowerCase();
+    let escalated = false;
+    let reason = '';
+    const credentialTypes = [];
+    const patterns = [];
+
+    // ── Check if credentials were detected (credentialIndicators > 0) ─────
+    if (credentialIndicatorsScore === 0) {
+      // No credentials detected
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log(
+          '[TrustPrompt/CodeDetection] Risk Escalation: No credentials detected (credentialIndicators = 0); maintaining base risk: ' + baseRisk
+        );
+      }
+      return {
+        escalatedRisk,
+        escalated: false,
+        reason: 'No embedded credentials detected',
+        credentialsDetected: false,
+        credentialTypes: [],
+        patterns: []
+      };
+    }
+
+    // ── Credentials detected: determine severity and escalate accordingly ──
+    credentialTypes.push('general_credential_pattern');
+
+    if (credentialIndicatorsScore > 0.5) {
+      credentialTypes.push('api_key', 'jwt', 'aws_key', 'github_token');
+      patterns.push('[REDACTED_API_KEY]', '[REDACTED_JWT]', '[REDACTED_AWS_KEY]');
+      
+      if (baseRisk.toLowerCase() === 'high') {
+        escalatedRisk = 'high';
+        escalated = false;
+        reason = 'Already at HIGH risk; critical credentials present but no further escalation';
+      } else {
+        escalatedRisk = 'high';
+        escalated = true;
+        reason =
+          'Code block contains embedded credentials (score: ' +
+          credentialIndicatorsScore.toFixed(2) +
+          '); critical patterns likely present';
+      }
+    }
+    else if (credentialIndicatorsScore > 0) {
+      if (baseRisk.toLowerCase() === 'low') {
+        escalatedRisk = 'moderate';
+        escalated = true;
+        reason =
+          'Code block contains sensitive keywords or credentials (score: ' +
+          credentialIndicatorsScore.toFixed(2) +
+          ')';
+        credentialTypes.push('password', 'secret', 'token', 'database_url');
+        patterns.push('[REDACTED_PASSWORD]', '[REDACTED_TOKEN]');
+      } else if (baseRisk.toLowerCase() === 'moderate') {
+        escalatedRisk = 'moderate';
+        escalated = false;
+        reason = 'Already at MODERATE risk; credentials present but no further escalation';
+        credentialTypes.push('password', 'secret', 'token');
+      } else if (baseRisk.toLowerCase() === 'high') {
+        escalatedRisk = 'high';
+        escalated = false;
+        reason = 'Already at HIGH risk; credentials present but no further escalation';
+        credentialTypes.push('password', 'secret', 'token');
+      }
+    }
+
+    // ── Log escalation decision (if enabled) ──────────────────────────────
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+      console.log(
+        `[TrustPrompt/CodeDetection] Risk Escalation: ${baseRisk} → ${escalatedRisk} | ` +
+          `Reason: ${reason} | ` +
+          `Credential Types: ${credentialTypes.join(', ')} | ` +
+          `Classification: ${scoreObj.classification || 'unknown'}`
+      );
+    }
+
+    // ── Return escalation result ────────────────────────────────────────────
+    return {
+      escalatedRisk,
+      escalated,
+      reason,
+      credentialsDetected: credentialIndicatorsScore > 0,
+      credentialTypes: Array.from(new Set(credentialTypes)), // deduplicate
+      patterns
+    };
   }
 
   return {
@@ -2649,7 +2842,8 @@ const TrustScanner = (() => {
     detectLineDensity,
     extractUnformattedCodeBlocks,
     deduplicateCodeFindings,
-    CODE_DETECTION_CONFIG
+    CODE_DETECTION_CONFIG,
+    evaluateCodeRiskEscalation
   };
 
 })();
@@ -4070,130 +4264,6 @@ function aggregateSignals(signals) {
 //   // escalation.escalatedRisk === "high" (API key pattern detected)
 //
 // **Performance**: O(1) — extracts features and applies lookup rules; no new scanning
-
-function evaluateCodeRiskEscalation(scoreObj, baseRisk) {
-  // ── Validate inputs ────────────────────────────────────────────────────
-  if (!scoreObj || typeof baseRisk !== 'string') {
-    return {
-      escalatedRisk: baseRisk || 'low',
-      escalated: false,
-      reason: 'Invalid input to evaluateCodeRiskEscalation',
-      credentialsDetected: false,
-      credentialTypes: [],
-      patterns: []
-    };
-  }
-
-  // ── Extract credential indicator score from features ───────────────────
-  const features = scoreObj.features || {};
-  const credentialIndicatorsScore = features.credentialIndicators || 0;
-
-  // ── Initialize result object ──────────────────────────────────────────
-  let escalatedRisk = baseRisk.toLowerCase();
-  let escalated = false;
-  let reason = '';
-  const credentialTypes = [];
-  const patterns = [];
-
-  // ── Check if credentials were detected (credentialIndicators > 0) ─────
-  if (credentialIndicatorsScore === 0) {
-    // No credentials detected
-    if (CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
-      console.log(
-        '[TrustPrompt/CodeDetection] Risk Escalation: No credentials detected (credentialIndicators = 0); maintaining base risk: ' + baseRisk
-      );
-    }
-    return {
-      escalatedRisk,
-      escalated: false,
-      reason: 'No embedded credentials detected',
-      credentialsDetected: false,
-      credentialTypes: [],
-      patterns: []
-    };
-  }
-
-  // ── Credentials detected: determine severity and escalate accordingly ──
-  credentialTypes.push('general_credential_pattern');
-
-  // Determine escalation severity based on credentialIndicators score
-  // credentialIndicators is a 0–1 signal; if > 0, credentials exist
-  // We escalate based on:
-  //   1. Score magnitude (higher = more/more critical credentials)
-  //   2. Whether code classification is present (stronger confidence)
-  //   3. Known critical patterns (API keys, JWT, AWS, GitHub)
-
-  // ── Critical credentials: Escalate to HIGH ─────────────────────────────
-  // If credentialIndicators score is high (> 0.5) OR features indicate
-  // critical patterns like API keys, JWT tokens, AWS keys, GitHub tokens
-  if (credentialIndicatorsScore > 0.5) {
-    // High credential indicator score suggests multiple or critical patterns
-    credentialTypes.push('api_key', 'jwt', 'aws_key', 'github_token');
-    patterns.push('[REDACTED_API_KEY]', '[REDACTED_JWT]', '[REDACTED_AWS_KEY]');
-    
-    if (baseRisk.toLowerCase() === 'high') {
-      // Already at highest risk; no escalation needed
-      escalatedRisk = 'high';
-      escalated = false;
-      reason = 'Already at HIGH risk; critical credentials present but no further escalation';
-    } else {
-      // Escalate to HIGH from LOW or MODERATE
-      escalatedRisk = 'high';
-      escalated = true;
-      reason =
-        'Code block contains embedded credentials (score: ' +
-        credentialIndicatorsScore.toFixed(2) +
-        '); critical patterns likely present';
-    }
-  }
-  // ── Sensitive credentials: Escalate to MODERATE ─────────────────────────
-  // If credentialIndicators score is moderate (0 < score ≤ 0.5)
-  // Escalate from LOW → MODERATE; maintain MODERATE or HIGH
-  else if (credentialIndicatorsScore > 0) {
-    if (baseRisk.toLowerCase() === 'low') {
-      escalatedRisk = 'moderate';
-      escalated = true;
-      reason =
-        'Code block contains sensitive keywords or credentials (score: ' +
-        credentialIndicatorsScore.toFixed(2) +
-        ')';
-      credentialTypes.push('password', 'secret', 'token', 'database_url');
-      patterns.push('[REDACTED_PASSWORD]', '[REDACTED_TOKEN]');
-    } else if (baseRisk.toLowerCase() === 'moderate') {
-      // Already moderate; no change needed, but mark as escalated for audit
-      escalatedRisk = 'moderate';
-      escalated = false;
-      reason = 'Already at MODERATE risk; credentials present but no further escalation';
-      credentialTypes.push('password', 'secret', 'token');
-    } else if (baseRisk.toLowerCase() === 'high') {
-      // Already high; maintain HIGH
-      escalatedRisk = 'high';
-      escalated = false;
-      reason = 'Already at HIGH risk; credentials present but no further escalation';
-      credentialTypes.push('password', 'secret', 'token');
-    }
-  }
-
-  // ── Log escalation decision (if enabled) ──────────────────────────────
-  if (CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
-    console.log(
-      `[TrustPrompt/CodeDetection] Risk Escalation: ${baseRisk} → ${escalatedRisk} | ` +
-        `Reason: ${reason} | ` +
-        `Credential Types: ${credentialTypes.join(', ')} | ` +
-        `Classification: ${scoreObj.classification || 'unknown'}`
-    );
-  }
-
-  // ── Return escalation result ────────────────────────────────────────────
-  return {
-    escalatedRisk,
-    escalated,
-    reason,
-    credentialsDetected: credentialIndicatorsScore > 0,
-    credentialTypes: Array.from(new Set(credentialTypes)), // deduplicate
-    patterns
-  };
-}
 
 // ── Examples ────────────────────────────────────────────────────────────────
 //

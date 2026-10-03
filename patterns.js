@@ -1575,7 +1575,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_mobile",
     label: "Philippine Mobile Number",
     reason: "Philippine mobile numbers (09XX or +639XX format) are directly tied to a person's identity through SIM registration (RA 11934). Exposing a mobile number enables unsolicited contact, SIM-swap fraud, and social engineering attacks.",
-    regex: /\b(?:\+63|0)9\d{2}[_\-\s]?\d{4}[_\-\s]?\d{3}\b/gi,
+    regex: /(?<![a-zA-Z0-9])(?:\+63|0)[\s\-\uE002\uE003]?9[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d(?![a-zA-Z0-9])/gi,
     risk: "moderate",
     validate: "isMobilePhone_PH",
     sanitize: (m) => m.slice(0, -6) + "xxxxxx"

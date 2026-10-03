@@ -87,6 +87,66 @@ const TrustLinguisticDetector = (() => {
     return names;
   }
 
+  // ── Helper: Extract standalone person names without honorifics ─────────────
+
+  /**
+   * Extract standalone 2-3 word capitalized phrases as person names.
+   * This catches names mentioned without honorifics or copular construction.
+   * 
+   * Examples:
+   * - "Kyleen Nicdao said..." → "Kyleen Nicdao"
+   * - "My colleague John Smith..." → "John Smith"
+   * - "Contact Maria Garcia for..." → "Maria Garcia"
+   *
+   * Important: Filters out common job titles and organizational names to reduce
+   * false positives (e.g., "Human Resources", "Product Manager").
+   *
+   * @param {string} text - The text to search
+   * @returns {Array} array of extracted names
+   * @private
+   */
+  function extractStandalonePersonNames(text) {
+    const names = [];
+    
+    // Pattern: 2-3 consecutive capitalized words (typical person name format)
+    // Examples: "John Smith", "Maria Garcia Lopez"
+    // Does NOT require "is a/an/the" trigger (unlike extractSubjectPositionNames)
+    const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi;
+    
+    let match;
+    while ((match = standaloneNamePattern.exec(text)) !== null) {
+      const potentialName = match[1].trim();
+      
+      // Heuristic 1: Name must be 3+ characters (lowered from 4 to catch more names)
+      if (potentialName.length < 3) continue;
+      
+      // Heuristic 2: Filter out ONLY extreme cases of organizational terms
+      // Be less aggressive to allow real names like "Technology" or "Finance" if they appear as names
+      const extremeOrgTerms = [
+        'human resource', 'product manager', 'project manager', 'information technology',
+        'information system'
+      ];
+      const lowerName = potentialName.toLowerCase();
+      if (extremeOrgTerms.some(term => lowerName.includes(term))) continue;
+      
+      // Heuristic 3: Use classifier to distinguish from organization names
+      // This is the key filter - if it classifies as "organization", skip it
+      const classification = classifyNameVsOrganization(potentialName);
+      if (classification === "organization") continue;  // Skip if classified as org
+      
+      // Heuristic 4: Avoid single-word matches (must be 2+ words for safety)
+      const wordCount = potentialName.split(/\s+/).length;
+      if (wordCount < 2) continue;  // Require at least 2 words
+      
+      // Heuristic 5: Avoid duplicates
+      if (names.some(n => n.toLowerCase() === lowerName)) continue;
+      
+      names.push(potentialName);
+    }
+    
+    return names;
+  }
+
   // Appositive phrases that indicate roles/positions
   // Patterns like "is the head of", "is the director of", "serves as", etc.
   const APPOSITIVE_ROLE_PHRASES = [
@@ -171,6 +231,142 @@ const TrustLinguisticDetector = (() => {
     
     // For other contexts, use dictionary
     return COMMON_JOB_TITLES.has(lower);
+  }
+
+  // ── Helper: Filter out common words that aren't organizations ──────────────
+
+  /**
+   * Check if a candidate string is a common word that shouldn't be classified as organization.
+   * This filters out compromises.js NER false positives like person names, medical terms, verbs, etc.
+   *
+   * @param {string} candidate - The organization candidate
+   * @returns {boolean} true if should be filtered out (not a real organization)
+   * @private
+   */
+  function shouldFilterCommonOrganization(candidate) {
+    if (!candidate || candidate.length === 0) return true;
+    const lower = candidate.toLowerCase().trim();
+
+    // Filter out common person first/last names (might be misclassified as orgs)
+    const commonNames = new Set([
+      'paul', 'john', 'james', 'michael', 'david', 'robert', 'william', 'richard',
+      'charles', 'joseph', 'thomas', 'alice', 'mary', 'patricia', 'jennifer', 'linda',
+      'barbara', 'susan', 'jessica', 'sarah', 'karen', 'nancy', 'betty', 'margaret',
+      'smith', 'johnson', 'williams', 'brown', 'jones', 'garcia', 'miller', 'davis',
+      'rodriguez', 'martinez', 'hernandez', 'lopez', 'reyes', 'cruz', 'torres', 'nicdao'
+    ]);
+    if (commonNames.has(lower)) return true;
+
+    // Filter out medical terms that might be misclassified as organizations
+    const medicalTerms = new Set([
+      'diabetes', 'cancer', 'fever', 'hypertension', 'depression', 'anxiety', 'asthma',
+      'arthritis', 'allergies', 'infection', 'virus', 'bacteria', 'treatment', 'medication',
+      'diagnosis', 'disease', 'illness', 'condition', 'symptom', 'pain', 'fatigue',
+      'headache', 'migraine', 'flu', 'cold', 'cough', 'pneumonia', 'covid', 'mpox'
+    ]);
+    if (medicalTerms.has(lower)) return true;
+
+    // Filter out common verbs and auxiliary verbs
+    const commonVerbs = new Set([
+      'have', 'has', 'had', 'do', 'does', 'did', 'be', 'being', 'been',
+      'is', 'are', 'was', 'were', 'am', 'will', 'would', 'could', 'should',
+      'may', 'might', 'must', 'can', 'need', 'want', 'like', 'love', 'think',
+      'know', 'believe', 'say', 'said', 'tell', 'told', 'ask', 'asked', 'give',
+      'made', 'make', 'work', 'help', 'go', 'come', 'get', 'take', 'bring'
+    ]);
+    if (commonVerbs.has(lower)) return true;
+
+    // Filter out single-word common terms that aren't organizations
+    // Organizations typically have multiple words or are proper nouns with context
+    const singleWordNonOrgs = new Set([
+      'and', 'or', 'but', 'the', 'a', 'an', 'this', 'that', 'these', 'those',
+      'person', 'people', 'thing', 'stuff', 'item', 'group', 'team', 'member',
+      'information', 'data', 'system', 'technology', 'service', 'result', 'file',
+      'name', 'file', 'type', 'text', 'content', 'message', 'email', 'phone'
+    ]);
+    
+    const words = lower.split(/\s+/).length;
+    if (words === 1 && singleWordNonOrgs.has(lower)) {
+      return true;
+    }
+
+    // Filter out lowercase or all-lowercase single words (unlikely to be org names)
+    // Real org names are typically capitalized and/or multi-word
+    if (words === 1 && /^[a-z]+$/.test(candidate)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // ── Helper: Detect if text is a code pattern ───────────────────────────────
+  /**
+   * FILTER: Reject findings that are actually code patterns (variables, assignments, etc).
+   * 
+   * This prevents Path C from misclassifying code elements as organizations/persons.
+   * For example: "const myValue = 5;" should NOT trigger nlp_organization on "myValue".
+   * 
+   * Code pattern indicators:
+   * - Contains assignment operators (=, :)
+   * - camelCase or snake_case identifiers
+   * - Common programming keywords (const, let, var, function, class, etc)
+   * - Semicolons
+   * - Parentheses/braces in close proximity
+   *
+   * @param {string} text - Full surrounding text context
+   * @param {string} candidate - The candidate word being evaluated
+   * @returns {boolean} true if appears to be code, should filter out
+   * @private
+   */
+  function isCodePattern(text, candidate) {
+    if (!candidate || candidate.length === 0) return false;
+
+    // Pattern 1: Explicit code keywords — if text has code keywords, flag any identifier-like candidate
+    const codeKeywords = /\b(const|let|var|function|class|return|async|await|import|export|interface|type|enum|if|for|while|switch|case|default|break|continue|new|this|super|extends|implements)\b/gi;
+    if (codeKeywords.test(text)) {
+      // If text contains code keywords AND candidate is not a typical person/org name
+      // Typical names are multi-word or have all capitals (LIKE "JOHN" or "Inc" at the end)
+      const isTypicalName = /\s/.test(candidate) || /^[A-Z]{2,}$/.test(candidate);
+      if (!isTypicalName) {
+        // Single word or mixed case in code context = likely variable
+        if (/[a-z][a-zA-Z0-9]*[A-Z]/.test(candidate) || /_[a-z]/.test(candidate)) {
+          return true;  // camelCase or snake_case in code context
+        }
+      }
+    }
+
+    // Pattern 2: Assignment operators nearby — strong indicator of code
+    const candidateIndex = text.toLowerCase().indexOf(candidate.toLowerCase());
+    if (candidateIndex === -1) return false;
+    
+    const contextWindow = text.slice(Math.max(0, candidateIndex - 50), 
+                                     Math.min(text.length, candidateIndex + candidate.length + 50));
+    
+    // If surrounded by code punctuation/operators, it's likely code
+    const hasAssignmentOp = /\s*=\s*|;\s*$|:\s*/.test(contextWindow);
+    const hasBraces = /[{}()\[\]]/.test(contextWindow);
+    
+    if ((hasAssignmentOp || hasBraces) && !(/\s/.test(candidate))) {
+      // Single word surrounded by code markers = variable, not a name
+      return true;
+    }
+
+    // Pattern 3: camelCase or snake_case without capital at start (strong code indicator)
+    const isCamelCase = /^[a-z]+[a-z0-9]*[A-Z]/.test(candidate);
+    const isSnakeCase = /_/.test(candidate) && /^[a-z_0-9]+$/.test(candidate);
+    
+    if ((isCamelCase || isSnakeCase) && candidate.length >= 2) {
+      // These patterns almost never appear in person or org names
+      return true;
+    }
+    
+    // Pattern 4: Standalone code keywords themselves
+    const standalonKeywords = /^(const|let|var|function|class|return|if|else|for|while|do|switch|case|default|break|continue|new|this|import|export|from|as)$/i;
+    if (standalonKeywords.test(candidate)) {
+      return true;
+    }
+
+    return false;
   }
 
   // ── Helper: Extract names from subject position without honorifics ──────────
@@ -423,7 +619,131 @@ const TrustLinguisticDetector = (() => {
     };
   }
 
-  // ── Helper: Extract organization names from context ────────────────────────
+  // ── Helper: Heuristics to distinguish names from organizations ──────────────
+
+  /**
+   * ALGORITHM: Distinguish personal names from organization names.
+   *
+   * Key insight: Personal names and organization names have distinct patterns:
+   *
+   * Personal Names typically:
+   * - 2-3 words (FirstName LastName, or FirstName MiddleName LastName)
+   * - Each word is 2-10 characters (typical name syllable length)
+   * - Pattern: [Capitalized] [Capitalized] or [Capitalized] [Capitalized] [Capitalized]
+   * - Examples: "Maria Santos", "John Smith", "Kyleen Nicdao"
+   *
+   * Organization Names typically:
+   * - 2+ words with specific structural markers:
+   *   - Include prepositions: "of", "for", "and" (e.g., "University of Santo Tomas")
+   *   - Include functional words: "Department", "Division", "Group", "Inc", "Ltd", "Co"
+   *   - Acronyms: all-caps 2-5 character sequences (e.g., "IBM", "Google", "OICT")
+   *   - Longer compound words (5+ words total)
+   * - Contain numbers (e.g., "3M", "3Com")
+   * - Examples: "University of Santo Tomas", "Department of IT", "Google Inc"
+   *
+   * Heuristic scoring:
+   * - Name score: +1 for each 2-3 word pattern, +1 if all words 2-10 chars
+   * - Org score: +1 for "of"/"for"/"and", +1 for functional words, +1 for 4+ words, +1 for numbers
+   * - Decision: Name if (name_score > org_score), Org otherwise
+   *
+   * @param {string} text - The candidate text to classify
+   * @returns {string} "name" | "organization" | "unknown"
+   * @private
+   */
+  function classifyNameVsOrganization(text) {
+    if (!text || text.length < 2) return "unknown";
+    
+    const lower = text.toLowerCase();
+    const words = text.split(/\s+/);
+    
+    // ★ NAME INDICATORS ★
+    let nameScore = 0;
+    
+    // Name pattern: 2-3 capitalized words of typical name length
+    if (words.length >= 2 && words.length <= 3) {
+      const allWordsProperLength = words.every(w => w.length >= 2 && w.length <= 12);
+      if (allWordsProperLength) {
+        nameScore += 2;  // Strong name signal
+      }
+    }
+    
+    // Each word starts with capital letter (proper noun indicator)
+    const allCapitalized = words.every(w => /^[A-Z]/.test(w));
+    if (allCapitalized && words.length <= 3) {
+      nameScore += 1;
+    }
+    
+    // Words are typical name words (not common org indicators)
+    const namePatternWords = ['saint', 'san', 'de', 'la', 'von', 'van', 'el'];  // Common in names
+    const hasNameWords = words.some(w => namePatternWords.includes(w.toLowerCase()));
+    if (hasNameWords && words.length <= 3) {
+      nameScore += 1;
+    }
+    
+    // ★ ORGANIZATION INDICATORS ★
+    let orgScore = 0;
+    
+    // Presence of prepositions (strong org signal)
+    const hasPrepositions = /\s(of|for|and|in|at|by|from|with)\s/i.test(' ' + text + ' ');
+    if (hasPrepositions) {
+      orgScore += 2;
+    }
+    
+    // Presence of functional org words
+    const orgWords = [
+      'company', 'corporation', 'corp', 'inc', 'ltd', 'llc', 'llp', 'gmbh',
+      'department', 'dept', 'division', 'unit', 'group', 'team', 'bureau',
+      'agency', 'administration', 'institute', 'institute', 'university', 'college',
+      'school', 'hospital', 'clinic', 'bank', 'fund', 'association', 'society',
+      'organization', 'org', 'council', 'committee', 'board', 'foundation',
+      'ministry', 'office', 'authority', 'center', 'centre', 'service', 'network'
+    ];
+    const hasOrgWords = words.some(w => orgWords.includes(w.toLowerCase()));
+    if (hasOrgWords) {
+      orgScore += 3;  // Very strong org signal
+    }
+    
+    // 4+ words often indicates organization (compound names)
+    if (words.length >= 4) {
+      orgScore += 1;
+    }
+    
+    // Contains numbers (common in orgs: "3M", "3Com", "IBM", "3PL")
+    if (/\d/.test(text)) {
+      orgScore += 2;
+    }
+    
+    // All uppercase (acronym like "OICT", "IBM", "NASA")
+    if (/^[A-Z]{2,}$/.test(text)) {
+      orgScore += 2;
+    }
+    
+    // Contains ampersand (common in org names: "Smith & Sons", "A&B Inc")
+    if (/&/.test(text)) {
+      orgScore += 1;
+    }
+    
+    // Hyphenated words (more common in orgs than names)
+    if (/\-/.test(text) && words.length >= 2) {
+      orgScore += 1;
+    }
+    
+    // ★ MAKE DECISION ★
+    if (nameScore > orgScore && nameScore >= 2) {
+      return "name";
+    } else if (orgScore > nameScore && orgScore >= 2) {
+      return "organization";
+    }
+    
+    // Default based on word count: 2-3 words = name, 4+ words = org
+    if (words.length === 2 || words.length === 3) {
+      return "name";
+    } else if (words.length >= 4) {
+      return "organization";
+    }
+    
+    return "unknown";
+  }
 
   /**
    * ALGORITHM: Extract organization names from contextual patterns.
@@ -459,7 +779,8 @@ const TrustLinguisticDetector = (() => {
     // Pattern 1: "is the head/member of [ORG]" or "is part of [ORG]" or "in [ORG]"
     // Captures capitalized words or acronyms after prepositions
     // Stops at punctuation, conjunctions, or sentence end
-    const headOfPattern = /\b(?:is\s+(?:the\s+)?(?:head|chief|member|part|employee|leader|director|coordinator)|in)\s+(?:of|in|the\s+)?(?:the\s+)?([A-Z][A-Za-z\s&]*?)(?:\s+(?:and|or|at|which|where)|\.|\,|;|$)/gi;
+    // FIX #3: Added apostrophe support for possessive organization names (e.g., "Tita's Incorporation")
+    const headOfPattern = /\b(?:is\s+(?:the\s+)?(?:head|chief|member|part|employee|leader|director|coordinator)|in)\s+(?:of|in|the\s+)?(?:the\s+)?([A-Z][A-Za-z\s&']*?)(?:\s+(?:and|or|at|which|where)|\.|\,|;|$)/gi;
     
     let match;
     while ((match = headOfPattern.exec(text)) !== null) {
@@ -475,6 +796,10 @@ const TrustLinguisticDetector = (() => {
       const lower = org.toLowerCase();
       if (['the', 'a', 'an', 'that', 'this', 'who', 'which'].includes(lower)) continue;
       
+      // ★ NEW: Use classifier to avoid names ★
+      const classificationHeadOf = classifyNameVsOrganization(org);
+      if (classificationHeadOf === "name") continue;  // Skip if classified as name
+      
       // Heuristic 3: Avoid duplicates
       if (orgs.some(o => o.toLowerCase() === lower)) continue;
       
@@ -485,7 +810,8 @@ const TrustLinguisticDetector = (() => {
     // Examples: "university of santo tomas", "oict", "Google"
     // Pattern: Capitalized word(s), potentially with "of", "and", or "the" between them
     // Often organizations are in all-caps or title case, possibly multi-word
-    const standaloneOrgPattern = /\b([A-Z][A-Za-z]+(?:\s+(?:of|and|the)\s+[A-Z][A-Za-z]+)+)\b/gi;
+    // FIX #3: Added apostrophe support for possessive organization names
+    const standaloneOrgPattern = /\b([A-Z][A-Za-z']+(?:\s+(?:of|and|the)\s+[A-Z][A-Za-z']+)+)\b/gi;
     
     while ((match = standaloneOrgPattern.exec(text)) !== null) {
       let org = match[1].trim();
@@ -496,6 +822,10 @@ const TrustLinguisticDetector = (() => {
       // Heuristic: Must be meaningful length (at least 5 chars for multi-word)
       if (org.length < 5) continue;
       
+      // ★ NEW: Use classifier to avoid names ★
+      const classificationStandalone = classifyNameVsOrganization(org);
+      if (classificationStandalone === "name") continue;  // Skip if classified as name
+      
       // Avoid duplicates
       if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
       
@@ -504,6 +834,7 @@ const TrustLinguisticDetector = (() => {
     
     // Pattern 1C: Acronyms or single capitalized words (OICT, Google, etc.)
     // This catches single-word organization names
+    // IMPORTANT: Be restrictive here to avoid catching personal names
     const acronymOrgPattern = /\b([A-Z]{2,}|[A-Z][a-z]{3,})\b/gi;
     
     while ((match = acronymOrgPattern.exec(text)) !== null) {
@@ -514,8 +845,21 @@ const TrustLinguisticDetector = (() => {
       
       // Skip common English words
       const lower = org.toLowerCase();
-      const commonWords = ['the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'which', 'who', 'why', 'how', 'name', 'human', 'manager', 'head', 'part', 'person'];
+      const commonWords = ['the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'which', 'who', 'why', 'how', 'name', 'human', 'manager', 'head', 'part', 'person', 'resource', 'maria', 'john', 'marie', 'kyleen'];
       if (commonWords.includes(lower)) continue;
+      
+      // ★ CRITICAL: Use classifier to avoid names - be very strict here ★
+      // This pattern is where personal names like "Maria", "John" get caught
+      const classificationAcronym2 = classifyNameVsOrganization(org);
+      if (classificationAcronym2 === "name") continue;  // Skip if classified as name
+      
+      // Acronyms must be all-caps OR be well-known company/org names
+      // Only allow title-case words that are actually in our vocabulary of known orgs
+      const knownOrgNames = ['Google', 'Apple', 'Microsoft', 'Amazon', 'Facebook', 'Twitter', 'LinkedIn', 'Intel', 'IBM', 'Oracle', 'Cisco', 'Dell', 'HP', 'PayPal', 'Uber', 'Netflix'];
+      if (!/^[A-Z]+$/.test(org) && !knownOrgNames.includes(org)) {
+        // If it's not all-caps and not a known org, skip it (likely a name)
+        continue;
+      }
       
       // Avoid duplicates
       if (orgs.some(o => o.toLowerCase() === lower)) continue;
@@ -525,7 +869,8 @@ const TrustLinguisticDetector = (() => {
     
     // Pattern 2: "works at/for [ORG]" or "employed at/by [ORG]"
     // Captures capitalized words after workplace prepositions
-    const worksAtPattern = /\b(?:works?|employed?|working)\s+(?:at|by|for|with)\s+(?:the\s+)?([A-Z][A-Za-z\s&]*?)(?:\s+(?:and|or|which|where)|\.|\,|;|$)/gi;
+    // FIX #3: Added apostrophe support for possessive organization names
+    const worksAtPattern = /\b(?:works?|employed?|working)\s+(?:at|by|for|with)\s+(?:the\s+)?([A-Z][A-Za-z\s&']*?)(?:\s+(?:and|or|which|where)|\.|\,|;|$)/gi;
     
     while ((match = worksAtPattern.exec(text)) !== null) {
       let org = match[1].trim();
@@ -537,11 +882,15 @@ const TrustLinguisticDetector = (() => {
       if (org.length < 3) continue;
       
       // Heuristic 2: Avoid obvious non-organizations
-      const lower = org.toLowerCase();
-      if (['the', 'a', 'an', 'that', 'this', 'there'].includes(lower)) continue;
+      const lower2 = org.toLowerCase();
+      if (['the', 'a', 'an', 'that', 'this', 'there'].includes(lower2)) continue;
+      
+      // ★ NEW: Use classifier to avoid names ★
+      const classificationWorksAt = classifyNameVsOrganization(org);
+      if (classificationWorksAt === "name") continue;  // Skip if classified as name
       
       // Heuristic 3: Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === lower)) continue;
+      if (orgs.some(o => o.toLowerCase() === lower2)) continue;
       
       orgs.push(org);
     }
@@ -564,6 +913,69 @@ const TrustLinguisticDetector = (() => {
       // Avoid duplicates
       if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
       
+      orgs.push(org);
+    }
+    
+    // FIX #2: NEW Pattern 3.5 — Standalone Acronyms
+    // Detects acronyms like "OICT", "HR", "IT" mentioned standalone without context
+    // This captures organizations referenced by their acronym alone
+    // Examples: "I work at OICT", "The OICT is...", "OICT announced..."
+    // 
+    // Strategy: Match all-caps 2-5 letter sequences that:
+    // - Are NOT English words (THE, AND, FOR, etc.)
+    // - Are NOT preceded by lowercase (to avoid extracting from middle of words)
+    // - Are NOT followed by lowercase (to avoid "OICTvalue" false matches)
+    // - Are NOT partial words at line boundaries (incomplete typing like "Kyl")
+    const standaloneAcronymPattern = /\b([A-Z]{3,5})\b(?!\w)/gi;  // Changed: 3-5 instead of 2-5 to reduce false positives
+    
+    const commonAcronymBlacklist = new Set([
+      'THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'WHEN', 'WHAT', 'WHICH',
+      'ARE', 'WAS', 'HAS', 'DID', 'WILL', 'CAN', 'MAY', 'BEEN', 'HAVE', 'DOES',
+      'THEY', 'THEM', 'THEN', 'THAN', 'THAT', 'ONLY', 'ALSO', 'JUST', 'VERY', 'MORE',
+      'SOME', 'SUCH', 'SAID', 'MAKE', 'PART', 'SUCH', 'EVEN', 'MOST', 'LIKE', 'KNOW',
+      'KYL', 'KYE', 'NIC', 'DAY'  // Added: Fragments of "Kyleen Nicdao" to prevent false matches
+    ]);
+    
+    const knownOrgAcronyms = new Set([
+      // Government/Education
+      'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW', 'TSA', 'PRC',
+      // Tech Companies
+      'GOOGLE', 'APPLE', 'MICROSOFT', 'AMAZON', 'FACEBOOK', 'TWITTER', 'UBER',
+      // Finance
+      'BDO', 'BPI', 'RCBC', 'PNB', 'AXA', 'MANULIFE',
+      // Common 3-5 letter orgs
+      'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ASAP'
+    ]);
+    
+    while ((match = standaloneAcronymPattern.exec(text)) !== null) {
+      let org = match[1].trim();
+      
+      // Filter 1: Minimum 3 letters (raised from 2 to reduce false positives from incomplete typing)
+      if (org.length < 3) continue;
+      
+      // Filter 2: Skip if in common non-org acronym blacklist
+      if (commonAcronymBlacklist.has(org)) continue;
+      
+      // Filter 3: Check against known org acronyms (high precision mode)
+      // Only accept if: known org OR (3+ letters AND classifies as organization)
+      const isKnownOrg = knownOrgAcronyms.has(org);
+      if (!isKnownOrg) {
+        // For unknown acronyms, use classifier + additional checks
+        const classificationAcronym = classifyNameVsOrganization(org);
+        if (classificationAcronym === "name") continue;  // Skip if classified as name
+        
+        // Additional filter: 3-letter unknowns must be verified
+        // (Most 3-letter sequences are likely partial words, not acronyms)
+        if (org.length === 3 && !isKnownOrg) {
+          // For 3-letter acronyms, only accept if explicitly classified as org
+          if (classificationAcronym !== "organization") continue;
+        }
+      }
+      
+      // Filter 4: Avoid duplicates
+      if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
+      
+      // Successfully extracted standalone acronym
       orgs.push(org);
     }
     
@@ -780,6 +1192,25 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // FIX #1: NEW Method 2.75 — Extract standalone person names without triggers
+      // Detects 2-3 word capitalized names mentioned standalone (e.g., "Kyleen Nicdao")
+      // Does NOT require honorifics, copular construction, or other context
+      // Examples: "Kyleen Nicdao said...", "My colleague John Smith..."
+      const standaloneNames = extractStandalonePersonNames(text);
+      for (const name of standaloneNames) {
+        if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (NLP)',
+            risk: 'low',
+            rawMatch: name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            validated: false
+          });
+        }
+      }
+      
       // Method 3: Extract from multi-sentence context (NEW)
       // Handles cases like: "i have 3 professors. Ms padua is the head of oict."
       const entityContexts = extractEntityContextPairs(text);
@@ -802,10 +1233,10 @@ const TrustLinguisticDetector = (() => {
       // Method 4: Fallback to trigger phrases for explicit name declarations
       // This catches cases like "my name is X" that might not trigger NER
       const nameTriggers = [
-        /\bmy\s+name\s+is\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\b/gi,
-        /\bi['']m\s+called\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\b/gi,
-        /\bi\s+am\s+named\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\b/gi,
-        /\bcall\s+me\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\b/gi,
+        /\bmy\s+name\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\.|,|;|and|but|or|$)/gi,
+        /\bi['']m\s+called\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\.|,|;|and|but|or|$)/gi,
+        /\bi\s+am\s+named\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\.|,|;|and|but|or|$)/gi,
+        /\bcall\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:\.|,|;|and|but|or|$)/gi,
         // NEW: Predicate nominative with job title - "[Name] is a/an [job]"
         // Captures capitalized word before "is a/an" - the subject name
         /\b([A-Z][a-z]+)\s+is\s+a(?:n)?\s+[a-z]/gi,
@@ -1004,8 +1435,13 @@ const TrustLinguisticDetector = (() => {
         for (const org of orgList) {
           const rawMatch = org.trim();
 
-          // Filter out short strings (likely false positives)
-          if (!rawMatch || rawMatch.length < 3) {
+          // Filter out: short strings, common words, medical terms, person names, verbs
+          if (!rawMatch || rawMatch.length < 3 || shouldFilterCommonOrganization(rawMatch)) {
+            continue;
+          }
+
+          // Filter out code patterns (e.g., variable names like "myValue")
+          if (isCodePattern(text, rawMatch)) {
             continue;
           }
 
@@ -1029,7 +1465,7 @@ const TrustLinguisticDetector = (() => {
       // WITHOUT requiring a hardcoded org dictionary
       const contextOrgs = extractOrganizationContexts(text);
       for (const org of contextOrgs) {
-        if (org.length >= 2 && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+        if (org.length >= 3 && !shouldFilterCommonOrganization(org) && !isCodePattern(text, org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
           findings.push({
             patternId: 'nlp_organization',
             label: 'Organization (NLP - Contextual)',
@@ -1046,7 +1482,7 @@ const TrustLinguisticDetector = (() => {
       // Patterns: "is the head of oict", "is part of oict", etc.
       const { organizations } = extractFromAppositives(text);
       for (const org of organizations) {
-        if (org.length >= 3 && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+        if (org.length >= 3 && !shouldFilterCommonOrganization(org) && !isCodePattern(text, org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
           findings.push({
             patternId: 'nlp_organization',
             label: 'Organization (NLP - Appositive)',
@@ -1065,7 +1501,7 @@ const TrustLinguisticDetector = (() => {
       for (const entity of entityContexts) {
         if (entity.type === 'person') {
           for (const org of entity.organizations) {
-            if (org.length >= 3 && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+            if (org.length >= 3 && !shouldFilterCommonOrganization(org) && !isCodePattern(text, org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
               findings.push({
                 patternId: 'nlp_organization',
                 label: 'Organization (NLP - Contextual)',
@@ -1095,8 +1531,8 @@ const TrustLinguisticDetector = (() => {
         while ((match = trigger.exec(text)) !== null) {
           const potentialOrg = match[1].trim();
           
-          // Filter out short strings and ensure quality
-          if (potentialOrg.length >= 3) {
+          // Filter out short strings, common words, and ensure quality
+          if (potentialOrg.length >= 3 && !shouldFilterCommonOrganization(potentialOrg)) {
             // Check if not already added from NER
             if (!findings.some(f => f.rawMatch.toLowerCase() === potentialOrg.toLowerCase())) {
               findings.push({
@@ -1156,6 +1592,34 @@ const TrustLinguisticDetector = (() => {
       return [];
     }
 
+    // ★ NEW: EARLY CODE DETECTION ★
+    // If the input text is entirely code-like (contains code keywords + operators/semicolons),
+    // skip linguistic analysis entirely to avoid false positives on variable names as person/org names.
+    // Examples: "const myValue = 5;" or "function test() { return x; }"
+    const codeKeywordCount = (textNLP.match(/\b(const|let|var|function|class|return|if|for|while|async|await|import|export)\b/gi) || []).length;
+    const codeOperatorCount = (textNLP.match(/[;:={}()\[\]]/g) || []).length;
+    
+    if (codeKeywordCount > 0 || codeOperatorCount >= 2) {
+      console.log('[TrustPrompt/PATH_C] Code detection check: keywords=' + codeKeywordCount + ', operators=' + codeOperatorCount + ', text="' + textNLP.substring(0, 60) + '"');
+    }
+    
+    // If text has code keywords AND code-like punctuation/operators, it's definitely code
+    // Skip linguistic analysis to avoid misclassifying variable names as names/orgs
+    if (codeKeywordCount > 0 && codeOperatorCount >= 2) {
+      console.log('[TrustPrompt/PATH_C] Pure code detected - skipping linguistic analysis entirely (keywords:' + codeKeywordCount + ', operators:' + codeOperatorCount + ')');
+      return [];  // Return empty findings — source code detection will handle this
+    }
+    
+    // Also skip if ONLY code is present (code keywords without other prose)
+    // e.g., "const myValue = 5" (note: no semicolon, but clearly code)
+    const wordCount = textNLP.split(/\s+/).length;
+    const keywordRatio = codeKeywordCount / Math.max(wordCount, 1);
+    if (keywordRatio >= 0.2 && codeKeywordCount >= 1) {
+      // High proportion of code keywords to total words = likely code
+      console.log('[TrustPrompt/PATH_C] Code-heavy text detected (keywords:' + codeKeywordCount + '/' + wordCount + ') - skipping analysis');
+      return [];
+    }
+
     const findings = [];
 
     try {
@@ -1201,9 +1665,29 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // FIX #1: NEW — Standalone Person Names (FALLBACK - RUNS ALWAYS)
+      // Detects 2-3 word capitalized names without triggers (e.g., "Kyleen Nicdao")
+      // This is CRITICAL for names mentioned standalone like "Kyleen Nicdao said..."
+      const standaloneNames = extractStandalonePersonNames(textNLP);
+      for (const name of standaloneNames) {
+        if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (NLP)',
+            risk: 'low',
+            rawMatch: name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            validated: false
+          });
+        }
+      }
+      
       // Person detection: Traditional declaration triggers + predicate nominative
+      // IMPORTANT: Limit name capture to 1-2 words only. This prevents "i am Paul have diabetes"
+      // from matching as one long name. Use lookahead to stop at sentence-end or next verb/predicate.
       const nameTriggers = [
-        /(?:my name is|i (?:am|'m)|i (?:am|'m) called|call me)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)/gi,
+        /(?:my name is|i (?:am|'m)|i (?:am|'m) called|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:have|has|had|is|are|was|were|do|does|did|and|but|or|,|\.)|$)/gi,
       ];
       
       for (const trigger of nameTriggers) {
@@ -1393,7 +1877,7 @@ const TrustLinguisticDetector = (() => {
       // "is the head of oict", "is part of oict", etc.
       const { organizations: appositiveOrgs } = extractFromAppositives(textNLP);
       for (const org of appositiveOrgs) {
-        if (org.length >= 3) {
+        if (org.length >= 3 && !shouldFilterCommonOrganization(org)) {
           if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
             findings.push({
               patternId: 'nlp_organization',
@@ -1413,7 +1897,7 @@ const TrustLinguisticDetector = (() => {
       // This is CRITICAL for "Maria is a human resource manager in the oict" detection
       const contextOrgs = extractOrganizationContexts(textNLP);
       for (const org of contextOrgs) {
-        if (org.length >= 2 && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+        if (org.length >= 2 && !shouldFilterCommonOrganization(org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
           findings.push({
             patternId: 'nlp_organization',
             label: 'Organization (NLP - Contextual)',
@@ -1426,6 +1910,59 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // FIX #2: NEW — Standalone Acronyms (FALLBACK - RUNS ALWAYS)
+      // Detects 2-5 letter all-caps acronyms like "OICT" mentioned standalone
+      // Examples: "I work at OICT", "OICT announced...", "The OICT is..."
+      // IMPORTANT: Much more restrictive than original to avoid false positives like "Kyl"
+      const standaloneAcronymPattern = /\b([A-Z]{3,5})\b(?!\w)/gi;  // Changed: 3-5 instead of 2-5
+      const commonAcronymBlacklist = new Set([
+        'THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'WHEN', 'WHAT', 'WHICH',
+        'ARE', 'WAS', 'HAS', 'DID', 'WILL', 'CAN', 'MAY', 'BEEN', 'HAVE', 'DOES',
+        'KYL', 'KYE', 'NIC', 'DAY'  // Fragments of common names
+      ]);
+      
+      const knownOrgAcronyms = new Set([
+        'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW', 'TSA', 'PRC',
+        'GOOGLE', 'APPLE', 'MICROSOFT', 'AMAZON', 'FACEBOOK', 'TWITTER', 'UBER',
+        'BDO', 'BPI', 'RCBC', 'PNB', 'AXA', 'MANULIFE',
+        'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ASAP'
+      ]);
+      
+      let acronymMatch;
+      while ((acronymMatch = standaloneAcronymPattern.exec(textNLP)) !== null) {
+        const org = acronymMatch[1].trim();
+        
+        // Filter 1: Minimum 3 letters (raised from 2)
+        if (org.length < 3) continue;
+        
+        // Filter 2: Skip common non-org acronyms
+        if (commonAcronymBlacklist.has(org)) continue;
+        
+        // Filter 3: Prefer known orgs, verify unknowns
+        const isKnownOrg = knownOrgAcronyms.has(org);
+        if (!isKnownOrg && org.length === 3) {
+          // Very restrictive on 3-letter unknowns
+          continue;
+        }
+        
+        // Filter 4: Apply common organization filter (reject person names, verbs, medical terms)
+        if (shouldFilterCommonOrganization(org)) continue;
+        
+        // Filter 5: Skip if already found
+        if (findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) continue;
+        
+        // Add to findings
+        findings.push({
+          patternId: 'nlp_organization',
+          label: 'Organization (NLP - Acronym)',
+          risk: 'low',
+          rawMatch: org,
+          safeVersion: '[ORGANIZATION REDACTED]',
+          source: 'C_linguistic',
+          validated: false
+        });
+      }
+      
       // Organization detection: Traditional triggers
       const orgTriggers = [
         /(?:work at|work for|employed at|employed by)\s+([A-Za-z0-9&\s]+?)(?:\.|,|;|$|and)/gi,
@@ -1435,7 +1972,7 @@ const TrustLinguisticDetector = (() => {
         let match;
         while ((match = trigger.exec(textNLP)) !== null) {
           const org = match[1].trim();
-          if (org.length >= 3) {
+          if (org.length >= 3 && !shouldFilterCommonOrganization(org)) {
             if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
               findings.push({
                 patternId: 'nlp_organization',

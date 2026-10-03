@@ -641,6 +641,15 @@ const TrustGazetteer = (() => {
    * @returns {{ span: string, wordCount: number }}
    */
   function extractValue(textWords, startIdx, trigger) {
+    // If this trigger has a followPattern requirement, check if the next word matches it
+    if (trigger.followPattern && startIdx < textWords.length) {
+      const nextWords = textWords.slice(startIdx).join(" ");
+      if (!trigger.followPattern.test(nextWords)) {
+        // Pattern doesn't match — don't extract any value
+        return { span: null, wordCount: 0 };
+      }
+    }
+
     const collected = [];
     const max = 8;
 

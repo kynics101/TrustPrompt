@@ -149,7 +149,7 @@ const TrustWorkerBridge = (() => {
       result.elapsedMs = Math.round(performance.now() - t0);
       return Promise.resolve(result);
     } catch (err) {
-      console.error("[TrustPrompt/bridge] main-thread scan error:", err);
+      console.error("[TrustPrompt/bridge] main-thread scan error:", err.message, err.stack);
       // Return a safe default so the UI never stays stuck on "Scanning…"
       return Promise.resolve({
         findings: [], riskLevel: "none", score: 0,

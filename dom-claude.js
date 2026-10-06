@@ -146,16 +146,24 @@ const TP_CLAUDE = (() => {
 
   // ── 3. SCAN ───────────────────────────────────────────────────────────────
 
+  let allowSubmit = false; // Flag to control whether submission is allowed
+
   function triggerScan(rawText) {
     scanState          = STATE.SCANNING;
     lastScannedText    = rawText;
+    allowSubmit        = false;
     console.log("[TP/claude] triggerScan starting — state:", STATE.SCANNING);
+    makePromptBoxReadOnly(); // Make promptBox non-editable during scan
+    updateSendButtonState();
     pendingScanPromise = TrustWorkerBridge.scan(rawText)
       .then(result => {
         console.log("[TP/claude] triggerScan complete — riskLevel:", result.riskLevel);
         scanState  = STATE.DONE;
         lastResult = result;
+        allowSubmit = true;
         applyResult(result, rawText);
+        makePromptBoxEditable(); // Make promptBox editable again
+        updateSendButtonState();
         return result;
       })
       .catch(err => {
@@ -163,10 +171,31 @@ const TP_CLAUDE = (() => {
         const fallback = { findings: [], riskLevel: "none", score: 0 };
         scanState  = STATE.DONE;
         lastResult = fallback;
+        allowSubmit = true;
         applyResult(fallback, rawText);
+        makePromptBoxEditable(); // Make promptBox editable again
+        updateSendButtonState();
         return fallback;
       });
     return pendingScanPromise;
+  }
+
+  function updateSendButtonState() {
+    const btn = findSendButton();
+    if (!btn) return;
+    if (scanState === STATE.SCANNING || !allowSubmit) {
+      console.log("[TP/claude] Disabling send button — scan in progress");
+      btn.disabled = true;
+      btn.setAttribute("data-disabled-by-trustprompt", "true");
+      btn.style.opacity = "0.5";
+      btn.style.pointerEvents = "none";
+    } else {
+      console.log("[TP/claude] Enabling send button");
+      btn.disabled = false;
+      btn.removeAttribute("data-disabled-by-trustprompt");
+      btn.style.opacity = "1";
+      btn.style.pointerEvents = "auto";
+    }
   }
 
   function applyResult(result, rawText) {
@@ -179,17 +208,99 @@ const TP_CLAUDE = (() => {
     chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
   }
 
-  // ── 4. SUBMIT BLOCKING ────────────────────────────────────────────────────
-  //
-  // Claude uses ProseMirror which handles Enter internally. Two interception
-  // points are needed:
-  //   a) document capture (catches most cases)
-  //   b) promptBox capture (catches ProseMirror's inner keydown before React)
-  //
-  // When scan completes, we click the send button with a flag set so our
-  // click listener knows to let it through.
+  // ── PROMPT BOX CONTROL ─────────────────────────────────────────────────
+  // Strategy: Make promptBox read-only while scanning to prevent any submission
+  
+  function makePromptBoxReadOnly() {
+    if (!promptBox) return;
+    console.log("[TP/claude] Making promptBox READ-ONLY");
+    
+    if (promptBox.tagName === "TEXTAREA") {
+      promptBox.readOnly = true;
+    } else if (promptBox.contentEditable === "true") {
+      promptBox.contentEditable = "false";
+      promptBox.setAttribute("data-tp-readonly", "true");
+    }
+    
+    // Also disable pointer events to prevent any interaction
+    promptBox.style.pointerEvents = "none";
+    promptBox.style.opacity = "0.6";
+  }
+  
+  function makePromptBoxEditable() {
+    if (!promptBox) return;
+    console.log("[TP/claude] Making promptBox EDITABLE again");
+    
+    if (promptBox.tagName === "TEXTAREA") {
+      promptBox.readOnly = false;
+    } else {
+      // For contentEditable divs, we need to set it directly
+      promptBox.setAttribute("contenteditable", "true");
+      promptBox.removeAttribute("data-tp-readonly");
+    }
+    
+    // Re-enable interactions
+    promptBox.style.pointerEvents = "auto";
+    promptBox.style.opacity = "1";
+    
+    // Force focus back to promptBox so user can continue typing
+    setTimeout(() => {
+      if (promptBox) {
+        promptBox.focus();
+        console.log("[TP/claude] promptBox refocused");
+      }
+    }, 100);
+  }
 
-  let allowNextSubmit = false; // Flag: next submit event should be allowed through
+  // ── AGGRESSIVE SEND BUTTON CONTROL ─────────────────────────────────────
+  // Strategy: Hide/disable the real send button and only show it when scan is done
+  
+  let fakeSendButton = null; // Placeholder button shown while scanning
+  let realSendButton = null; // Original send button
+  
+  function disableSendButton() {
+    const btn = findSendButton();
+    if (!btn) return;
+    
+    console.log("[TP/claude] DISABLING send button — hiding original, showing fake");
+    realSendButton = btn;
+    
+    // Hide the real button
+    btn.style.display = "none";
+    
+    // Create a fake disabled button in its place
+    if (!fakeSendButton) {
+      fakeSendButton = btn.cloneNode(true);
+      fakeSendButton.id = "tp-fake-send-btn";
+      fakeSendButton.disabled = true;
+      fakeSendButton.style.opacity = "0.5";
+      fakeSendButton.style.pointerEvents = "none";
+      fakeSendButton.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("[TP/claude] Fake button clicked — scan not complete");
+        return false;
+      };
+      
+      // Insert fake button where real one was
+      btn.parentElement.insertBefore(fakeSendButton, btn);
+    }
+    fakeSendButton.style.display = "block";
+  }
+  
+  function enableSendButton() {
+    console.log("[TP/claude] ENABLING send button — showing original, hiding fake");
+    
+    // Hide fake button
+    if (fakeSendButton) {
+      fakeSendButton.style.display = "none";
+    }
+    
+    // Show real button
+    if (realSendButton) {
+      realSendButton.style.display = "block";
+    }
+  }
 
   function showToast(message) {
     // Remove any existing toast
@@ -256,54 +367,81 @@ const TP_CLAUDE = (() => {
       e.stopImmediatePropagation();
     }
 
-    // Only block further if we're in PENDING state (debounce running, scan hasn't started yet)
-    if (scanState !== STATE.PENDING) {
-      console.log("[TP/claude] handleSubmitAttempt — state is", scanState, "allowing through");
-      // State is DONE or SCANNING — let the original event continue by manually clicking send
-      if (e && e.key === "Enter") {
-        const btn = findSendButton();
-        if (btn) {
-          console.log("[TP/claude] Clicking send button since scan is complete");
-          btn.click();
-        }
+    // If scan is SCANNING or blocked, do NOT allow submission yet
+    if (scanState === STATE.SCANNING || !allowSubmit) {
+      console.log("[TP/claude] handleSubmitAttempt — blocked. allowSubmit:", allowSubmit, "scanState:", scanState);
+      
+      // If we're in PENDING state (debounce running), cancel it and trigger scan immediately
+      if (scanState === STATE.PENDING) {
+        console.log("[TP/claude] Cancelling debounce and triggering immediate scan");
+        clearTimeout(debounceTimer);
+        scanState = STATE.SCANNING;
+        allowSubmit = false;
+        TrustUI.setScanning(getComposerWrapper());
+        triggerScan(raw);
       }
       return;
     }
 
-    // We're in PENDING — block and trigger scan immediately
-    console.log("[TP/claude] handleSubmitAttempt — state is PENDING, blocking and triggering scan");
-    showToast("🔍 Starting scan…");
-
-    // Cancel debounce and scan immediately
-    clearTimeout(debounceTimer);
-    TrustUI.setScanning(getComposerWrapper());
-    triggerScan(raw).then(() => {
-      console.log("[TP/claude] Scan complete, user should now retry submission");
-      showToast("✓ Scan complete — ready to send");
-    });
+    // Allow submit - scan is DONE
+    console.log("[TP/claude] handleSubmitAttempt — allowing submission");
+    if (e && e.key === "Enter") {
+      const btn = findSendButton();
+      if (btn) {
+        console.log("[TP/claude] Clicking send button");
+        btn.click();
+      }
+    }
   }
 
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
 
   function onInput() {
-    TrustUI.setScanning(getComposerWrapper());
-    clearTimeout(debounceTimer);
-    scanState  = STATE.PENDING;
-    lastResult = null;
+    // If scan is done, check if text has changed
+    if (scanState === STATE.DONE) {
+      const currentText = extractText(promptBox);
+      if (currentText === lastScannedText) {
+        console.log("[TP/claude] onInput ignored — text unchanged, scan still DONE");
+        return;
+      }
+      // Text has changed, so reset and trigger new scan
+      console.log("[TP/claude] Text changed after scan completed, triggering new scan");
+      TrustUI.setScanning(getComposerWrapper());
+      clearTimeout(debounceTimer);
+      scanState = STATE.PENDING;
+      lastResult = null;
+    } else {
+      // Normal path when not in DONE state
+      TrustUI.setScanning(getComposerWrapper());
+      clearTimeout(debounceTimer);
+      scanState = STATE.PENDING;
+      lastResult = null;
+    }
 
+    // Re-enable debounce timer - scan after 400ms of no typing
     debounceTimer = setTimeout(() => {
       if (!promptBox) return;
       const rawText = extractText(promptBox);
+      console.log("[TP/claude] Debounce fired, text:", rawText.substring(0, 50));
+      
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(getComposerWrapper());
         chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
-        lastScannedText = ""; return;
+        lastScannedText = ""; 
+        return;
       }
+      
       if (rawText === lastScannedText) {
+        console.log("[TP/claude] Text unchanged, scan already DONE");
         scanState = STATE.DONE;
         return;
       }
+      
+      console.log("[TP/claude] Debounce triggered - starting scan");
+      scanState = STATE.SCANNING;
+      allowSubmit = false;
+      makePromptBoxReadOnly(); // Lock box during scan
       triggerScan(rawText);
     }, DEBOUNCE_MS);
   }
@@ -312,7 +450,61 @@ const TP_CLAUDE = (() => {
   // Attached here so it captures before ProseMirror's own keydown handlers.
   function onPromptBoxKeydown(e) {
     if (e.key !== "Enter" || e.shiftKey) return;
-    handleSubmitAttempt(e);
+    
+    console.log("[TP/claude] Enter pressed — scanState:", scanState, "allowSubmit:", allowSubmit);
+    
+    // ALWAYS block Enter initially
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    
+    // If already DONE and allowed, allow submission
+    if (scanState === STATE.DONE && allowSubmit) {
+      console.log("[TP/claude] Enter ALLOWED — scan DONE, clicking send button");
+      makePromptBoxEditable();
+      const btn = findSendButton();
+      if (btn) {
+        btn.click();
+      }
+      return false;
+    }
+    
+    // If scanning, just block - scan is in progress
+    if (scanState === STATE.SCANNING) {
+      console.log("[TP/claude] Enter BLOCKED — scan SCANNING");
+      return false;
+    }
+    
+    // If PENDING (debounce running), cancel debounce and scan immediately
+    if (scanState === STATE.PENDING) {
+      console.log("[TP/claude] Enter pressed during PENDING — cancel debounce and scan immediately");
+      clearTimeout(debounceTimer);
+      const raw = extractText(promptBox);
+      if (raw.trim()) {
+        scanState = STATE.SCANNING;
+        allowSubmit = false;
+        makePromptBoxReadOnly();
+        TrustUI.setScanning(getComposerWrapper());
+        triggerScan(raw);
+      }
+      return false;
+    }
+    
+    // If IDLE with text, trigger scan
+    if (scanState === STATE.IDLE) {
+      console.log("[TP/claude] Enter pressed in IDLE state — triggering scan");
+      const raw = extractText(promptBox);
+      if (raw.trim()) {
+        scanState = STATE.SCANNING;
+        allowSubmit = false;
+        makePromptBoxReadOnly();
+        TrustUI.setScanning(getComposerWrapper());
+        triggerScan(raw);
+      }
+      return false;
+    }
+    
+    return false;
   }
 
   function attachListeners(el) {
@@ -320,7 +512,15 @@ const TP_CLAUDE = (() => {
     listenedElements.add(el);
     el.addEventListener("input",   onInput);
     el.addEventListener("keyup",   onInput);
-    el.addEventListener("paste",   () => setTimeout(onInput, 0));
+    el.addEventListener("paste",   () => {
+      // Clear debounce timer and reset scan state when pasting new content
+      clearTimeout(debounceTimer);
+      scanState = STATE.IDLE;
+      lastScannedText = "";
+      lastResult = null;
+      allowSubmit = false;
+      setTimeout(onInput, 0);
+    });
     // Capture on the element itself — fires before ProseMirror's handlers
     el.addEventListener("keydown", onPromptBoxKeydown, true);
   }
@@ -343,6 +543,15 @@ const TP_CLAUDE = (() => {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey) return;
     if (!promptBox || !isVisible(promptBox)) return;
+    
+    // Block Enter key when scanning
+    if (scanState === STATE.SCANNING) {
+      console.log("[TP/claude] Enter key blocked — scan still in progress");
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    
     // The promptBox listener handles this if it fires first; this is a fallback
     // for cases where the event target is outside the promptBox subtree.
     if (promptBox.contains(e.target)) return; // already handled above
@@ -355,6 +564,15 @@ const TP_CLAUDE = (() => {
     const lbl = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
     if (!lbl.includes("send")) return;
     if (!promptBox || !isVisible(promptBox)) return;
+    
+    // Block send button clicks if scan is in progress or not allowed
+    if (!allowSubmit || scanState === STATE.SCANNING) {
+      console.log("[TP/claude] Send button click blocked — allowSubmit:", allowSubmit, "scanState:", scanState);
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    
     handleSubmitAttempt(e);
   }, true);
 
@@ -378,11 +596,19 @@ const TP_CLAUDE = (() => {
   function init() {
     promptBox = findPromptBox();
     if (promptBox) {
-      scanState = STATE.IDLE;
-      TrustUI.setScanning(getComposerWrapper());
       attachListeners(promptBox);
       listenedElements.add(promptBox);
-      console.log("[TP/claude] init complete");
+      
+      // Check if textbox already contains text on reload
+      const existingText = extractText(promptBox);
+      if (existingText.trim()) {
+        console.log("[TP/claude] Text found on reload, triggering scan:", existingText.substring(0, 50));
+        triggerScan(existingText);
+      } else {
+        scanState = STATE.IDLE;
+        TrustUI.setScanning(getComposerWrapper());
+        console.log("[TP/claude] init complete — waiting for user input");
+      }
     } else {
       console.warn("[TP/claude] not found — waiting via MutationObserver + ProximityEvents");
     }

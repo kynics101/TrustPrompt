@@ -104,15 +104,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "SCAN_RESULT") {
     if (tabId) setBadge(tabId, message.riskLevel);
 
-    // Auto-open side panel on high risk — once per escalation per tab.
-    // Without this gate, the side panel re-opens on every scan tick (every
-    // 400ms typing pause) while the prompt contains high-risk content.
-    if (message.riskLevel === "high" && tabId && !highRiskAutoOpened.has(tabId)) {
-      highRiskAutoOpened.add(tabId);
-      chrome.sidePanel.open({ tabId }).catch(err => {
-        console.warn("[TrustPrompt/bg] failed to auto-open side panel on high risk:", err);
-      });
-    }
+    // Side panel auto-open intentionally disabled — the injected ui.js panel
+    // (TrustUI) handles high-risk warnings directly in the page.
+    // Opening chrome.sidePanel here would produce a duplicate panel.
 
     // Reset the gate when risk drops back to none (sensitive data removed)
     if (message.riskLevel === "none" && tabId) {

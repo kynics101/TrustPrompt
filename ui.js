@@ -1,14 +1,19 @@
-// ui.js — TrustPrompt shared UI layer v0.0.4
+// ui.js — TrustPrompt shared UI layer v0.0.5
 // Three visual components:
 //   1. BADGE   — pill floating above the input box (all tiers)
 //   2. BAR     — colored strip below the input box (low / moderate / high)
 //   3. PANEL   — side panel sliding in from the right (moderate / high only)
 //
-// Tier behaviour (from activity + UI diagrams):
-//   none   → badge: green "Safe — no issues found",  no bar,  no panel
-//   low    → badge: yellow,  bar: yellow,  panel: items only (no safe ver, no masked)
-//   moderate → badge: orange,  bar: orange,  panel: items + why + 
-//   high   → badge: red,     bar: red,     panel: items + safe ver + why + Copy/Send btns
+// Tier behaviour:
+//   none     → badge: green "Safe — no issues found",  no bar,  no panel
+//   low      → badge: yellow,  bar: yellow,  panel: items only
+//   moderate → badge: orange,  bar: orange,  panel: items + why
+//   high     → badge: red,     bar: red,     panel: items + safe ver + why + Copy/Send btns
+//
+// Day/Night mode (panel only):
+//   A ☀/☾ toggle lives inside the panel header.
+//   Preference is persisted in localStorage under "tp-theme".
+//   Only the panel re-renders on toggle — badge and bar are unaffected.
 
 /* global TrustUI */
 
@@ -20,28 +25,89 @@ const TrustUI = (() => {
   const ID_PANEL   = "tp-panel";
   const ID_OVERLAY = "tp-overlay";
 
-  // ── Theme ──────────────────────────────────────────────────────────────────
+  // ── Day / Night state (panel only) ─────────────────────────────────────────
+  let isDark = (localStorage.getItem("tp-theme") ?? "dark") === "dark";
+
+  // ── Badge / bar theme (unchanged by day/night toggle) ─────────────────────
   const THEME = {
     scanning: { bg: "#e5e7eb", text: "#6b7280", dot: "#9ca3af", label: "TrustPrompt is scanning…" },
     none:     { bg: "#dcfce7", text: "#15803d", dot: "#22c55e", label: "Safe — no issues found" },
     low:      { bg: "#fef9c3", text: "#a16207", dot: "#eab308", label: "Low risk detected"      },
-    moderate:   { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Moderate risk detected"   },
-    high:     { bg: "#fee2e2", text: "#b91c1c", dot: "#ef4444", label: "High risk detected"     }
+    moderate: { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Moderate risk detected"  },
+    high:     { bg: "#fee2e2", text: "#b91c1c", dot: "#ef4444", label: "High risk detected"      },
   };
 
-  // Bar/panel accent colours (solid, not pastel)
+  // ── Accent colours — bar & panel ───────────────────────────────────────────
   const ACCENT = {
-    low:    { solid: "#eab308", text: "#fff", dark: "#854d0e" },
+    low:      { solid: "#eab308", text: "#fff", dark: "#854d0e" },
     moderate: { solid: "#f97316", text: "#fff", dark: "#7c2d12" },
-    high:   { solid: "#ef4444", text: "#fff", dark: "#7f1d1d" }
+    high:     { solid: "#ef4444", text: "#fff", dark: "#7f1d1d" },
   };
 
-  // "Why is this flagged?" explanations per pattern
+  // ── Panel palette — changes with day/night ─────────────────────────────────
+  function PANEL_COLORS() {
+    return isDark ? {
+      // Night mode — unified dark surface, high contrast text
+      panelBg:      "#1a1d27",   // deep navy-dark — whole panel
+      headerBorder: "#2a2d3a",   // slightly lighter — dividers
+      summaryBg:    "#23263a",   // same dark family — summary block
+      summaryText:  "#f3f4f6",   // near-white — heading
+      subtitleText: "#9ca3af",   // medium gray — subtitle
+      cardBg:       "#23263a",   // same dark family — cards blend cleanly
+      cardBorder:   "#2e3245",   // subtle separation between card and bg
+      cardText:     "#e5e7eb",   // light gray — body text
+      detectedText: "#9ca3af",   // medium gray — "Detected" label
+      whyBg:        "#1a1d27",   // same as panel — "why" drawer recessed
+      whyText:      "#9ca3af",   // medium gray — why body text
+      btnSendBg:    "#23263a",   // dark — Send Anyway button
+      btnSendText:  "#e5e7eb",   // light gray — button label
+      btnSendBorder:"#3a3f55",   // visible border
+      btnRefText:   "#6b7280",   // dimmed gray — Refresh link
+      legendBorder: "#2a2d3a",   // same as dividers
+      legendLabel:  "#6b7280",   // dimmed gray — "RISK LEVELS"
+      legendText:   "#9ca3af",   // medium gray — legend text
+      footerBorder: "#2a2d3a",   // divider
+      lowFooterText:"#9ca3af",   // medium gray
+      toggleBg:     "#2a2d3a",   // dark pill
+      toggleText:   "#f3f4f6",   // near-white icon
+      toggleBorder: "#3a3f55",   // subtle border
+      toggleIcon:   "&#9728;",   // ☀  — click to go light
+      toggleLabel:  "",          // icon only
+    } : {
+      // Day mode — pure white, high contrast
+      panelBg:      "#ffffff",   // Pure white — panel background
+      headerBorder: "#e5e7eb",   // Light gray — dividers
+      summaryBg:    "#f3f4f6",   // Off-white — risk summary block
+      summaryText:  "#0F5132",   // Forest — strong heading text
+      subtitleText: "#4b5563",   // Dark gray — subtitles
+      cardBg:       "#f9fafb",   // Very light gray — cards (subtle contrast from bg)
+      cardBorder:   "#e5e7eb",   // Light gray — card outline
+      cardText:     "#111827",   // Near-black — card body text
+      detectedText: "#374151",   // Dark gray — "Detected" label
+      whyBg:        "#f3f4f6",   // Light gray — "why" drawer
+      whyText:      "#374151",   // Dark gray — why body text
+      btnSendBg:    "#0F5132",   // Forest — Send Anyway button (prominent)
+      btnSendText:  "#ffffff",   // White — button label
+      btnSendBorder:"#0F5132",   // Forest — button border
+      btnRefText:   "#0F5132",   // Forest — Refresh Rules link
+      legendBorder: "#e5e7eb",   // Light gray — legend top border
+      legendLabel:  "#4b5563",   // Dark gray — "RISK LEVELS" label
+      legendText:   "#111827",   // Near-black — legend item text
+      footerBorder: "#e5e7eb",   // Light gray — footer divider
+      lowFooterText:"#374151",   // Dark gray — footer text
+      toggleBg:     "#0F5132",   // Forest — toggle pill background
+      toggleText:   "#ffffff",   // White — toggle label
+      toggleBorder: "#0F5132",   // Forest — toggle border
+      toggleIcon:   "&#9790;",   // ☾  — click to go dark
+      toggleLabel:  "",          // icon only
+    };
+  }
+
+  // ── "Why is this flagged?" explanations ────────────────────────────────────
   const WHY = {
     credit_card:      "Matched pattern: credit/debit card number format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Financial Information.",
     api_key:          "Matched pattern: API key / token format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Authentication Credentials.",
     jwt:              "Matched pattern: JSON Web Token (three base64url segments).\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
-    // password_inline:  "Matched pattern: inline password assignment.\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
     email:            "Matched pattern: email address format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
     ph_mobile:        "Matched pattern: PH mobile number format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
     phone_intl:       "Matched pattern: international phone number.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
@@ -65,16 +131,14 @@ const TrustUI = (() => {
     ph_id_voters:     "Matched pattern: Voter's ID (COMELEC).\nRule: RA 10173, SPI.\nCategory: Electoral ID.",
     gazetteer_medical:   "Detected medical term in context.\nRule: RA 10173, Sensitive PI — health data.\nCategory: Health Information.",
     gazetteer_financial: "Detected financial term in context.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
-    // gazetteer_legal:     "Detected legal/criminal term in context.\nRule: RA 10173, SPI.\nCategory: Legal Record.",
     gazetteer_nationality_religion: "Detected nationality/religion term.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
     trigger_person_name: "Trigger phrase matched a person name.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
     trigger_location:    "Trigger phrase matched a location.\nRule: RA 10173, SPI.\nCategory: Location Data.",
     trigger_health:      "Trigger phrase matched a health condition.\nRule: RA 10173, Sensitive PI.\nCategory: Health Information.",
     trigger_employer:    "Trigger phrase matched employer/workplace.\nRule: RA 10173, PI.\nCategory: Occupational Data.",
-    // trigger_religion:    "Trigger phrase matched religious belief.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
     trigger_financial:   "Trigger phrase matched financial information.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
     trigger_age:         "Trigger phrase matched age information.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
-    trigger_dob:         "Trigger phrase matched date of birth.\nRule: RA 10173, SPI.\nCategory: Personal Identifier."
+    trigger_dob:         "Trigger phrase matched date of birth.\nRule: RA 10173, SPI.\nCategory: Personal Identifier.",
   };
 
   // ── Utilities ──────────────────────────────────────────────────────────────
@@ -85,11 +149,7 @@ const TrustUI = (() => {
   function trunc(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
 
   // ── 1. BADGE ───────────────────────────────────────────────────────────────
-  // Fixed-position pill centred above the input box, outside the box DOM.
-  // Position recalculated from getBoundingClientRect() on every update.
 
-  // Walk up from el until we find the widest ancestor that still looks like
-  // the composer card (stops before full-viewport-width elements).
   function findComposerRect(el) {
     if (!el) return null;
     let best = el;
@@ -97,10 +157,7 @@ const TrustUI = (() => {
     const viewW = window.innerWidth;
     while (cur && cur !== document.body) {
       const r = cur.getBoundingClientRect();
-      // Accept elements that are meaningfully wide but not the whole page
-      if (r.width > 300 && r.width < viewW * 0.98) {
-        best = cur;
-      }
+      if (r.width > 300 && r.width < viewW * 0.98) best = cur;
       cur = cur.parentElement;
     }
     return best.getBoundingClientRect();
@@ -126,7 +183,7 @@ const TrustUI = (() => {
       "z-index:10000",
       "box-shadow:0 1px 6px rgba(0,0,0,0.18)",
       "pointer-events:none",
-      "transition:background 0.25s,color 0.25s,opacity 0.25s"
+      "transition:background 0.25s,color 0.25s,opacity 0.25s",
     ].join(";");
     document.body.appendChild(badge);
     return badge;
@@ -135,13 +192,13 @@ const TrustUI = (() => {
   function positionBadge(inputEl) {
     const badge = document.getElementById(ID_BADGE);
     if (!badge || !inputEl) return;
-    const card = getCardRect(inputEl);
-    if (!card) return;
-    // Anchor to the bottom-left corner of the card, 6px below it.
-    // This keeps the badge inside the composer area and away from the host
-    // site's top navigation bar.
-    badge.style.left = card.left + "px";
-    badge.style.top  = (card.bottom + 6) + "px";
+    const card  = getCardRect(inputEl);
+    const input = inputEl.getBoundingClientRect();
+    if (!card || !input) return;
+    const BADGE_H = 28;
+    const badgeW  = badge.getBoundingClientRect().width || 160;
+    badge.style.left = (card.left + card.width / 2 - badgeW / 2) + "px";
+    badge.style.top  = (input.top - BADGE_H - 4) + "px";
   }
 
   function setBadge(riskLevel, inputEl) {
@@ -156,37 +213,22 @@ const TrustUI = (() => {
   }
 
   // ── 2. BOTTOM BAR ─────────────────────────────────────────────────────────
-  // Fixed-position strip sitting just below the composer card, same width.
-  // Appended to document.body so it is completely outside the input DOM.
 
   function removeBar() { document.getElementById(ID_BAR)?.remove(); }
 
-  // Find the rect of the composer "card" — the visible white box that wraps
-  // the textarea plus its toolbar row.
-  //
-  // Strategy: walk UP from inputEl. Accept each ancestor whose height is
-  // ≤ 3× the input's own height (so we stay within the card and don't
-  // escape to a page-level wrapper). Stop as soon as the next ancestor
-  // gets taller than that — we've just left the card.
   function getCardRect(inputEl) {
     if (!inputEl) return null;
     const inputRect = inputEl.getBoundingClientRect();
     const inputH    = inputRect.height || 40;
-    const maxH      = inputH * 6;
-    // Width cap: never wider than the input element itself or 760px,
-    // whichever is smaller. This is the tightest safe bound — the bar
-    // should match the visible input card, not any outer wrapper.
+    const maxH      = inputH * 3;
     const inputW    = inputRect.width || 400;
-    const maxW      = Math.min(inputW * 1.05, 760); // allow 5% overshoot for padding
+    const maxW      = Math.min(inputW * 1.05, 760);
     let best        = inputRect;
     let el          = inputEl.parentElement;
-
     while (el && el !== document.body) {
       const r = el.getBoundingClientRect();
       if (r.height > maxH) break;
-      if (r.width > best.width && r.width <= maxW) {
-        best = r;
-      }
+      if (r.width > best.width && r.width <= maxW) best = r;
       el = el.parentElement;
     }
     return best;
@@ -196,38 +238,56 @@ const TrustUI = (() => {
     removeBar();
     if (riskLevel === "none" || riskLevel === "scanning") return;
 
-    const acc  = ACCENT[riskLevel] || ACCENT.moderate;
-    const card = getCardRect(inputEl);
-    if (!card) return;
+    const acc = ACCENT[riskLevel] || ACCENT.moderate;
+    const box = inputEl.getBoundingClientRect();
+    if (!box) return;
 
-    const barTop  = card.bottom + 6 + 28 + 4;
-    const isHigh  = riskLevel === "high";
+    // Walk up to clear the send-button row
+    let composerBottom = box.bottom;
+    let composerLeft   = box.left;
+    let composerWidth  = box.width;
+    let el = inputEl.parentElement;
+    while (el && el !== document.body) {
+      const r = el.getBoundingClientRect();
+      if (r.height > box.height + 200) break;
+      composerBottom = r.bottom;
+      composerLeft   = r.left;
+      composerWidth  = r.width;
+      if (r.bottom >= box.bottom + 30) break;
+      el = el.parentElement;
+    }
+
+    const barTop    = composerBottom + 6;
+    const isHigh    = riskLevel === "high";
     const riskLabel = riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1);
+
+    // Day mode bar uses a slightly darker tint for readability
+    const barBg   = isDark ? acc.solid : acc.solid;   // same solid for both modes
+    const barText = "#fff";
 
     const bar = document.createElement("div");
     bar.id = ID_BAR;
     bar.style.cssText = [
       "all:initial",
       "position:fixed",
-      `left:${card.left}px`,
+      `left:${composerLeft}px`,
       `top:${barTop}px`,
-      `width:${card.width}px`,
+      `width:${composerWidth}px`,
       "max-width:760px",
       "display:flex",
       "align-items:center",
       "justify-content:space-between",
-      `background:${acc.solid}`,
-      "color:#fff",
+      `background:${barBg}`,
+      `color:${barText}`,
       "padding:7px 12px",
       "border-radius:8px",
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
       "font-size:12px",
       "font-weight:500",
-      // High risk: not clickable — side panel auto-opens instead
       isHigh ? "cursor:default" : "cursor:pointer",
       "z-index:9999",
       "box-sizing:border-box",
-      "box-shadow:0 2px 8px rgba(0,0,0,0.18)"
+      "box-shadow:0 2px 8px rgba(0,0,0,0.18)",
     ].join(";");
 
     bar.innerHTML = `
@@ -245,8 +305,6 @@ const TrustUI = (() => {
         View details →
       </span>` : ""}`;
 
-    // Low / moderate: clicking the bar opens the inline detail panel
-    // High: bar is display-only — details are in the Chrome side panel
     if (!isHigh) {
       bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
     }
@@ -255,9 +313,6 @@ const TrustUI = (() => {
   }
 
   // ── 3. SIDE PANEL ─────────────────────────────────────────────────────────
-  // Dark panel that slides in from the right edge of the viewport.
-  // moderate: items + why dropdown (NO safe version).
-  // High:   items + safe version + why dropdown.
 
   function removePanel() {
     document.getElementById(ID_PANEL)?.remove();
@@ -265,20 +320,21 @@ const TrustUI = (() => {
   }
 
   function buildFindingCard(f, tier) {
-    const acc      = ACCENT[tier] || ACCENT.moderate;
+    const pc       = PANEL_COLORS();
     const dotColor = f.risk === "high" ? "#ef4444" : f.risk === "moderate" ? "#f97316" : "#eab308";
     const riskTag  = f.risk.toUpperCase();
     const why      = WHY[f.patternId] || "Matched a known sensitive data pattern.";
-    const showSafe = (tier === "high" || tier === "moderate"); // both show safe ver per screenshots
+    const showSafe = (tier === "high" || tier === "moderate");
 
     const card = document.createElement("div");
     card.style.cssText = [
-      "background:#1a1a1a",
+      `background:${pc.cardBg}`,
+      `border:1px solid ${pc.cardBorder}`,
       "border-radius:8px",
       "padding:10px 12px",
       "margin-bottom:8px",
       "font-size:12px",
-      "color:#e0e0e0"
+      `color:${pc.cardText}`,
     ].join(";");
 
     card.innerHTML = `
@@ -294,23 +350,23 @@ const TrustUI = (() => {
         </span>
       </div>
       <div style="display:grid;grid-template-columns:60px 1fr;gap:3px 8px;margin-bottom:6px;">
-        <span style="color:#888;font-size:11px;">Detected</span>
+        <span style="color:${pc.detectedText};font-size:11px;">Detected</span>
         <span style="color:#f87171;font-family:monospace;word-break:break-all;font-size:11px;">
           ${esc(trunc(f.rawMatch, 60))}
         </span>
         ${showSafe ? `
-        <span style="color:#888;font-size:11px;">Safe ver.</span>
+        <span style="color:${pc.detectedText};font-size:11px;">Safe ver.</span>
         <span style="color:#4ade80;font-family:monospace;word-break:break-all;font-size:11px;">
           ${esc(f.safeVersion)}
         </span>` : ""}
       </div>
       <details style="margin-top:4px;">
-        <summary style="color:#9ca3af;font-size:11px;cursor:pointer;list-style:none;
+        <summary style="color:${pc.whyText};font-size:11px;cursor:pointer;list-style:none;
                         display:flex;align-items:center;gap:4px;">
           <span style="font-size:9px;">▶</span> Why is this flagged?
         </summary>
-        <div style="margin-top:6px;padding:8px;background:#111;border-radius:6px;
-                    color:#9ca3af;font-size:11px;line-height:1.6;white-space:pre-line;">
+        <div style="margin-top:6px;padding:8px;background:${pc.whyBg};border-radius:6px;
+                    color:${pc.whyText};font-size:11px;line-height:1.6;white-space:pre-line;">
           ${esc(why)}
         </div>
       </details>`;
@@ -319,11 +375,11 @@ const TrustUI = (() => {
 
   function openPanel(findings, riskLevel, safeText, onSendAnyway, onRefresh) {
     removePanel();
-    const tier = riskLevel; // "low" | "moderate" | "high"
+    const tier = riskLevel;
     const acc  = ACCENT[tier] || ACCENT.moderate;
-    const t    = THEME[tier]  || THEME.moderate;
+    const t    = THEME[tier] || THEME.moderate;
+    const pc   = PANEL_COLORS();
 
-    // Overlay (click to close)
     const overlay = document.createElement("div");
     overlay.id = ID_OVERLAY;
     overlay.style.cssText = "position:fixed;inset:0;z-index:99998;";
@@ -336,24 +392,22 @@ const TrustUI = (() => {
       "position:fixed",
       "top:0", "right:0", "bottom:0",
       "width:340px",
-      "background:#111827",
+      `background:${pc.panelBg}`,
       "z-index:99999",
       "display:flex",
       "flex-direction:column",
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
       "box-shadow:-4px 0 24px rgba(0,0,0,0.4)",
-      "overflow:hidden"
+      "overflow:hidden",
     ].join(";");
-    // Stop overlay click from closing when clicking inside panel
     panel.addEventListener("click", e => e.stopPropagation());
     document.body.appendChild(panel);
-    buildPanelContent(panel, findings, riskLevel, tier, acc, t, safeText, onSendAnyway, onRefresh);
+    buildPanelContent(panel, findings, riskLevel, tier, acc, t, pc, safeText, onSendAnyway, onRefresh);
   }
 
-  function buildPanelContent(panel, findings, riskLevel, tier, acc, t, safeText, onSendAnyway, onRefresh) {
-    // ── Panel header ──────────────────────────────────────────────────────────
+  function buildPanelContent(panel, findings, riskLevel, tier, acc, t, pc, safeText, onSendAnyway, onRefresh) {
     const header = document.createElement("div");
-    header.style.cssText = "padding:14px 16px 10px;border-bottom:1px solid #1f2937;flex-shrink:0;";
+    header.style.cssText = `padding:14px 16px 10px;border-bottom:1px solid ${pc.headerBorder};flex-shrink:0;background:${pc.panelBg};`;
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="width:32px;height:32px;border-radius:8px;background:#166534;
@@ -366,16 +420,26 @@ const TrustUI = (() => {
           </svg>
         </div>
         <div>
-          <div style="font-weight:700;font-size:14px;color:#f9fafb;">TrustPrompt</div>
-          <div style="font-size:10px;color:#6b7280;">Prompt privacy shield — v0.0.4</div>
+          <div style="font-weight:700;font-size:14px;color:${pc.summaryText};">TrustPrompt</div>
+          <div style="font-size:10px;color:${pc.subtitleText};">Prompt privacy shield — v0.0.5</div>
         </div>
-        <button id="tp-panel-close" style="margin-left:auto;background:none;border:none;
-          color:#6b7280;font-size:18px;cursor:pointer;padding:2px 6px;line-height:1;">×</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+          <button id="tp-theme-toggle"
+            title="Toggle day / night mode"
+            style="background:${pc.toggleBg};color:${pc.toggleText};border:1px solid ${pc.toggleBorder};
+                   border-radius:999px;padding:4px 8px;font-size:13px;line-height:1;
+                   cursor:pointer;font-family:inherit;white-space:nowrap;">
+            ${pc.toggleIcon}
+          </button>
+          <button id="tp-panel-close"
+            style="background:none;border:none;color:${pc.subtitleText};
+                   font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">×</button>
+        </div>
       </div>
       <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;
-                  background:#1f2937;border-radius:8px;padding:8px 12px;">
+                  background:${pc.summaryBg};border-radius:8px;padding:8px 12px;">
         <span style="display:flex;align-items:center;gap:7px;font-weight:600;
-                     font-size:13px;color:#f9fafb;">
+                     font-size:13px;color:${pc.summaryText};">
           <span style="width:9px;height:9px;border-radius:50%;background:${t.dot};
                 display:inline-block;"></span>
           ${esc(riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1))} risk detected
@@ -386,29 +450,49 @@ const TrustUI = (() => {
         </span>
       </div>`;
     panel.appendChild(header);
+
     panel.querySelector("#tp-panel-close").addEventListener("click", removePanel);
 
-    // ── Detections list ───────────────────────────────────────────────────────
+    // Toggle button — flip isDark, persist, rebuild panel in place
+    panel.querySelector("#tp-theme-toggle").addEventListener("click", () => {
+      isDark = !isDark;
+      localStorage.setItem("tp-theme", isDark ? "dark" : "light");
+      // Update the panel container background immediately before rebuild
+      const newPc  = PANEL_COLORS();
+      panel.style.background = newPc.panelBg;
+      panel.innerHTML = "";
+      const newAcc = ACCENT[tier] || ACCENT.moderate;
+      const newT   = THEME[tier]  || THEME.moderate;
+      buildPanelContent(panel, findings, riskLevel, tier, newAcc, newT, newPc, safeText, onSendAnyway, onRefresh);
+    });
+
     const listWrap = document.createElement("div");
-    listWrap.style.cssText = "flex:1;overflow-y:auto;padding:12px 16px 8px;";
-    listWrap.innerHTML = `<div style="font-size:10px;font-weight:600;letter-spacing:.8px;
-      color:#6b7280;margin-bottom:8px;">DETECTIONS (${findings.length})</div>`;
-    for (const f of findings) {
-      listWrap.appendChild(buildFindingCard(f, tier));
+    listWrap.id = "tp-panel-list";
+    listWrap.style.cssText = `flex:1;overflow-y:auto;padding:12px 16px 8px;background:${pc.panelBg};`;
+    // Hide scrollbar visually while keeping scroll functionality
+    listWrap.style.scrollbarWidth = "none";   // Firefox
+    listWrap.style.msOverflowStyle = "none";  // IE/Edge legacy
+    // WebKit (Chrome): inject a scoped style rule once
+    if (!document.getElementById("tp-scrollbar-hide")) {
+      const s = document.createElement("style");
+      s.id = "tp-scrollbar-hide";
+      s.textContent = "#tp-panel-list::-webkit-scrollbar { display: none; }";
+      document.head.appendChild(s);
     }
+    listWrap.innerHTML = `<div style="font-size:10px;font-weight:600;letter-spacing:.8px;
+      color:${pc.subtitleText};margin-bottom:8px;">DETECTIONS (${findings.length})</div>`;
+    for (const f of findings) listWrap.appendChild(buildFindingCard(f, tier));
     panel.appendChild(listWrap);
 
-    // ── Action buttons ────────────────────────────────────────────────────────
     const footer = document.createElement("div");
-    footer.style.cssText = "padding:12px 16px;border-top:1px solid #1f2937;flex-shrink:0;";
+    footer.style.cssText = `padding:12px 16px;border-top:1px solid ${pc.footerBorder};flex-shrink:0;background:${pc.panelBg};`;
 
     if (tier === "low") {
       footer.innerHTML = `
-        <div style="font-size:11px;color:#9ca3af;text-align:center;padding:4px 0;">
+        <div style="font-size:11px;color:${pc.lowFooterText};text-align:center;padding:4px 0;">
           Low risk — no action required. You may continue.
         </div>`;
     } else {
-      // moderate / high — Send Anyway + Refresh (Copy Safe Version only for high)
       if (tier === "high") {
         const btnCopy = document.createElement("button");
         btnCopy.textContent = "🗒 Copy Safe Version";
@@ -427,7 +511,8 @@ const TrustUI = (() => {
 
       const btnSend = document.createElement("button");
       btnSend.textContent = "Send Anyway";
-      btnSend.style.cssText = "width:100%;background:#1f2937;color:#d1d5db;border:none;" +
+      btnSend.style.cssText = `width:100%;background:${pc.btnSendBg};color:${pc.btnSendText};` +
+        `border:1px solid ${pc.btnSendBorder};` +
         "border-radius:8px;padding:9px;font-size:13px;cursor:pointer;font-family:inherit;margin-bottom:6px;";
       btnSend.addEventListener("click", () => {
         removePanel();
@@ -436,7 +521,7 @@ const TrustUI = (() => {
 
       const btnRefresh = document.createElement("button");
       btnRefresh.textContent = "↺ Refresh Rules";
-      btnRefresh.style.cssText = "width:100%;background:none;color:#6b7280;border:none;" +
+      btnRefresh.style.cssText = `width:100%;background:none;color:${pc.btnRefText};border:none;` +
         "font-size:11px;cursor:pointer;font-family:inherit;padding:4px;";
       btnRefresh.addEventListener("click", () => {
         btnRefresh.textContent = "Refreshing…";
@@ -450,11 +535,10 @@ const TrustUI = (() => {
       footer.appendChild(btnRefresh);
     }
 
-    // Risk legend
     footer.innerHTML += `
-      <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1f2937;">
-        <div style="font-size:9px;letter-spacing:.7px;color:#6b7280;margin-bottom:4px;">RISK LEVELS</div>
-        <div style="font-size:10px;color:#9ca3af;line-height:1.8;">
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid ${pc.legendBorder};">
+        <div style="font-size:9px;letter-spacing:.7px;color:${pc.legendLabel};margin-bottom:4px;">RISK LEVELS</div>
+        <div style="font-size:10px;color:${pc.legendText};line-height:1.8;">
           <span style="color:#ef4444;">●</span> High — financial / auth data<br>
           <span style="color:#f97316;">●</span> Moderate — contact / location<br>
           <span style="color:#eab308;">●</span> Low — metadata / labels<br>
@@ -466,53 +550,73 @@ const TrustUI = (() => {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  // inputEl = the actual prompt <div>/<textarea>
-  // composerEl = ignored; findComposerRect() auto-detects the card boundary
+  // State kept for live re-render on theme toggle
+  let _currentInputEl  = null;
+  let _currentComposer = null;
+  let _lastRiskLevel   = null;
+  let _lastFindings    = null;
+  let _lastSafeText    = null;
+  let _lastOnSendAnyway = null;
+
   function update(riskLevel, findings, safeText, inputEl, _composerEl, onSendAnyway) {
-    _currentInputEl  = inputEl;
-    _currentComposer = inputEl; // kept for _reposition compat
+    _currentInputEl   = inputEl;
+    _currentComposer  = inputEl;
+    _lastRiskLevel    = riskLevel;
+    _lastFindings     = findings;
+    _lastSafeText     = safeText;
+    _lastOnSendAnyway = onSendAnyway;
 
     setBadge(riskLevel, inputEl);
 
-    if (riskLevel !== "none" && riskLevel !== "scanning") {
-      showBar(riskLevel, findings.length, inputEl, () => {
-        // High risk: inline panel is suppressed — details live in the Chrome side panel
-        if (riskLevel !== "high") {
-          openPanel(findings, riskLevel, safeText, onSendAnyway, null);
-        }
-      });
-    } else {
+    if (riskLevel === "none" || riskLevel === "scanning") {
+      // Safe / scanning — clear bar and panel
       removeBar();
+      removePanel();
+      return;
     }
 
-    // Refresh the inline panel if it is already open — but never for high risk
-    if (riskLevel !== "high" && document.getElementById(ID_PANEL)) {
+    // Show bar; for high risk the bar is display-only (no click handler)
+    showBar(riskLevel, findings.length, inputEl,
+      riskLevel !== "high"
+        ? () => openPanel(findings, riskLevel, safeText, onSendAnyway, null)
+        : null
+    );
+
+    // High risk: auto-open the panel immediately (single call, removePanel is inside openPanel)
+    if (riskLevel === "high") {
+      openPanel(findings, riskLevel, safeText, onSendAnyway, null);
+      return;
+    }
+
+    // Low / moderate: re-render panel only if it was already open
+    if (document.getElementById(ID_PANEL)) {
       openPanel(findings, riskLevel, safeText, onSendAnyway, null);
     }
-
-    // If risk escalated to high while the inline panel was open, close it —
-    // the Chrome side panel is the correct place for high-risk details
-    if (riskLevel === "high" && document.getElementById(ID_PANEL)) {
-      removePanel();
-    }
   }
-
-  // Keep references to reposition on scroll/resize
-  let _currentInputEl  = null;
-  let _currentComposer = null;
 
   function _reposition() {
     if (!_currentInputEl) return;
     positionBadge(_currentInputEl);
     const bar = document.getElementById(ID_BAR);
     if (bar) {
-      const card = getCardRect(_currentInputEl);
-      if (card) {
-        const barTop = card.bottom + 6 + 28 + 4;
-        bar.style.left  = card.left + "px";
-        bar.style.top   = barTop + "px";
-        bar.style.width = card.width + "px";
+      const box = _currentInputEl.getBoundingClientRect();
+      if (!box) return;
+      let composerBottom = box.bottom;
+      let composerLeft   = box.left;
+      let composerWidth  = box.width;
+      let el = _currentInputEl.parentElement;
+      while (el && el !== document.body) {
+        const r = el.getBoundingClientRect();
+        if (r.height > box.height + 200) break;
+        composerBottom = r.bottom;
+        composerLeft   = r.left;
+        composerWidth  = r.width;
+        if (r.bottom >= box.bottom + 30) break;
+        el = el.parentElement;
       }
+      bar.style.left  = composerLeft + "px";
+      bar.style.top   = (composerBottom + 6) + "px";
+      bar.style.width = composerWidth + "px";
     }
   }
 
@@ -522,6 +626,7 @@ const TrustUI = (() => {
   function setScanning(inputEl) {
     _currentInputEl  = inputEl;
     _currentComposer = inputEl;
+    _lastRiskLevel   = "scanning";
     setBadge("scanning", inputEl);
     removeBar();
   }
@@ -529,6 +634,7 @@ const TrustUI = (() => {
   function reset(inputEl) {
     _currentInputEl  = inputEl;
     _currentComposer = inputEl;
+    _lastRiskLevel   = "none";
     setBadge("none", inputEl);
     removeBar();
     removePanel();
@@ -538,8 +644,12 @@ const TrustUI = (() => {
     document.getElementById(ID_BADGE)?.remove();
     removeBar();
     removePanel();
-    _currentInputEl  = null;
-    _currentComposer = null;
+    _currentInputEl   = null;
+    _currentComposer  = null;
+    _lastRiskLevel    = null;
+    _lastFindings     = null;
+    _lastSafeText     = null;
+    _lastOnSendAnyway = null;
   }
 
   return {
@@ -548,7 +658,7 @@ const TrustUI = (() => {
     reset,
     teardown,
     removePanel,
-    ID_BADGE, ID_BAR, ID_PANEL
+    ID_BADGE, ID_BAR, ID_PANEL,
   };
 
 })();

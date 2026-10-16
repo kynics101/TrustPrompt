@@ -570,6 +570,26 @@ const TP_CHATGPT = (() => {
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
   function init() {
+    // Hide scrollbar on ChatGPT's prompt textarea/contenteditable — it's
+    // unnecessary in a single-input box and adds visual clutter.
+    if (!document.getElementById("tp-chatgpt-no-scroll")) {
+      const s = document.createElement("style");
+      s.id = "tp-chatgpt-no-scroll";
+      s.textContent = [
+        '[aria-label="Message ChatGPT"]::-webkit-scrollbar,',
+        '[aria-label="Send a message"]::-webkit-scrollbar,',
+        '[role="textbox"]::-webkit-scrollbar,',
+        'main form textarea::-webkit-scrollbar',
+        '{ display: none; }',
+        '[aria-label="Message ChatGPT"],',
+        '[aria-label="Send a message"],',
+        '[role="textbox"],',
+        'main form textarea',
+        '{ scrollbar-width: none; -ms-overflow-style: none; }',
+      ].join(" ");
+      document.head.appendChild(s);
+    }
+
     promptBox = findPromptBox();
     if (promptBox) {
       attachListeners(promptBox);

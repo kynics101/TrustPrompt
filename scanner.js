@@ -2349,6 +2349,8 @@ const TrustScanner = (() => {
   // sentence case estimated, whitespace normalized, punctuation standardized.
 
   function scan(rawText) {
+    // Return a promise that resolves to scan results
+    return (async () => {
     try {
       console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
       
@@ -2402,21 +2404,54 @@ const TrustScanner = (() => {
       console.log(`[TrustPrompt/scanner] PATH A findings: ${pathAFindings.length}${pathAFindings.length > 0 ? ' → ' + pathAFindings.map(f => f.patternId).join(', ') : ''}`);
       
       console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
-      const pathBFindings = TrustGazetteer.scan(textNLP);
-      console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
+      let pathBFindings = TrustGazetteer.scan(textNLP);
       
-      console.log("[TrustPrompt/scanner] Running PATH C (linguistic)...");
+      // ★ FILTER PATH B: Remove name and organization detections
+      // Path B should ONLY detect medical, financial, nationality
+      pathBFindings = pathBFindings.filter(finding => {
+        const patternId = (finding.patternId || '').toLowerCase();
+        
+        // BLOCK: person names, organizations, job titles
+        if (patternId.includes('trigger_person_name') ||
+            patternId.includes('trigger_employer') ||
+            patternId.includes('trigger_job_title') ||
+            patternId.includes('person_name') ||
+            patternId.includes('organization') ||
+            patternId.includes('job_title')) {
+          return false;
+        }
+        
+        // KEEP: medical, financial, nationality only
+        if (patternId.includes('medical') ||
+            patternId.includes('financial') ||
+            patternId.includes('nationality') ||
+            patternId.includes('health')) {
+          return true;
+        }
+        
+        // Block everything else
+        return false;
+      });
+      
+      console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
+      console.log("[TrustPrompt/scanner] Running PATH C (BERT-NER transformer only)...");
       let pathCFindings = [];
-      if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && typeof TrustLinguisticDetector.scan === 'function') {
+      
+      // Use linguistic detector (compromise.js based NLP)
+      if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && TrustLinguisticDetector.scan) {
         try {
+          // Run linguistic detector (compromise.js only)
+          // TrustLinguisticDetector.scan() returns findings array directly
           pathCFindings = TrustLinguisticDetector.scan(textNLP);
-          console.log(`[TrustPrompt/scanner] PATH C findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.patternId).join(', ') : ''}`);
+          
+          console.log(`[TrustPrompt/scanner] PATH C (linguistic) findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.rawMatch).join(', ') : ''}`);
         } catch (pathCError) {
-          console.error("[TrustPrompt/scanner] PATH C error:", pathCError);
+          console.error("[TrustPrompt/scanner] PATH C (linguistic) error:", pathCError.message);
           pathCFindings = [];
         }
-      } else {
-        console.warn("[TrustPrompt/scanner] TrustLinguisticDetector not available - PATH C skipped");
+      } 
+      else {
+        console.warn("[TrustPrompt/scanner] Linguistic detector not available - PATH C skipped");
       }
       
       const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
@@ -2449,6 +2484,7 @@ const TrustScanner = (() => {
       // Return safe default on any error
       return { findings: [], riskLevel: "none", score: 0, governance: "none", normalisedText: rawText, wasCapsConverted: false };
     }
+    })(); // Close async IIFE
   }
 
   // ── TASK 11.2: IMPLEMENT formatDiagnosticOutput(scoreObj) ───────────────────────

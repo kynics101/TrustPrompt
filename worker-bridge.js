@@ -145,11 +145,20 @@ const TrustWorkerBridge = (() => {
     console.log("[TrustPrompt/bridge] running scan on main thread");
     try {
       const t0     = performance.now();
-      const result = TrustScanner.scan(rawText);
-      result.elapsedMs = Math.round(performance.now() - t0);
-      return Promise.resolve(result);
+      // TrustScanner.scan now returns a Promise (due to async PATH C hybrid transformer)
+      return TrustScanner.scan(rawText).then(result => {
+        result.elapsedMs = Math.round(performance.now() - t0);
+        return result;
+      }).catch(err => {
+        console.error("[TrustPrompt/bridge] main-thread scan error:", err.message, err.stack);
+        // Return a safe default so the UI never stays stuck on "Scanning…"
+        return {
+          findings: [], riskLevel: "none", score: 0,
+          normalisedText: rawText, wasCapsConverted: false, elapsedMs: 0
+        };
+      });
     } catch (err) {
-      console.error("[TrustPrompt/bridge] main-thread scan error:", err.message, err.stack);
+      console.error("[TrustPrompt/bridge] main-thread scan sync error:", err.message, err.stack);
       // Return a safe default so the UI never stays stuck on "Scanning…"
       return Promise.resolve({
         findings: [], riskLevel: "none", score: 0,

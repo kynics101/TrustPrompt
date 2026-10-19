@@ -21,6 +21,7 @@
       "matches": ["https://claude.ai/*"],
       "js": [
         "lib/validator.min.js",
+        "lib/compromise.min.js",
         "ph-address-db.js",
         "normalizer.js",
         "patterns.js",
@@ -30,7 +31,8 @@
         "scanner.js",
         "worker-bridge.js",
         "ui.js",
-        "dom-claude.js"
+        "dom-claude.js",
+        "debug-detector-availability.js"
       ],
       "run_at": "document_idle"
     },
@@ -41,6 +43,7 @@
       ],
       "js": [
         "lib/validator.min.js",
+        "lib/compromise.min.js",
         "ph-address-db.js",
         "normalizer.js",
         "patterns.js",
@@ -57,7 +60,8 @@
   ],
 
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
 
   "action": {},
@@ -70,13 +74,14 @@
     {
       "resources": [
         "lib/validator.min.js",
-        "trust-worker.js",
+        "lib/compromise.min.js",
         "normalizer.js",
         "patterns.js",
         "gazetteer.js",
         "linguistic-detector.js",
         "ph-address-db.js",
-        "validator-wrapper-worker.js"
+        "validator-wrapper-worker.js",
+        "trust-worker.js"
       ],
       "matches": [
         "https://claude.ai/*",

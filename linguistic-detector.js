@@ -1589,168 +1589,33 @@ const TrustLinguisticDetector = (() => {
   function scan(textNLP) {
     // Validate input
     if (!textNLP || typeof textNLP !== 'string' || textNLP.trim().length === 0) {
+      console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan() - Empty input');
       return [];
     }
 
-    // ★ NEW: EARLY CODE DETECTION ★
-    // If the input text is entirely code-like (contains code keywords + operators/semicolons),
-    // skip linguistic analysis entirely to avoid false positives on variable names as person/org names.
-    // Examples: "const myValue = 5;" or "function test() { return x; }"
-    const codeKeywordCount = (textNLP.match(/\b(const|let|var|function|class|return|if|for|while|async|await|import|export)\b/gi) || []).length;
-    const codeOperatorCount = (textNLP.match(/[;:={}()\[\]]/g) || []).length;
-    
-    if (codeKeywordCount > 0 || codeOperatorCount >= 2) {
-      console.log('[TrustPrompt/PATH_C] Code detection check: keywords=' + codeKeywordCount + ', operators=' + codeOperatorCount + ', text="' + textNLP.substring(0, 60) + '"');
-    }
-    
-    // If text has code keywords AND code-like punctuation/operators, it's definitely code
-    // Skip linguistic analysis to avoid misclassifying variable names as names/orgs
-    if (codeKeywordCount > 0 && codeOperatorCount >= 2) {
-      console.log('[TrustPrompt/PATH_C] Pure code detected - skipping linguistic analysis entirely (keywords:' + codeKeywordCount + ', operators:' + codeOperatorCount + ')');
-      return [];  // Return empty findings — source code detection will handle this
-    }
-    
-    // Also skip if ONLY code is present (code keywords without other prose)
-    // e.g., "const myValue = 5" (note: no semicolon, but clearly code)
-    const wordCount = textNLP.split(/\s+/).length;
-    const keywordRatio = codeKeywordCount / Math.max(wordCount, 1);
-    if (keywordRatio >= 0.2 && codeKeywordCount >= 1) {
-      // High proportion of code keywords to total words = likely code
-      console.log('[TrustPrompt/PATH_C] Code-heavy text detected (keywords:' + codeKeywordCount + '/' + wordCount + ') - skipping analysis');
-      return [];
-    }
+    console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan() starting - using 3 core methods only');
 
     const findings = [];
 
     try {
-      if (COMPROMISE_AVAILABLE) {
-        // Full NLP pipeline when compromise.js is available
-        const doc = window.nlp(textNLP);
+      // ═══════════════════════════════════════════════════════════════════════
+      // SIMPLIFIED SCAN: 3 CORE DETECTION METHODS ONLY
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      let method1Count = 0;  // Honorifics
+      let method2Count = 0;  // Name triggers  
+      let method3Count = 0;  // Job titles
+      let method4Count = 0;  // Standalone names
 
-        // Extract entities using compromise.js NER + new methods
-        const personFindings = extractPersons(doc);
-        const jobFindings = extractJobTitles(doc);
-        const orgFindings = extractOrganizations(doc);
-
-        findings.push(...personFindings, ...jobFindings, ...orgFindings);
-
-        console.log(
-          '[TrustPrompt/PATH_C] detected (with NLP):',
-          `person:${personFindings.length}`,
-          `job:${jobFindings.length}`,
-          `org:${orgFindings.length}`,
-          `| deduplicated:${deduplicateWithinPath(findings).length}`
-        );
-      }
-      
-      // ALWAYS run enhanced trigger phrase fallback as backup
-      // This ensures real-world patterns like "Ms padua is the head of oict" are always detected
-      console.debug('[TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...');
-      
-      // ★★★ NEW ALGORITHM 1: Subject-Position Names (PRIMARY - RUNS ALWAYS) ★★★
-      // Detects names in "[Name] is a/an/the [job]" WITHOUT requiring honorifics
-      // This is CRITICAL for "Maria is a human resource manager" detection
-      const subjectNames = extractSubjectPositionNames(textNLP);
-      for (const name of subjectNames) {
-        if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
-          findings.push({
-            patternId: 'nlp_person_name',
-            label: 'Person Name (NLP - Subject Position)',
-            risk: 'low',
-            rawMatch: name,
-            safeVersion: '[NAME REDACTED]',
-            source: 'C_linguistic',
-            validated: false
-          });
-        }
-      }
-      
-      // FIX #1: NEW — Standalone Person Names (FALLBACK - RUNS ALWAYS)
-      // Detects 2-3 word capitalized names without triggers (e.g., "Kyleen Nicdao")
-      // This is CRITICAL for names mentioned standalone like "Kyleen Nicdao said..."
-      const standaloneNames = extractStandalonePersonNames(textNLP);
-      for (const name of standaloneNames) {
-        if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
-          findings.push({
-            patternId: 'nlp_person_name',
-            label: 'Person Name (NLP)',
-            risk: 'low',
-            rawMatch: name,
-            safeVersion: '[NAME REDACTED]',
-            source: 'C_linguistic',
-            validated: false
-          });
-        }
-      }
-      
-      // Person detection: Traditional declaration triggers + predicate nominative
-      // IMPORTANT: Limit name capture to 1-2 words only. This prevents "i am Paul have diabetes"
-      // from matching as one long name. Use lookahead to stop at sentence-end or next verb/predicate.
-      const nameTriggers = [
-        /(?:my name is|i (?:am|'m)|i (?:am|'m) called|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s+(?:have|has|had|is|are|was|were|do|does|did|and|but|or|,|\.)|$)/gi,
-      ];
-      
-      for (const trigger of nameTriggers) {
-        let match;
-        while ((match = trigger.exec(textNLP)) !== null) {
-          const name = match[1].trim();
-          if (name.length >= 2 && !shouldFilterCommonName(name)) {
-            if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
-              findings.push({
-                patternId: 'nlp_person_name',
-                label: 'Person Name (NLP)',
-                risk: 'low',
-                rawMatch: name,
-                safeVersion: '[NAME REDACTED]',
-                source: 'C_linguistic',
-                validated: false
-              });
-            }
-          }
-        }
-      }
-      
-      // NEW: Contextual name references - "[verb] [Name]"
-      // Patterns: "for Maria", "contact John", "email Sarah", "with Alice"
-      // Also handle noun forms: "email for Maria", "send message to John"
-      const contextualNamePatterns = [
-        // Direct patterns: "contact Sarah", "for Maria", "to John"
-        /(?:for|to|with|contact|email|send|message|about|regarding|call|text|notify|alert|remind|tell|ask|welcome|greet|meet|see|visit|help|write|invite)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
-        // Noun forms: "email for Maria", "message to John", "letter for Sarah", "send message to John"
-        /(?:email|message|letter|note|call|text|send)\s+(?:an?|the)?\s*(?:\w+\s+)?(?:for|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
-        // Catch remaining: any [verb] [object] to/for [Name] patterns
-        /\b(?:send|create|write|generate|compose|prepare|make)\s+(?:an?|the)?\s+\w+\s+(?:for|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
-        // Generic: prepositions before capitalized names
-        /(?:\s|^)(?:for|to|with|about)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
-        // Fallback: any Capitalized word after prepositions/verbs (to catch edge cases)
-        /(?:message|send|call|contact|email|text|notify|about|regarding)\s+(?:\w+\s+)*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
-      ];
-      
-      for (const pattern of contextualNamePatterns) {
-        let contextMatch;
-        while ((contextMatch = pattern.exec(textNLP)) !== null) {
-          const name = contextMatch[1].trim();
-          if (name.length >= 2 && !shouldFilterCommonName(name) && /^[A-Z]/.test(name)) {
-            if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
-              findings.push({
-                patternId: 'nlp_person_name',
-                label: 'Person Name (NLP)',
-                risk: 'low',
-                rawMatch: name,
-                safeVersion: '[NAME REDACTED]',
-                source: 'C_linguistic',
-                validated: false
-              });
-            }
-          }
-        }
-      }
-      
-      // Person detection: Honorific + name patterns (NEW)
-      // "Ms padua", "Sir victorio", "Dr. Smith", etc.
+      // ─────────────────────────────────────────────────────────────────────
+      // METHOD 1: extractNamesWithHonorific() - "Ms Padua", "Dr. Smith", etc.
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 1: Extracting honorific patterns...');
       const honorificNames = extractNamesWithHonorific(textNLP);
+      
       for (const name of honorificNames) {
         if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+          method1Count++;
           findings.push({
             patternId: 'nlp_person_name',
             label: 'Person Name (NLP - Honorific)',
@@ -1762,62 +1627,97 @@ const TrustLinguisticDetector = (() => {
           });
         }
       }
+      console.debug('[TrustPrompt/PATH_C] METHOD 1 found:', method1Count);
+
+      // ─────────────────────────────────────────────────────────────────────
+      // METHOD 2: Name trigger patterns - "I am John", "call me Maria", "my name is Alice"
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 2: Extracting name trigger patterns...');
       
-      // Job title detection: Appositive phrases (NEW)
-      // "is the head of [title]", "serves as [role]", etc.
-      const { roles: appositiveRoles } = extractFromAppositives(textNLP);
-      for (const role of appositiveRoles) {
-        if (role.length >= 2 && !shouldFilterCommonJobTitle(role)) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === role.toLowerCase())) {
-            findings.push({
-              patternId: 'nlp_job_title',
-              label: 'Job Title (NLP - Appositive)',
-              risk: 'low',
-              rawMatch: role,
-              safeVersion: '[JOB TITLE REDACTED]',
-              source: 'C_linguistic',
-              validated: false
-            });
-          }
-        }
-      }
-      
-      // ★★★ NEW ALGORITHM 2: Predicate Position Job Titles (PRIMARY - RUNS ALWAYS) ★★★
-      // Extracts phrases after "is a/an/the" WITHOUT requiring job title dictionary
-      // This is CRITICAL for "Maria is a human resource manager" detection
-      const predicateTitles = extractPredicateJobTitles(textNLP);
-      for (const title of predicateTitles) {
-        if (title.length >= 2 && !shouldFilterCommonJobTitle(title, { isFromPredicate: true })) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === title.toLowerCase())) {
-            findings.push({
-              patternId: 'nlp_job_title',
-              label: 'Job Title (NLP - Predicate Position)',
-              risk: 'low',
-              rawMatch: title,
-              safeVersion: '[JOB TITLE REDACTED]',
-              source: 'C_linguistic',
-              validated: false
-            });
-          }
-        }
-      }
-      
-      // Job title detection: Traditional triggers
-      const jobTriggers = [
-        /(?:i work as a|i'm a|work as a|employed as a|role is a)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)/gi,
+      const nameTriggerPatterns = [
+        /\bmy\s+name\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
+        /\b(?:i\s+)?(?:am|'m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
+        /\bcall\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
+        /\bi['']m\s+called\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/gi,
       ];
       
-      for (const trigger of jobTriggers) {
+      for (const pattern of nameTriggerPatterns) {
         let match;
-        while ((match = trigger.exec(textNLP)) !== null) {
-          const job = match[1].trim();
-          if (job.length >= 2 && !shouldFilterCommonJobTitle(job)) {
-            if (!findings.some(f => f.rawMatch.toLowerCase() === job.toLowerCase())) {
+        while ((match = pattern.exec(textNLP)) !== null) {
+          const name = match[1].trim();
+          if (name.length >= 2 && !shouldFilterCommonName(name)) {
+            if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+              method2Count++;
+              findings.push({
+                patternId: 'nlp_person_name',
+                label: 'Person Name (NLP - Trigger)',
+                risk: 'low',
+                rawMatch: name,
+                safeVersion: '[NAME REDACTED]',
+                source: 'C_linguistic',
+                validated: false
+              });
+            }
+          }
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 2 found:', method2Count);
+
+      // ─────────────────────────────────────────────────────────────────────
+      // METHOD 3: Job title patterns - "[Name] is a/an/the/my [job]"
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 3: Extracting job title patterns...');
+      
+      // Pattern allows: "X is a job", "X is my job", "X is the job", etc.
+      // This handles: "Maria is a software engineer", "Kyleen is my engineer"
+      const jobTitlePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+is\s+(?:a|an|the|my|your|his|her|its|our|their)?\s*([a-z]+(?:\s+[a-z]+)*?)(?:\s+(?:at|in|and|on|for|of|or)|\.|,|;|$)/gi;
+      
+      let match;
+      while ((match = jobTitlePattern.exec(textNLP)) !== null) {
+        const subjectName = match[1].trim();
+        const jobTitle = match[2].trim();
+        
+        // Clean up job title (remove trailing prepositions)
+        let cleanJob = jobTitle.replace(/\s+(?:at|in|and|on|for|of|or)$/i, '').trim();
+        
+        // Extract the name if it passes filters
+        if (subjectName.length >= 2 && !shouldFilterCommonName(subjectName)) {
+          const nameLower = subjectName.toLowerCase();
+          if (!findings.some(f => f.rawMatch.toLowerCase() === nameLower)) {
+            // Split multi-word names into individual names
+            const nameParts = subjectName.split(/\s+/);
+            for (const part of nameParts) {
+              if (part.length >= 2 && /^[A-Z]/.test(part) && !shouldFilterCommonName(part)) {
+                if (!findings.some(f => f.rawMatch.toLowerCase() === part.toLowerCase())) {
+                  method3Count++;
+                  findings.push({
+                    patternId: 'nlp_person_name',
+                    label: 'Person Name (NLP - Subject)',
+                    risk: 'low',
+                    rawMatch: part,
+                    safeVersion: '[NAME REDACTED]',
+                    source: 'C_linguistic',
+                    validated: false
+                  });
+                }
+              }
+            }
+          }
+        }
+        
+        // Extract the job title if it passes filters (NOT if it's an adjective like "beautiful")
+        if (cleanJob.length >= 2 && !shouldFilterCommonJobTitle(cleanJob, { isFromPredicate: true })) {
+          const jobLower = cleanJob.toLowerCase();
+          if (!findings.some(f => f.rawMatch.toLowerCase() === jobLower)) {
+            // Additional filter: reject if it looks like a common adjective
+            const adjectives = new Set(['beautiful', 'happy', 'sad', 'good', 'bad', 'nice', 'ugly', 'smart', 'dumb', 'fast', 'slow', 'rich', 'poor', 'tall', 'short', 'fat', 'thin', 'strong', 'weak', 'old', 'young', 'new', 'big', 'small', 'red', 'blue', 'green', 'yellow', 'hot', 'cold', 'wet', 'dry', 'clean', 'dirty']);
+            if (!adjectives.has(cleanJob.toLowerCase())) {
+              method3Count++;
               findings.push({
                 patternId: 'nlp_job_title',
-                label: 'Job Title (NLP)',
+                label: 'Job Title (NLP - Predicate)',
                 risk: 'low',
-                rawMatch: job,
+                rawMatch: cleanJob,
                 safeVersion: '[JOB TITLE REDACTED]',
                 source: 'C_linguistic',
                 validated: false
@@ -1826,191 +1726,64 @@ const TrustLinguisticDetector = (() => {
           }
         }
       }
-      
-      // NEW: Predicate nominative - "[Name] is a/an [job]"
-      // Extract job titles after "is a/an", stopping at common boundaries
-      // Use separate patterns for "a" and "an" to avoid regex issues
-      
-      // Pattern 1: "[Name] is a [job]"
-      const predicateJobPatternA = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+is\s+a\s+([a-z]+(?:\s+[a-z]+)*?)(?:\s+(?:at|in|and|on|for|of|or)|\.|,|$)/gi;
-      let jobMatchA;
-      while ((jobMatchA = predicateJobPatternA.exec(textNLP)) !== null) {
-        let job = jobMatchA[1].trim();
-        job = job.replace(/\s+(?:at|in|and|on|for|of|or)$/i, '').trim();
-        if (job.length >= 2 && !shouldFilterCommonJobTitle(job)) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === job.toLowerCase())) {
-            findings.push({
-              patternId: 'nlp_job_title',
-              label: 'Job Title (NLP)',
-              risk: 'low',
-              rawMatch: job,
-              safeVersion: '[JOB TITLE REDACTED]',
-              source: 'C_linguistic',
-              validated: false
-            });
-          }
-        }
-      }
-      
-      // Pattern 2: "[Name] is an [job]"
-      const predicateJobPatternAn = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+is\s+an\s+([a-z]+(?:\s+[a-z]+)*?)(?:\s+(?:at|in|and|on|for|of|or)|\.|,|$)/gi;
-      let jobMatchAn;
-      while ((jobMatchAn = predicateJobPatternAn.exec(textNLP)) !== null) {
-        let job = jobMatchAn[1].trim();
-        job = job.replace(/\s+(?:at|in|and|on|for|of|or)$/i, '').trim();
-        if (job.length >= 2 && !shouldFilterCommonJobTitle(job)) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === job.toLowerCase())) {
-            findings.push({
-              patternId: 'nlp_job_title',
-              label: 'Job Title (NLP)',
-              risk: 'low',
-              rawMatch: job,
-              safeVersion: '[JOB TITLE REDACTED]',
-              source: 'C_linguistic',
-              validated: false
-            });
-          }
-        }
-      }
-      
-      // Organization detection: Appositive phrases (NEW)
-      // "is the head of oict", "is part of oict", etc.
-      const { organizations: appositiveOrgs } = extractFromAppositives(textNLP);
-      for (const org of appositiveOrgs) {
-        if (org.length >= 3 && !shouldFilterCommonOrganization(org)) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
-            findings.push({
-              patternId: 'nlp_organization',
-              label: 'Organization (NLP - Appositive)',
-              risk: 'low',
-              rawMatch: org,
-              safeVersion: '[ORGANIZATION REDACTED]',
-              source: 'C_linguistic',
-              validated: false
-            });
-          }
-        }
-      }
-      
-      // ★★★ NEW ALGORITHM 3: Organization Context Detection (PRIMARY - RUNS ALWAYS) ★★★
-      // Detects orgs from linguistic patterns WITHOUT hardcoded organization list
-      // This is CRITICAL for "Maria is a human resource manager in the oict" detection
-      const contextOrgs = extractOrganizationContexts(textNLP);
-      for (const org of contextOrgs) {
-        if (org.length >= 2 && !shouldFilterCommonOrganization(org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
-          findings.push({
-            patternId: 'nlp_organization',
-            label: 'Organization (NLP - Contextual)',
-            risk: 'low',
-            rawMatch: org,
-            safeVersion: '[ORGANIZATION REDACTED]',
-            source: 'C_linguistic',
-            validated: false
-          });
-        }
-      }
-      
-      // FIX #2: NEW — Standalone Acronyms (FALLBACK - RUNS ALWAYS)
-      // Detects 2-5 letter all-caps acronyms like "OICT" mentioned standalone
-      // Examples: "I work at OICT", "OICT announced...", "The OICT is..."
-      // IMPORTANT: Much more restrictive than original to avoid false positives like "Kyl"
-      const standaloneAcronymPattern = /\b([A-Z]{3,5})\b(?!\w)/gi;  // Changed: 3-5 instead of 2-5
-      const commonAcronymBlacklist = new Set([
-        'THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'WHEN', 'WHAT', 'WHICH',
-        'ARE', 'WAS', 'HAS', 'DID', 'WILL', 'CAN', 'MAY', 'BEEN', 'HAVE', 'DOES',
-        'KYL', 'KYE', 'NIC', 'DAY'  // Fragments of common names
-      ]);
-      
-      const knownOrgAcronyms = new Set([
-        'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW', 'TSA', 'PRC',
-        'GOOGLE', 'APPLE', 'MICROSOFT', 'AMAZON', 'FACEBOOK', 'TWITTER', 'UBER',
-        'BDO', 'BPI', 'RCBC', 'PNB', 'AXA', 'MANULIFE',
-        'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ASAP'
-      ]);
-      
-      let acronymMatch;
-      while ((acronymMatch = standaloneAcronymPattern.exec(textNLP)) !== null) {
-        const org = acronymMatch[1].trim();
-        
-        // Filter 1: Minimum 3 letters (raised from 2)
-        if (org.length < 3) continue;
-        
-        // Filter 2: Skip common non-org acronyms
-        if (commonAcronymBlacklist.has(org)) continue;
-        
-        // Filter 3: Prefer known orgs, verify unknowns
-        const isKnownOrg = knownOrgAcronyms.has(org);
-        if (!isKnownOrg && org.length === 3) {
-          // Very restrictive on 3-letter unknowns
-          continue;
-        }
-        
-        // Filter 4: Apply common organization filter (reject person names, verbs, medical terms)
-        if (shouldFilterCommonOrganization(org)) continue;
-        
-        // Filter 5: Skip if already found
-        if (findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) continue;
-        
-        // Add to findings
-        findings.push({
-          patternId: 'nlp_organization',
-          label: 'Organization (NLP - Acronym)',
-          risk: 'low',
-          rawMatch: org,
-          safeVersion: '[ORGANIZATION REDACTED]',
-          source: 'C_linguistic',
-          validated: false
-        });
-      }
-      
-      // Organization detection: Traditional triggers
-      const orgTriggers = [
-        /(?:work at|work for|employed at|employed by)\s+([A-Za-z0-9&\s]+?)(?:\.|,|;|$|and)/gi,
-      ];
-      
-      for (const trigger of orgTriggers) {
-        let match;
-        while ((match = trigger.exec(textNLP)) !== null) {
-          const org = match[1].trim();
-          if (org.length >= 3 && !shouldFilterCommonOrganization(org)) {
-            if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
-              findings.push({
-                patternId: 'nlp_organization',
-                label: 'Organization (NLP)',
-                risk: 'low',
-                rawMatch: org,
-                safeVersion: '[ORGANIZATION REDACTED]',
-                source: 'C_linguistic',
-                validated: false
-              });
-            }
-          }
-        }
-      }
-      
-      if (!COMPROMISE_AVAILABLE) {
-        console.log(
-          '[TrustPrompt/PATH_C] detected (fallback):',
-          `person:${findings.filter(f => f.patternId === 'nlp_person_name').length}`,
-          `job:${findings.filter(f => f.patternId === 'nlp_job_title').length}`,
-          `org:${findings.filter(f => f.patternId === 'nlp_organization').length}`
-        );
-      } else {
-        console.log(
-          '[TrustPrompt/PATH_C] backup trigger patterns detected:',
-          `person:${findings.filter(f => f.patternId === 'nlp_person_name').length}`,
-          `job:${findings.filter(f => f.patternId === 'nlp_job_title').length}`,
-          `org:${findings.filter(f => f.patternId === 'nlp_organization').length}`
-        );
-      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 3 found:', method3Count);
 
+      // ─────────────────────────────────────────────────────────────────────
+      // METHOD 4: Standalone person names - Single capitalized words like "Kyleen"
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 4: Extracting standalone names...');
+      
+      // Simple pattern: Any capitalized word
+      const standaloneNamePattern = /\b([A-Z][a-z]+)\b/g;
+      let standaloneName;
+      
+      while ((standaloneName = standaloneNamePattern.exec(textNLP)) !== null) {
+        const name = standaloneName[1].trim();
+        
+        // Filter out measurement words and skip very common words
+        const measurementWords = new Set(['number', 'phone', 'digit', 'code', 'value', 'amount', 'count', 'total', 'sum', 'average', 'result']);
+        const commonWords = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'to', 'in', 'at', 'by', 'for', 'on', 'with', 'from', 'up', 'about', 'into', 'through', 'during', 'and', 'or', 'but', 'not']);
+        
+        const lowerName = name.toLowerCase();
+        if (measurementWords.has(lowerName) || commonWords.has(lowerName)) {
+          continue;  // Skip measurement/common words
+        }
+        
+        if (name.length >= 2 && !shouldFilterCommonName(name)) {
+          if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+            method4Count++;
+            findings.push({
+              patternId: 'nlp_person_name',
+              label: 'Person Name (Standalone)',
+              risk: 'low',
+              rawMatch: name,
+              safeVersion: '[NAME REDACTED]',
+              source: 'C_linguistic',
+              validated: false
+            });
+          }
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 4 found:', method4Count);
+      
+      console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan complete - found', 
+        `honorifics:${method1Count}`, 
+        `triggers:${method2Count}`, 
+        `jobs:${method3Count}`,
+        `standalone:${method4Count}`,
+        `total:${findings.length}`
+      );
+      
       // Deduplicate within PATH C
       const deduplicated = deduplicateWithinPath(findings);
+      
+      console.log('[TrustPrompt/PATH_C] After dedup:', deduplicated.length, 'findings');
       return deduplicated;
-
+      
     } catch (error) {
-      console.error('[TrustPrompt/PATH_C] Error during linguistic detection:', error);
-      return []; // Fail gracefully
+      console.error('[TrustPrompt/PATH_C] SIMPLIFIED scan error:', error.message);
+      console.error(error.stack);
+      return [];  // Fail gracefully
     }
   }
 

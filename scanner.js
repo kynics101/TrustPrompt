@@ -2434,7 +2434,7 @@ const TrustScanner = (() => {
       });
       
       console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
-      console.log("[TrustPrompt/scanner] Running PATH C (BERT-NER transformer only)...");
+      console.log("[TrustPrompt/scanner] Running PATH C (compromise.js linguistic NLP)...");
       let pathCFindings = [];
       
       // Use linguistic detector (compromise.js based NLP)

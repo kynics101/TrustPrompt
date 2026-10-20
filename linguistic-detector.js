@@ -15,22 +15,11 @@
 
 /* global window */
 
-console.log("[STARTUP] linguistic-detector.js loading...");
-
 const TrustLinguisticDetector = (() => {
 
   // ── Module initialization ──────────────────────────────────────────────────
   // Check if compromise.js is available in global scope
   const COMPROMISE_AVAILABLE = typeof window !== 'undefined' && window.nlp !== undefined;
-
-  console.log("[STARTUP] COMPROMISE_AVAILABLE:", COMPROMISE_AVAILABLE);
-  console.log("[STARTUP] typeof window.nlp:", typeof window.nlp);
-
-  if (!COMPROMISE_AVAILABLE) {
-    console.debug('[TrustPrompt/PATH_C] compromise.js not found; skipping linguistic detection');
-  }
-  
-  console.log("[STARTUP] TrustLinguisticDetector initialized");
 
   // ── Constants & heuristic data ─────────────────────────────────────────────
 
@@ -432,50 +421,46 @@ const TrustLinguisticDetector = (() => {
   /**
    * ALGORITHM: Extract job titles from predicate position after "is a/an/the".
    * 
+   * CLEAN EXTRACTION: Capture ONLY the job title, not context.
+   * (Fix: Don't capture "librarian at" or "librarian in the" — just "librarian")
+   *
    * Key insight: In English, occupations follow copular verbs with articles:
    * - "[Name] is a [JOB PHRASE]"
    * - "[Name] is an [JOB PHRASE]"  
    * - "[Name] is the [JOB PHRASE] of [ORG]"
-   *
-   * The job phrase can be multi-word: "human resource manager", "software engineer",
-   * "chief information officer", etc. We extract the entire noun phrase without
-   * requiring it to be in a dictionary.
+   * - "[Pronoun] is a [JOB PHRASE]" — includes pronouns (she, he, they, etc.)
    *
    * Strategy:
-   * 1. Match pattern "[Name] is a/an/the [PHRASE]" 
-   * 2. Extract the phrase up to natural boundaries (punctuation, "of", "at", "for", etc.)
-   * 3. Clean up boundaries intelligently (remove trailing articles, prepositions)
-   * 4. Return the extracted phrase as a potential job title
+   * 1. Match pattern "[Name or Pronoun] is a/an/the [PHRASE]" 
+   * 2. Extract phrase up to natural boundaries (prepositions with space after, punctuation)
+   * 3. Stop at: " at ", " in ", " for ", " of " (prepositions with spaces)
+   * 4. Return ONLY the job title without context
    *
    * Examples:
    * - "Maria is a human resource manager" → "human resource manager"
-   * - "John is the head of IT" → "head" (or "head of IT" depending on boundary)
+   * - "she is a librarian at university" → "librarian" (stops at " at ")
+   * - "John is the head of IT" → "head" (stops at " of ")
    * - "Sarah is an administrative assistant" → "administrative assistant"
    * - "Michael is a senior software engineer at Google" → "senior software engineer"
-   *
-   * Does NOT rely on dictionary. Validates via linguistic patterns:
-   * - Multi-word titles accepted (esp. with adjective+noun patterns)
-   * - Single-word titles accepted if preceded by article (a/an/the)
-   * - Filters only obvious non-titles (person, people, thing, being)
+   * - "they are lawyers" → "lawyers"
    *
    * @param {string} text - The text to search
-   * @returns {Array} array of extracted job title phrases
+   * @returns {Array} array of extracted job title phrases (clean only)
    * @private
    */
   function extractPredicateJobTitles(text) {
     const titles = [];
     
-    // Pattern 1: "[Name] is a [job phrase]"
-    // Captures: capitalized word(s) + "is a" + lowercase noun phrase
-    // Stops at: prepositions (at, for, in, of, by), punctuation, or sentence end
-    // Word after "is a" must be lowercase (indicates adjective or noun, not proper noun)
-    const predicatePatternA = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+is\s+a\s+([a-z][a-z\s]*?)(?:\s+(?:at|for|in|of|by|and|or)|\.|\,|;|$)/gi;
+    // Pattern 1: "[Name or Pronoun] is a [job phrase]"
+    // Capture until: preposition + space, or punctuation, or end of string
+    // More lenient: allows single words, multi-words, stops cleanly
+    const predicatePatternA = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|[a-z]+)\s+is\s+a\s+([a-z]+(?:\s+[a-z]+)*)(?=\s+(?:at|in|for|of|by|and|or)|[.,;!?]|$)/gi;
     
     let match;
     while ((match = predicatePatternA.exec(text)) !== null) {
       let title = match[1].trim();
       
-      // Clean up: remove trailing prepositions if any slipped through
+      // Additional cleanup: remove trailing prepositions if any slipped through
       title = title.replace(/\s+(?:at|for|in|of|by|and|or)\s*$/i, '').trim();
       
       // Heuristic 1: Must be 2+ characters
@@ -490,58 +475,35 @@ const TrustLinguisticDetector = (() => {
       titles.push(title);
     }
     
-    // Pattern 2: "[Name] is an [job phrase]"
-    // Similar to Pattern 1, but for titles starting with vowels
-    const predicatePatternAn = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+is\s+an\s+([a-z][a-z\s]*?)(?:\s+(?:at|for|in|of|by|and|or)|\.|\,|;|$)/gi;
+    // Pattern 2: "[Name or Pronoun] is an [job phrase]"
+    const predicatePatternAn = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|[a-z]+)\s+is\s+an\s+([a-z]+(?:\s+[a-z]+)*)(?=\s+(?:at|in|for|of|by|and|or)|[.,;!?]|$)/gi;
     
     while ((match = predicatePatternAn.exec(text)) !== null) {
       let title = match[1].trim();
-      
-      // Clean up: remove trailing prepositions if any slipped through
       title = title.replace(/\s+(?:at|for|in|of|by|and|or)\s*$/i, '').trim();
       
-      // Heuristic 1: Must be 2+ characters
       if (title.length < 2) continue;
-      
-      // Heuristic 2: Filter obvious non-titles
       if (shouldFilterCommonJobTitle(title, { isFromPredicate: true })) continue;
-      
-      // Heuristic 3: Avoid duplicates
       if (titles.some(t => t.toLowerCase() === title.toLowerCase())) continue;
       
       titles.push(title);
     }
     
-    // Pattern 3: "[Name] is the [job phrase]"
-    // The definite article "the" often precedes unique roles or organizational positions
-    // e.g., "John is the head of IT", "Maria is the director of HR"
-    const predicatePatternThe = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+is\s+the\s+([a-z][a-z\s]*?)(?:\s+(?:at|for|in|of|by|and|or)|\.|\,|;|$)/gi;
+    // Pattern 3: "[Name or Pronoun] is the [job phrase]"
+    const predicatePatternThe = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|[a-z]+)\s+is\s+the\s+([a-z]+(?:\s+[a-z]+)*)(?=\s+(?:at|in|for|of|by|and|or)|[.,;!?]|$)/gi;
     
     while ((match = predicatePatternThe.exec(text)) !== null) {
       let title = match[1].trim();
-      
-      // Clean up: remove trailing prepositions if any slipped through
       title = title.replace(/\s+(?:at|for|in|of|by|and|or)\s*$/i, '').trim();
       
-      // Heuristic 1: Must be 2+ characters
       if (title.length < 2) continue;
-      
-      // Heuristic 2: Filter obvious non-titles
       if (shouldFilterCommonJobTitle(title, { isFromPredicate: true })) continue;
-      
-      // Heuristic 3: Avoid duplicates
       if (titles.some(t => t.toLowerCase() === title.toLowerCase())) continue;
       
       titles.push(title);
     }
     
-    // Pattern 4: Extract individual words that are common job title indicators
-    // When we see a phrase like "manager", "engineer", "director", "coordinator" alone,
-    // it's worth extracting even without the full title. This catches cases where
-    // the user wants just "manager" detected from "human resource manager".
-    // 
-    // Strategy: Look for lowercase job-indicator words (often final word in titles)
-    // that appear after "is a/an/the" or in standalone contexts
+    // Pattern 4: Extract individual job-indicator words from predicate context
     const jobIndicators = [
       'manager', 'engineer', 'director', 'coordinator', 'specialist', 'consultant',
       'analyst', 'assistant', 'designer', 'developer', 'officer', 'representative',
@@ -551,13 +513,22 @@ const TrustLinguisticDetector = (() => {
     ];
     
     for (const indicator of jobIndicators) {
-      // Only extract if it appears in occupational context: "is a/an [indicator]"
-      // This ensures we catch standalone job titles when they appear as predicates
       const indicatorPattern = new RegExp(`\\bis\\s+a(?:n)?\\s+${indicator}\\b`, 'gi');
       if (indicatorPattern.test(text)) {
-        // Check if not already extracted from multi-word title
         if (!titles.some(t => t.toLowerCase().includes(indicator.toLowerCase()))) {
           titles.push(indicator);
+        }
+      }
+    }
+    
+    // Pattern 5: "works as a [job]" or "works as an [job]"
+    // Must stop before "in" or other prepositions
+    const worksAsPattern = /\b(?:works?|employed?)\s+as\s+a(?:n)?\s+([a-z]+(?:\s+[a-z]+)?)(?=\s+(?:at|in|for|,)|[.,;!?]|$)/gi;
+    while ((match = worksAsPattern.exec(text)) !== null) {
+      let title = match[1].trim();
+      if (title.length >= 2 && !shouldFilterCommonJobTitle(title, { isFromPredicate: true })) {
+        if (!titles.some(t => t.toLowerCase() === title.toLowerCase())) {
+          titles.push(title);
         }
       }
     }
@@ -641,10 +612,10 @@ const TrustLinguisticDetector = (() => {
    * - Contain numbers (e.g., "3M", "3Com")
    * - Examples: "University of Santo Tomas", "Department of IT", "Google Inc"
    *
-   * Heuristic scoring:
-   * - Name score: +1 for each 2-3 word pattern, +1 if all words 2-10 chars
-   * - Org score: +1 for "of"/"for"/"and", +1 for functional words, +1 for 4+ words, +1 for numbers
-   * - Decision: Name if (name_score > org_score), Org otherwise
+   * FIX: Improved name/org disambiguation with better defaults:
+   * - If text contains org indicator words (Inc, Ltd, Corp, Department, etc.) → org
+   * - If text contains prepositions (of, for, in, at) → favor org
+   * - Default for ambiguous 2-3 word text: favor ORG if no strong name signals
    *
    * @param {string} text - The candidate text to classify
    * @returns {string} "name" | "organization" | "unknown"
@@ -655,6 +626,29 @@ const TrustLinguisticDetector = (() => {
     
     const lower = text.toLowerCase();
     const words = text.split(/\s+/);
+    
+    // ★ FILTER: First-person copular patterns are NEVER organizations ★
+    // These patterns introduce personal descriptions (names, roles, states), not orgs
+    // Examples: "i am kyleen", "you are the manager", "they are consultants"
+    const firstPersonCopularPattern = /^(?:i\s+am|you\s+are|we\s+are|they\s+are|she\s+is|he\s+is)\s+/i;
+    if (firstPersonCopularPattern.test(text)) {
+      return "name";  // First-person patterns always introduce names/descriptions, not organizations
+    }
+    
+    // ★ QUICK WIN: Check for explicit org indicator words FIRST ★
+    const explicitOrgWords = new Set([
+      'inc', 'corp', 'co', 'ltd', 'llc', 'llp', 'gmbh', 'ag', 'nv', 'sa',
+      'department', 'dept', 'division', 'div', 'unit', 'group', 'team', 'bureau',
+      'agency', 'administration', 'admin', 'institute', 'university', 'college',
+      'school', 'hospital', 'clinic', 'bank', 'fund', 'association', 'society',
+      'organization', 'org', 'council', 'committee', 'board', 'foundation',
+      'ministry', 'office', 'authority', 'center', 'centre', 'service', 'network',
+      'company', 'corporation'
+    ]);
+    const hasExplicitOrgWord = words.some(w => explicitOrgWords.has(w.toLowerCase()));
+    if (hasExplicitOrgWord) {
+      return "organization";  // ★ EARLY RETURN: Org indicator overrides everything
+    }
     
     // ★ NAME INDICATORS ★
     let nameScore = 0;
@@ -735,9 +729,23 @@ const TrustLinguisticDetector = (() => {
       return "organization";
     }
     
-    // Default based on word count: 2-3 words = name, 4+ words = org
+    // ★ FIX: Improved default logic ★
+    // BEFORE: Default to "name" for 2-3 words (caused "Google Inc" to be classified as name)
+    // AFTER: Check if there's ANY org indicator; default to org if ambiguous
+    if (hasPrepositions) {
+      // Prepositions in text strongly suggest org (e.g., "Head of Department")
+      return "organization";
+    }
+    
     if (words.length === 2 || words.length === 3) {
-      return "name";
+      // For 2-3 word text without prepositions or org keywords, check for name patterns
+      // If no explicit name patterns, default to ORGANIZATION (more likely in context)
+      // This fixes: "Google Inc", "Microsoft Corp" being misclassified as names
+      if (nameScore > 0) {
+        return "name";
+      } else {
+        return "organization";  // ★ FLIP: Ambiguous 2-3 words → organization (less common as names)
+      }
     } else if (words.length >= 4) {
       return "organization";
     }
@@ -746,259 +754,101 @@ const TrustLinguisticDetector = (() => {
   }
 
   /**
-   * ALGORITHM: Extract organization names from contextual patterns.
-   *
-   * Key insight: Organizations are often mentioned in three contexts:
-   * 1. Appositive position: "[Name] is the head/member of [ORG]"
-   * 2. Predicate position: "[Name] works at/for [ORG]"
-   * 3. Possessive context: "[Name]'s [ORG]" or "[Name] in [ORG]"
-   *
-   * Instead of a hardcoded org list, we use linguistic patterns:
-   * - Multi-word capitalized phrases after "of", "at", "for"
-   * - Acronyms (all caps, 2-5 characters)
-   * - Branded terms (capitalized words in organizational context)
-   *
-   * Examples:
-   * - "is the head of the oict" → "oict" 
-   * - "works at Google" → "Google"
-   * - "is part of HR department" → "HR department"
-   *
-   * Strategy:
-   * - Extract capitalized multi-word phrases after organizational prepositions
-   * - Accept acronyms (especially common in corporate/government contexts)
-   * - Clean up articles and common words
-   * - Validate through boundary detection (punctuation, conjunctions)
+   * ORGANIZATION EXTRACTION - CONTEXT ONLY
+   * 
+   * CRITICAL FIX: Don't extract from "is a" sentences at all!
+   * "She is a librarian in..." is about a PERSON'S JOB, not an organization.
+   * 
+   * ONLY extract from EXPLICIT WORKPLACE CONTEXT:
+   * - "works at/in/for/by [ORG]"
+   * - "[NAME] Inc/Corp/Ltd/University"
+   * - Known acronyms after prepositions
    *
    * @param {string} text - The text to search
-   * @returns {Array} array of extracted organization names
+   * @returns {Array} array of extracted organization names ONLY
    * @private
    */
   function extractOrganizationContexts(text) {
     const orgs = [];
     
-    // Pattern 1: "is the head/member of [ORG]" or "is part of [ORG]" or "in [ORG]"
-    // Captures capitalized words or acronyms after prepositions
-    // Stops at punctuation, conjunctions, or sentence end
-    // FIX #3: Added apostrophe support for possessive organization names (e.g., "Tita's Incorporation")
-    const headOfPattern = /\b(?:is\s+(?:the\s+)?(?:head|chief|member|part|employee|leader|director|coordinator)|in)\s+(?:of|in|the\s+)?(?:the\s+)?([A-Z][A-Za-z\s&']*?)(?:\s+(?:and|or|at|which|where)|\.|\,|;|$)/gi;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PATTERN 1: EXPLICIT ORG TYPE MARKERS ONLY
+    // "[NAME] Inc|Corp|Ltd|LLC|University|College|School|Institute|etc"
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const orgTypes = 'Inc|Corp|Ltd|LLC|Company|University|College|School|Institute|Foundation|Department|Agency|Bank|Hospital|Organization|Network|Service';
+    const pattern1 = new RegExp(`\\b([A-Z][A-Za-z\\s&.'-]*?)\\s+(${orgTypes})\\b`, 'gi');
     
     let match;
-    while ((match = headOfPattern.exec(text)) !== null) {
+    while ((match = pattern1.exec(text)) !== null) {
+      const name = match[1].trim();
+      const type = match[2].trim();
+      
+      if (name.length < 2) continue;
+      if (['the', 'a', 'an', 'is', 'are'].includes(name.toLowerCase())) continue;
+      
+      const fullName = name + ' ' + type;
+      if (!orgs.some(o => o.toLowerCase() === fullName.toLowerCase())) {
+        orgs.push(fullName);
+      }
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PATTERN 2: WORKPLACE VERBS - "works/employed at/in/for [ORG]"
+    // KEY: Match from "works" word, not from "is a" position
+    // Extract: Everything after preposition until natural boundary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STRICT: Start with "works/employed", then preposition, then capture
+    const pattern2 = /\b(?:works?|employed?|working)\s+(?:at|in|for|by)\s+(?:the\s+)?([A-Z][A-Za-z0-9\s&.'-]*?)(?=\s+[a-z]|\s*[.,;!?\n]|$)/gi;
+    
+    while ((match = pattern2.exec(text)) !== null) {
       let org = match[1].trim();
       
-      // Clean up trailing articles or low-value words
-      org = org.replace(/\s+(?:and|or|at)\s*$/i, '').trim();
+      // Clean: Remove trailing articles/prepositions
+      org = org.replace(/[\s,;.!?\)]+$/g, '')
+               .replace(/\s+(?:the|a|an|and|or|is|are|at|in|for|of)\s*$/i, '')
+               .trim();
       
-      // Heuristic 1: Must be 2+ characters
       if (org.length < 2) continue;
       
-      // Heuristic 2: Avoid obvious non-organizations
-      const lower = org.toLowerCase();
-      if (['the', 'a', 'an', 'that', 'this', 'who', 'which'].includes(lower)) continue;
+      // Reject job titles (these belong in job extraction, not org)
+      const jobTitles = ['librarian', 'manager', 'engineer', 'director', 'coordinator', 
+                         'analyst', 'specialist', 'consultant', 'officer', 'employee', 
+                         'head', 'chief', 'leader'];
+      if (jobTitles.includes(org.toLowerCase())) continue;
       
-      // ★ NEW: Use classifier to avoid names ★
-      const classificationHeadOf = classifyNameVsOrganization(org);
-      if (classificationHeadOf === "name") continue;  // Skip if classified as name
+      // CRITICAL: Reject if it contains "is" (indicates it's from a copular sentence)
+      if (org.toLowerCase().includes(' is ')) continue;
       
-      // Heuristic 3: Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === lower)) continue;
-      
-      orgs.push(org);
-    }
-    
-    // Pattern 1B: Standalone capitalized words/phrases (catch organizations mentioned without context)
-    // Examples: "university of santo tomas", "oict", "Google"
-    // Pattern: Capitalized word(s), potentially with "of", "and", or "the" between them
-    // Often organizations are in all-caps or title case, possibly multi-word
-    // FIX #3: Added apostrophe support for possessive organization names
-    const standaloneOrgPattern = /\b([A-Z][A-Za-z']+(?:\s+(?:of|and|the)\s+[A-Z][A-Za-z']+)+)\b/gi;
-    
-    while ((match = standaloneOrgPattern.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Clean up trailing articles
-      org = org.replace(/\s+(?:the)\s+$/i, '').trim();
-      
-      // Heuristic: Must be meaningful length (at least 5 chars for multi-word)
-      if (org.length < 5) continue;
-      
-      // ★ NEW: Use classifier to avoid names ★
-      const classificationStandalone = classifyNameVsOrganization(org);
-      if (classificationStandalone === "name") continue;  // Skip if classified as name
-      
-      // Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
-      
-      orgs.push(org);
-    }
-    
-    // Pattern 1C: Acronyms or single capitalized words (OICT, Google, etc.)
-    // This catches single-word organization names
-    // IMPORTANT: Be restrictive here to avoid catching personal names
-    const acronymOrgPattern = /\b([A-Z]{2,}|[A-Z][a-z]{3,})\b/gi;
-    
-    while ((match = acronymOrgPattern.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Only include actual acronyms (all caps) or recognized org names (Title Case, 4+ chars)
-      if (!/^[A-Z]+$/.test(org) && org.length < 4) continue;
-      
-      // Skip common English words
-      const lower = org.toLowerCase();
-      const commonWords = ['the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'which', 'who', 'why', 'how', 'name', 'human', 'manager', 'head', 'part', 'person', 'resource', 'maria', 'john', 'marie', 'kyleen'];
-      if (commonWords.includes(lower)) continue;
-      
-      // ★ CRITICAL: Use classifier to avoid names - be very strict here ★
-      // This pattern is where personal names like "Maria", "John" get caught
-      const classificationAcronym2 = classifyNameVsOrganization(org);
-      if (classificationAcronym2 === "name") continue;  // Skip if classified as name
-      
-      // Acronyms must be all-caps OR be well-known company/org names
-      // Only allow title-case words that are actually in our vocabulary of known orgs
-      const knownOrgNames = ['Google', 'Apple', 'Microsoft', 'Amazon', 'Facebook', 'Twitter', 'LinkedIn', 'Intel', 'IBM', 'Oracle', 'Cisco', 'Dell', 'HP', 'PayPal', 'Uber', 'Netflix'];
-      if (!/^[A-Z]+$/.test(org) && !knownOrgNames.includes(org)) {
-        // If it's not all-caps and not a known org, skip it (likely a name)
-        continue;
+      if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
+        orgs.push(org);
       }
-      
-      // Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === lower)) continue;
-      
-      orgs.push(org);
     }
     
-    // Pattern 2: "works at/for [ORG]" or "employed at/by [ORG]"
-    // Captures capitalized words after workplace prepositions
-    // FIX #3: Added apostrophe support for possessive organization names
-    const worksAtPattern = /\b(?:works?|employed?|working)\s+(?:at|by|for|with)\s+(?:the\s+)?([A-Z][A-Za-z\s&']*?)(?:\s+(?:and|or|which|where)|\.|\,|;|$)/gi;
-    
-    while ((match = worksAtPattern.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Clean up trailing words
-      org = org.replace(/\s+(?:and|or|which|where)\s*$/i, '').trim();
-      
-      // Heuristic 1: Must be 3+ characters (longer threshold for workplace context)
-      if (org.length < 3) continue;
-      
-      // Heuristic 2: Avoid obvious non-organizations
-      const lower2 = org.toLowerCase();
-      if (['the', 'a', 'an', 'that', 'this', 'there'].includes(lower2)) continue;
-      
-      // ★ NEW: Use classifier to avoid names ★
-      const classificationWorksAt = classifyNameVsOrganization(org);
-      if (classificationWorksAt === "name") continue;  // Skip if classified as name
-      
-      // Heuristic 3: Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === lower2)) continue;
-      
-      orgs.push(org);
-    }
-    
-    // Pattern 3: Acronyms or all-caps organization names
-    // Patterns like "OICT", "HR", "IT", "Google", "Apple", "Microsoft"
-    // These appear in contexts like "is part of OICT" or "head of HR"
-    // Look for 2-5 letter acronyms or capitalized single words
-    const acronymPattern = /\b(?:of|at|for|in|with)\s+([A-Z]{2,5})(?:\s+(?:and|or|department|unit)|\.|\,|;|$)/gi;
-    
-    while ((match = acronymPattern.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Heuristic: Acronyms should be 2-5 chars
-      if (org.length < 2 || org.length > 5) continue;
-      
-      // Avoid common non-org acronyms
-      if (['THE', 'AND', 'FOR', 'WITH', 'THIS', 'THAT', 'WHEN', 'WHAT', 'WHICH'].includes(org)) continue;
-      
-      // Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
-      
-      orgs.push(org);
-    }
-    
-    // FIX #2: NEW Pattern 3.5 — Standalone Acronyms
-    // Detects acronyms like "OICT", "HR", "IT" mentioned standalone without context
-    // This captures organizations referenced by their acronym alone
-    // Examples: "I work at OICT", "The OICT is...", "OICT announced..."
-    // 
-    // Strategy: Match all-caps 2-5 letter sequences that:
-    // - Are NOT English words (THE, AND, FOR, etc.)
-    // - Are NOT preceded by lowercase (to avoid extracting from middle of words)
-    // - Are NOT followed by lowercase (to avoid "OICTvalue" false matches)
-    // - Are NOT partial words at line boundaries (incomplete typing like "Kyl")
-    const standaloneAcronymPattern = /\b([A-Z]{3,5})\b(?!\w)/gi;  // Changed: 3-5 instead of 2-5 to reduce false positives
-    
-    const commonAcronymBlacklist = new Set([
-      'THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'WHEN', 'WHAT', 'WHICH',
-      'ARE', 'WAS', 'HAS', 'DID', 'WILL', 'CAN', 'MAY', 'BEEN', 'HAVE', 'DOES',
-      'THEY', 'THEM', 'THEN', 'THAN', 'THAT', 'ONLY', 'ALSO', 'JUST', 'VERY', 'MORE',
-      'SOME', 'SUCH', 'SAID', 'MAKE', 'PART', 'SUCH', 'EVEN', 'MOST', 'LIKE', 'KNOW',
-      'KYL', 'KYE', 'NIC', 'DAY'  // Added: Fragments of "Kyleen Nicdao" to prevent false matches
-    ]);
-    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PATTERN 3: KNOWN ACRONYMS ONLY (WHITELIST)
+    // After prepositions: "at OICT", "in IBM", "of UNESCO"
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const knownOrgAcronyms = new Set([
-      // Government/Education
-      'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW', 'TSA', 'PRC',
-      // Tech Companies
-      'GOOGLE', 'APPLE', 'MICROSOFT', 'AMAZON', 'FACEBOOK', 'TWITTER', 'UBER',
-      // Finance
+      'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW',
       'BDO', 'BPI', 'RCBC', 'PNB', 'AXA', 'MANULIFE',
-      // Common 3-5 letter orgs
-      'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ASAP'
+      'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ADB', 'IMF', 'ILO',
+      'FBI', 'CIA', 'NSA', 'NASA', 'DOJ'
     ]);
     
-    while ((match = standaloneAcronymPattern.exec(text)) !== null) {
-      let org = match[1].trim();
+    const pattern3 = /\b(?:at|in|of|for|by)\s+([A-Z]{2,5})(?=[\s,;.!?]|$)/gi;
+    
+    while ((match = pattern3.exec(text)) !== null) {
+      const acronym = match[1].trim();
+      if (!knownOrgAcronyms.has(acronym)) continue;
       
-      // Filter 1: Minimum 3 letters (raised from 2 to reduce false positives from incomplete typing)
-      if (org.length < 3) continue;
-      
-      // Filter 2: Skip if in common non-org acronym blacklist
-      if (commonAcronymBlacklist.has(org)) continue;
-      
-      // Filter 3: Check against known org acronyms (high precision mode)
-      // Only accept if: known org OR (3+ letters AND classifies as organization)
-      const isKnownOrg = knownOrgAcronyms.has(org);
-      if (!isKnownOrg) {
-        // For unknown acronyms, use classifier + additional checks
-        const classificationAcronym = classifyNameVsOrganization(org);
-        if (classificationAcronym === "name") continue;  // Skip if classified as name
-        
-        // Additional filter: 3-letter unknowns must be verified
-        // (Most 3-letter sequences are likely partial words, not acronyms)
-        if (org.length === 3 && !isKnownOrg) {
-          // For 3-letter acronyms, only accept if explicitly classified as org
-          if (classificationAcronym !== "organization") continue;
-        }
+      if (!orgs.some(o => o.toLowerCase() === acronym.toLowerCase())) {
+        orgs.push(acronym);
       }
-      
-      // Filter 4: Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
-      
-      // Successfully extracted standalone acronym
-      orgs.push(org);
-    }
-    
-    // Pattern 4: Department or division names
-    // Patterns like "HR department", "IT division", "Finance team"
-    // These are tagged with formal department markers
-    const departmentPattern = /\b(?:of|in|from|with)\s+(?:the\s+)?([A-Z][a-z]*(?:\s+(?:department|division|unit|team|group|branch|office|bureau|section))?)\s+(?:department|division|unit|team|group|branch|office|bureau|section)(?:\s+(?:and|or)|\.|\,|;|$)/gi;
-    
-    while ((match = departmentPattern.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Heuristic: Must be 2+ characters
-      if (org.length < 2) continue;
-      
-      // Avoid duplicates
-      if (orgs.some(o => o.toLowerCase() === org.toLowerCase())) continue;
-      
-      orgs.push(org);
     }
     
     return orgs;
   }
-
+    
   // ── Helper: Link entities across sentences ────────────────────────────────────
 
   /**
@@ -1589,11 +1439,11 @@ const TrustLinguisticDetector = (() => {
   function scan(textNLP) {
     // Validate input
     if (!textNLP || typeof textNLP !== 'string' || textNLP.trim().length === 0) {
-      console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan() - Empty input');
+      console.debug('[TrustPrompt/PATH_C] SIMPLIFIED scan() - Empty input');
       return [];
     }
 
-    console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan() starting - using 3 core methods only');
+    console.debug('[TrustPrompt/PATH_C] SIMPLIFIED scan() starting - using 3 core methods only');
 
     const findings = [];
 
@@ -1677,6 +1527,12 @@ const TrustLinguisticDetector = (() => {
         const subjectName = match[1].trim();
         const jobTitle = match[2].trim();
         
+        // FILTER: Reject if subject is a pronoun or common word
+        const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them', 'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose']);
+        if (pronouns.has(subjectName.toLowerCase())) {
+          continue;  // Skip pronouns - they're not names
+        }
+        
         // Clean up job title (remove trailing prepositions)
         let cleanJob = jobTitle.replace(/\s+(?:at|in|and|on|for|of|or)$/i, '').trim();
         
@@ -1705,13 +1561,16 @@ const TrustLinguisticDetector = (() => {
           }
         }
         
-        // Extract the job title if it passes filters (NOT if it's an adjective like "beautiful")
+        // Extract the job title if it passes filters (NOT if it's an adjective like "beautiful" or "pronoun")
         if (cleanJob.length >= 2 && !shouldFilterCommonJobTitle(cleanJob, { isFromPredicate: true })) {
           const jobLower = cleanJob.toLowerCase();
           if (!findings.some(f => f.rawMatch.toLowerCase() === jobLower)) {
-            // Additional filter: reject if it looks like a common adjective
+            // Additional filters: reject adjectives, linguistic terms, and common non-job words
             const adjectives = new Set(['beautiful', 'happy', 'sad', 'good', 'bad', 'nice', 'ugly', 'smart', 'dumb', 'fast', 'slow', 'rich', 'poor', 'tall', 'short', 'fat', 'thin', 'strong', 'weak', 'old', 'young', 'new', 'big', 'small', 'red', 'blue', 'green', 'yellow', 'hot', 'cold', 'wet', 'dry', 'clean', 'dirty']);
-            if (!adjectives.has(cleanJob.toLowerCase())) {
+            const linguisticTerms = new Set(['pronoun', 'noun', 'verb', 'adjective', 'adverb', 'preposition', 'conjunction', 'article', 'determiner', 'interjection', 'word', 'phrase', 'sentence', 'clause', 'subject', 'predicate', 'object', 'tense', 'mood', 'voice']);
+            const nonJobWords = new Set(['number', 'letter', 'character', 'string', 'text', 'code', 'data', 'file', 'format', 'type', 'value', 'variable', 'function', 'method', 'class', 'property']);
+            
+            if (!adjectives.has(jobLower) && !linguisticTerms.has(jobLower) && !nonJobWords.has(jobLower)) {
               method3Count++;
               findings.push({
                 patternId: 'nlp_job_title',
@@ -1740,13 +1599,63 @@ const TrustLinguisticDetector = (() => {
       while ((standaloneName = standaloneNamePattern.exec(textNLP)) !== null) {
         const name = standaloneName[1].trim();
         
-        // Filter out measurement words and skip very common words
+        // Filter out measurement words, verbs, and skip very common words
         const measurementWords = new Set(['number', 'phone', 'digit', 'code', 'value', 'amount', 'count', 'total', 'sum', 'average', 'result']);
-        const commonWords = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'to', 'in', 'at', 'by', 'for', 'on', 'with', 'from', 'up', 'about', 'into', 'through', 'during', 'and', 'or', 'but', 'not']);
+        
+        // Technical/credential context keywords - often capitalized but not person names
+        const technicalContextWords = new Set([
+          // Payment/service providers
+          'stripe', 'twilio', 'sendgrid', 'mailgun', 'braintree', 'paypal', 'square', 'adyen',
+          // Authentication/security terms
+          'bearer', 'authorization', 'authentication', 'private', 'public', 'secret', 'token', 'key',
+          // Connection/configuration terms
+          'connection', 'endpoint', 'hostname', 'database', 'server', 'client', 'request', 'response',
+          // Data/format terms
+          'json', 'xml', 'protocol', 'scheme', 'format', 'content', 'header', 'body', 'query',
+          // Common credential field names
+          'default', 'account', 'user', 'admin', 'master', 'default', 'test', 'live',
+          // URL/domain related
+          'http', 'https', 'ftp', 'ssh', 'port', 'host', 'domain', 'url', 'path',
+          // Generic assignment context
+          'generic', 'example', 'sample', 'test', 'fake', 'mock', 'dummy',
+          // Encryption/encoding
+          'base64', 'encode', 'decode', 'encrypt', 'decrypt', 'hash', 'signature',
+        ]);
+        const commonVerbs = new Set(['give', 'get', 'make', 'take', 'go', 'see', 'know', 'think', 'come', 'say', 'find', 'tell', 'ask', 'work', 'call', 'try', 'let', 'put', 'mean', 'keep', 'seem', 'help', 'talk', 'turn', 'start', 'show', 'hear', 'play', 'run', 'move', 'like', 'live', 'believe', 'hold', 'bring', 'begin', 'read', 'write', 'spend', 'stand', 'lose', 'pay', 'meet', 'include', 'continue', 'set', 'learn', 'change', 'lead', 'understand', 'watch', 'follow', 'stop', 'create', 'speak', 'open', 'walk', 'win', 'offer', 'remember', 'love', 'consider', 'appear', 'buy', 'wait', 'serve', 'die', 'send', 'expect', 'build', 'stay', 'fall', 'cut', 'reach', 'kill', 'cover', 'catch', 'draw', 'break', 'grow', 'lift', 'raise', 'search', 'sell', 'seek', 'settle', 'generate', 'provide', 'produce', 'display', 'render', 'compose', 'extract', 'parse', 'analyze', 'review', 'translate', 'compile', 'deploy', 'fetch', 'query', 'upload', 'download', 'install', 'uninstall', 'configure', 'validate', 'optimize', 'format', 'convert', 'import', 'export', 'transfer', 'sync', 'backup', 'restore', 'delete', 'remove', 'copy', 'paste', 'merge', 'split', 'append', 'prepend', 'replace', 'update', 'modify', 'process', 'execute', 'run', 'compile', 'link', 'debug', 'test', 'trace', 'profile', 'monitor', 'measure', 'verify', 'validate', 'confirm', 'check', 'scan', 'detect', 'identify', 'recognize', 'classify', 'categorize', 'sort', 'filter', 'map', 'reduce', 'aggregate', 'calculate', 'compute', 'evaluate', 'assess', 'analyze', 'examine', 'inspect', 'explore', 'investigate', 'research', 'document', 'comment', 'annotate', 'label', 'tag', 'mark', 'highlight', 'emphasize', 'focus', 'concentrate', 'prioritize', 'order', 'arrange', 'organize', 'structure', 'format', 'serialize', 'deserialize', 'use']);
+        const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them', 'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose', 'my', 'your', 'his', 'its', 'our', 'their']);
+        const commonWords = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'to', 'in', 'at', 'by', 'for', 'on', 'with', 'from', 'up', 'about', 'into', 'through', 'during', 'and', 'or', 'but', 'not', 'please', 'thanks', 'thank', 'sorry', 'excuse', 'hi', 'hello', 'hey', 'ok', 'okay', 'yes', 'no', 'maybe', 'sure', 'right', 'wrong', 'true', 'false', 'good', 'bad', 'well', 'just', 'only', 'even', 'such', 'back', 'also', 'too', 'more', 'most', 'very', 'so', 'as', 'if', 'then', 'else', 'because', 'since', 'after', 'before', 'while', 'when', 'where', 'why', 'how', 'what', 'which', 'who', 'whom', 'whose']);
         
         const lowerName = name.toLowerCase();
-        if (measurementWords.has(lowerName) || commonWords.has(lowerName)) {
-          continue;  // Skip measurement/common words
+        
+        // Skip if it's a known organization or AI model name - don't detect as person name
+        const knownOrganizations = new Set([
+          // Major cloud & tech companies
+          'azure', 'google', 'anthropic', 'amazon', 'microsoft', 'apple', 'facebook', 'twitter', 'meta', 'netflix', 'spotify', 'uber', 'airbnb', 'slack', 'zoom', 'dropbox', 'github', 'gitlab', 'docker', 'kubernetes', 'tensorflow', 'pytorch', 'openai', 'deepmind', 'ibm', 'oracle', 'salesforce', 'adobe', 'intel', 'nvidia', 'qualcomm', 'cisco', 'juniper', 'vmware', 'redhat', 'canonical', 'mozilla', 'apache', 'linux', 'unix', 'windows', 'macos', 'ios', 'android', 'chromeos', 'firefox', 'chrome', 'safari', 'edge', 
+          // Databases & data platforms
+          'postgresql', 'mongodb', 'mysql', 'redis', 'elasticsearch', 'kafka', 'spark', 'hadoop', 'hive', 'pig', 'impala', 'cassandra', 'dynamodb', 'firestore', 'pinecone', 'weaviate', 'milvus', 'qdrant', 'chroma',
+          // AWS services
+          'cognito', 'lambda', 'ec2', 's3', 'rds', 'ecs', 'eks', 'sns', 'sqs', 'cloudformation',
+          // DevOps & infrastructure
+          'terraform', 'ansible', 'puppet', 'chef', 'jenkins', 'bitbucket', 'jira', 'confluence', 'trello', 'asana', 'notion',
+          // Communication platforms
+          'teams', 'discord', 'telegram', 'whatsapp', 'signal',
+          // AI/ML platforms & APIs
+          'hugging', 'face', 'replicate', 'stability', 'together', 'modal', 'baseten', 'cohere', 'huggingface', 'labs', 'inference',
+          // Additional ML platforms
+          'gradient', 'paperspace', 'runwayml', 'levity', 'flyte', 'polyaxon', 'weights', 'biases',
+          // Other platforms
+          'heroku', 'vercel', 'netlify', 'railway', 'render'
+        ]);
+        
+        // AI model names - these are products, not person names
+        const aiModelNames = new Set(['claude', 'gpt', 'gemini', 'bard', 'llama', 'mistral', 'vicuna', 'falcon', 'alpaca', 'bert', 'roberta', 'distilbert', 'xlnet', 't5', 'bart', 'pegasus', 'marian', 'mgeneration', 'gpt2', 'gpt3', 'gpt4', 'davinci', 'curie', 'babbage', 'ada']);
+        
+        if (knownOrganizations.has(lowerName) || aiModelNames.has(lowerName)) {
+          continue;  // Skip known organizations and AI models
+        }
+        
+        if (measurementWords.has(lowerName) || commonWords.has(lowerName) || commonVerbs.has(lowerName) || pronouns.has(lowerName) || technicalContextWords.has(lowerName)) {
+          continue;  // Skip measurement/common words/verbs/pronouns/technical context
         }
         
         if (name.length >= 2 && !shouldFilterCommonName(name)) {
@@ -1766,18 +1675,45 @@ const TrustLinguisticDetector = (() => {
       }
       console.debug('[TrustPrompt/PATH_C] METHOD 4 found:', method4Count);
       
-      console.log('[TrustPrompt/PATH_C] SIMPLIFIED scan complete - found', 
+      // ─────────────────────────────────────────────────────────────────────
+      // METHOD 5: Organization extraction (CRITICAL - was missing!)
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 5: Extracting organizations...');
+      let method5Count = 0;
+      
+      // Extract organizations from contextual patterns
+      const contextOrgs = extractOrganizationContexts(textNLP);
+      for (const org of contextOrgs) {
+        if (org.length >= 2 && !shouldFilterCommonOrganization(org) && !isCodePattern(textNLP, org)) {
+          if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+            method5Count++;
+            findings.push({
+              patternId: 'nlp_organization',
+              label: 'Organization (NLP)',
+              risk: 'low',
+              rawMatch: org,
+              safeVersion: '[ORGANIZATION REDACTED]',
+              source: 'C_linguistic',
+              validated: false
+            });
+          }
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 5 found:', method5Count);
+      
+      console.debug('[TrustPrompt/PATH_C] SIMPLIFIED scan complete - found', 
         `honorifics:${method1Count}`, 
         `triggers:${method2Count}`, 
         `jobs:${method3Count}`,
         `standalone:${method4Count}`,
+        `orgs:${method5Count}`,
         `total:${findings.length}`
       );
       
       // Deduplicate within PATH C
       const deduplicated = deduplicateWithinPath(findings);
       
-      console.log('[TrustPrompt/PATH_C] After dedup:', deduplicated.length, 'findings');
+      console.debug('[TrustPrompt/PATH_C] After dedup:', deduplicated.length, 'findings');
       return deduplicated;
       
     } catch (error) {
@@ -1794,10 +1730,7 @@ const TrustLinguisticDetector = (() => {
 })();
 
 // ── QUICK TEST (for browser console) ──────────────────────────────────────────
-console.log("[STARTUP] TrustLinguisticDetector is ready. Test with:");
-console.log("testLinguisticDetector()");
-
-// Make sure both are globally accessible
+// Silent initialization - test function available but not auto-invoked
 if (typeof window !== 'undefined') {
   window.TrustLinguisticDetector = TrustLinguisticDetector;
   
@@ -1820,8 +1753,8 @@ if (typeof window !== 'undefined') {
     return result;
   };
   
-  console.log('[STARTUP] testLinguisticDetector attached to window');
-  console.log('[STARTUP] typeof window.testLinguisticDetector:', typeof window.testLinguisticDetector);
+  // Silent debug logging - only visible if DevTools shows debug level
+  console.debug('[STARTUP] TrustLinguisticDetector initialized (test available as testLinguisticDetector())');
 }
 
 

@@ -187,6 +187,59 @@ function shannonEntropy(str) {
   return H;
 }
 
+// ── TASK-5.1: API Key vs Philippine ID Disambiguation ──────────────────────
+// When a match could be either an API key or a Philippine ID (e.g., AKIA123456789012 
+// could match a 12-digit PhilID pattern), this function helps determine the most likely 
+// classification by examining context and characteristics.
+/**
+ * Determine if a match is more likely an API key than a Philippine ID.
+ * Returns true if the match has API key characteristics.
+ * 
+ * @param {string} rawMatch - The matched string
+ * @param {string} fullText - The full text context (optional)
+ * @returns {boolean} true if likely an API key, false if likely a Philippine ID
+ */
+function isLikelyApiKey(rawMatch, fullText = "") {
+  if (!rawMatch || typeof rawMatch !== "string") return false;
+  
+  // Check for explicit API key prefixes (strongest signal)
+  const apiKeyPrefixes = [
+    /^sk[-_]/, /^pk[-_]/, /^rk[-_]/, /^ghp_/, /^gho_/, /^ghu_/, 
+    /^xoxb-/, /^xoxp-/, /^xoxz-/, /^AKIA/, /^ASIA/, /^AIza/, 
+    /^ya29\./, /^hf_/, /^npm_/, /^AccountKey=/, /^eyJ/,
+    /^-----BEGIN/, /^AC[A-Za-z0-9]/, /^SK[A-Za-z0-9]/
+  ];
+  
+  if (apiKeyPrefixes.some(p => p.test(rawMatch))) {
+    return true;
+  }
+  
+  // Check context: if preceded by API-related keywords
+  const apiContext = /(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer|password|secret|token)\s*[:=\s]*$/i;
+  if (fullText && apiContext.test(fullText.slice(Math.max(0, fullText.length - 100)))) {
+    return true;
+  }
+  
+  // Check for mixed alphanumeric (API keys often have more character variety)
+  // Philippine IDs are mostly numeric
+  const hasLetters = /[A-Za-z]/.test(rawMatch);
+  const hasSymbols = /[_\-\.+\/=]/.test(rawMatch);
+  
+  if (hasLetters || hasSymbols) {
+    // Could still be API key, but need to check if it looks like an ID
+    const isPhIdLike = /^\d{4}-\d{7}-\d$|^\d{4}-\d{4}-\d{4}-\d{4}$|^\d{2}-\d{7}-\d$|^\d{7}$/.test(rawMatch);
+    if (!isPhIdLike) {
+      return true; // More likely an API key if it doesn't match Philippine ID patterns
+    }
+  }
+  
+  // Default: if ambiguous, be conservative and check entropy
+  const entropy = shannonEntropy(rawMatch.replace(/[_\-\.+\/=]/g, ""));
+  // API keys typically have higher entropy than Philippine IDs
+  // API keys: 3.5+ bits/char, Philippine IDs: 2-3 bits/char (mostly digits, predictable patterns)
+  return entropy > 3.0;
+}
+
 // ── TASK-4.4: Known-placeholder suppression constants ─────────────────────────
 // PLACEHOLDER_SUPPRESSIONS maps patternId → Set of known-safe dummy values.
 // Values are stored lowercased with spaces and dashes stripped for comparison.
@@ -244,15 +297,30 @@ function isKnownPlaceholder(patternId, rawValue) {
 // Returns true if the raw match starts with a known vendor-specific API key prefix,
 // which is structurally distinctive enough to confirm the match without Luhn/RFC5322.
 const VENDOR_PREFIXES = Object.freeze([
-  /^sk-[A-Za-z0-9\-_]{20,}/,             // OpenAI (sk-..., sk-proj-...)
-  /^ghp_[A-Za-z0-9]{36}/,                // GitHub Personal Access Token
-  /^gho_[A-Za-z0-9]{36}/,                // GitHub OAuth token
-  /^github_pat_[A-Za-z0-9_]{82}/,        // GitHub fine-grained PAT
-  /^xoxb-\d+-[A-Za-z0-9\-]+/,            // Slack Bot token
-  /^xoxp-\d+-[A-Za-z0-9\-]+/,            // Slack User token
-  /^AKIA[A-Z0-9]{16}/,                   // AWS Access Key ID
-  /^AIza[A-Za-z0-9\-_]{35}/,             // Google API key
-  /^ya29\.[A-Za-z0-9\-_]+/,              // Google OAuth access token
+  /^sk-(?:proj-)?[A-Za-z0-9\-_]{20,}/,         // OpenAI (sk-..., sk-proj-...)
+  /^sk-ant-[A-Za-z0-9_\-]{20,}/,               // Anthropic
+  /^ghp_[A-Za-z0-9]{36}/,                      // GitHub Personal Access Token
+  /^gho_[A-Za-z0-9]{36}/,                      // GitHub OAuth token
+  /^ghu_[A-Za-z0-9]{36}/,                      // GitHub User token
+  /^github_pat_[A-Za-z0-9_]{50}/,              // GitHub fine-grained PAT
+  /^xoxb-\d+-[A-Za-z0-9\-]+/,                  // Slack Bot token
+  /^xoxp-\d+-[A-Za-z0-9\-]+/,                  // Slack User token
+  /^xoxz-\d+-[A-Za-z0-9\-]+/,                  // Slack App token
+  /^AKIA[A-Z0-9]{16}/,                         // AWS Access Key ID
+  /^ASIA[A-Z0-9]{16}/,                         // AWS temporary access key
+  /^AIza[A-Za-z0-9\-_]{35}/,                   // Google API key
+  /^ya29\.[A-Za-z0-9\-_]+/,                    // Google OAuth access token
+  /^sk_live_[A-Za-z0-9]{24,}/,                 // Stripe live key
+  /^sk_test_[A-Za-z0-9]{24,}/,                 // Stripe test key
+  /^rk_live_[A-Za-z0-9]{24,}/,                 // Stripe restricted live key
+  /^rk_test_[A-Za-z0-9]{24,}/,                 // Stripe restricted test key
+  /^(?:AC|SK)[A-Za-z0-9a-f]{32}/,              // Twilio auth token / API key
+  /^SG\.[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{43,}/, // SendGrid API key
+  /^hf_[A-Za-z0-9]{30,}/,                      // Hugging Face token
+  /^npm_[A-Za-z0-9]{20,}/,                     // NPM token
+  /^AccountKey=[A-Za-z0-9+\/=]{88}/,           // Azure storage key
+  /^-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/, // Private keys (RSA, EC, OpenSSH)
+  /^eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/, // JWT
 ]);
 
 /**
@@ -261,7 +329,7 @@ const VENDOR_PREFIXES = Object.freeze([
  * @returns {boolean} true if the value matches a known vendor key prefix
  */
 function structuralValidateApiKey(raw) {
-  // Extract the value portion (after any label=... prefix)
+  // Extract the value portion (after any label=... prefix or standalone)
   const valueMatch = raw.match(/[:=]\s*["']?(.+?)["']?\s*$/) || raw.match(/^(.+)$/);
   const value = valueMatch ? valueMatch[1].trim() : raw.trim();
   return VENDOR_PREFIXES.some(re => re.test(value));
@@ -319,6 +387,11 @@ const REGEX_8_TO_9_DIGITS = /^\d{8,9}$/;
 function structuralValidatePHID_UMID(raw) {
   // Early exit for invalid types
   if (!raw || typeof raw !== "string") {
+    return false;
+  }
+
+  // ANTI-FALSE-POSITIVE: If this looks like an API key, reject it
+  if (isLikelyApiKey(raw)) {
     return false;
   }
 
@@ -802,6 +875,11 @@ function structuralValidatePHID_PhilHealth(raw) {
 function structuralValidatePHID_PRC(raw) {
   // Never throw errors - return false for malformed input
   if (!raw || typeof raw !== "string") return false;
+
+  // ANTI-FALSE-POSITIVE: If this looks like an API key, reject it
+  if (isLikelyApiKey(raw)) {
+    return false;
+  }
 
   try {
     // Normalize by removing separators (hyphens, spaces, dots)
@@ -1478,7 +1556,7 @@ const TRUSTPROMPT_PATTERNS = [
     sanitize: (m) => m.replace(/\d(?=\d{4})/g, "*")
   },
 
-  // TASK-4.2: Hardened api_key pattern.
+  // TASK-4.2: Hardened api_key pattern (Enhanced for comprehensive vendor coverage).
   //
   // Changes from original:
   //   (1) Tightened keyword list — dropped bare `secret` and bare `token` as
@@ -1488,8 +1566,21 @@ const TRUSTPROMPT_PATTERNS = [
   //       client-secret, auth_token, auth-token, bearer.
   //
   //   (2) Added vendor-prefix OR branch — detects well-known API key shapes
-  //       without requiring a label prefix: OpenAI (sk-), GitHub (ghp_, gho_,
-  //       github_pat_), Slack (xoxb-, xoxp-), AWS (AKIA), Google (AIza, ya29.).
+  //       without requiring a label prefix. Coverage expanded to include:
+  //       - OpenAI: sk-*, sk-proj-*
+  //       - Anthropic: sk-ant-*
+  //       - GitHub: ghp_*, gho_*, ghu_*, github_pat_*
+  //       - Slack: xoxb-*, xoxp-*, xoxz-*
+  //       - AWS: AKIA*, ASIA*
+  //       - Google: AIza*, ya29.*
+  //       - Stripe: sk_live_*, sk_test_*, rk_live_*, rk_test_*
+  //       - Twilio: AC*, SK*
+  //       - SendGrid: SG.*
+  //       - Hugging Face: hf_*
+  //       - Azure: AccountKey=*
+  //       - Private keys: BEGIN RSA/EC/OPENSSH PRIVATE KEY
+  //       - JWT: eyJ header pattern (also caught by jwt pattern but included here for completeness)
+  //       - Bearer tokens and generic assignments
   //       These are structurally distinctive enough to confirm without a label.
   //
   //   (3) minEntropy: 3.5 — rejects low-entropy dummy values (all-same-char
@@ -1501,10 +1592,10 @@ const TRUSTPROMPT_PATTERNS = [
   {
     id: "api_key",
     label: "API Key / Secret Token",
-    reason: "API keys and secret tokens authenticate your identity with a service — they are the equivalent of a password for software systems. Exposing one allows anyone who sees it to make requests on your behalf, potentially incurring charges, accessing private data, or compromising connected systems. This includes vendor-specific formats: OpenAI (sk-...), GitHub (ghp_...), Slack (xoxb-...), AWS (AKIA...), and Google (AIza...). Keys included in prompts may be logged by the AI provider.",
-    // Labelled-key branch: tightened keyword list (no bare `secret` or `token`)
+    reason: "API keys and secret tokens authenticate your identity with a service — they are the equivalent of a password for software systems. Exposing one allows anyone who sees it to make requests on your behalf, potentially incurring charges, accessing private data, or compromising connected systems. This includes vendor-specific formats: OpenAI (sk-..., sk-proj-...), Anthropic (sk-ant-...), GitHub (ghp_..., gho_..., github_pat_...), Slack (xoxb-...), AWS (AKIA..., ASIA...), Google (AIza..., ya29...), Stripe (sk_live_..., sk_test_...), Twilio, SendGrid, Hugging Face, Azure, and private keys. Keys included in prompts may be logged by the AI provider.",
+    // Labelled-key branch: expanded keyword list + special char support + URL patterns
     // Vendor-prefix branch: structurally distinctive prefixes without requiring a label
-    regex: /(?:(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer)\s*[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{20,})["']?|(?:sk-[A-Za-z0-9\-_]{20,}|sk_[A-Za-z0-9]{20,}|pk_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|xoxb-\d{9,}-[A-Za-z0-9\-]{20,}|xoxp-\d{9,}-[A-Za-z0-9\-]{20,}|xoxz-\d{9,}-[A-Za-z0-9\-]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9\-_]{35}|ya29\.[A-Za-z0-9\-_]{50,}|AC[A-Za-z0-9]{32}|SG\.[A-Za-z0-9\-_.]{20,}|key-[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{20,}))/g,
+    regex: /(?:(?:api[_\-\s]?key|access[_\-\s]?key|client[_\-\s]?secret|auth[_\-\s]?token|bearer|password|passwd|secret[_\-]?access[_\-]?key|secret|connection)(?:\s*[:=]\s*|[\s]+)["']?([A-Za-z0-9\-_\.+\/=:@!]{15,})["']?|(?:postgres|mongodb)[+a-z]*:\/\/\S+|[a-z]+:\/\/[^:]+:[^@ \n\r\t]+@\S+|sk-(?:proj-)?[A-Za-z0-9_\-]{20,}|sk-ant-[A-Za-z0-9_\-]{20,}|sk_live_[A-Za-z0-9]{20,}|sk_test_[A-Za-z0-9]{20,}|pk_[A-Za-z0-9]{20,}|rk_live_[A-Za-z0-9]{20,}|rk_test_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|ghu_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|xoxb-\d+[-A-Za-z0-9\-]+|xoxp-\d+[-A-Za-z0-9\-]+|xoxz-\d+[-A-Za-z0-9\-]+|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|AIza[A-Za-z0-9\-_]{35}|ya29\.[A-Za-z0-9\-_]{30,}|(?:AC|SK)[A-Za-z0-9a-f]{32}|SG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{30,}|hf_[A-Za-z0-9]{30,}|npm_[A-Za-z0-9]{20,}|AccountKey=[A-Za-z0-9+\/=]{80,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{20,})/g,
     risk: "high",
     validate: null,  // no single validator covers all key formats; entropy + structural checks used instead
     minEntropy: 3.5, // TASK-4.5: reject low-entropy dummy values
@@ -1706,7 +1797,8 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_philid",
     label: "Philippine National ID",
     reason: "PhilID is the government-issued national identification card from the Philippine Statistics Authority (PSA). It contains unique personal identifiers including birthdate and sex, making it a critical identifier under RA 10173 that requires strict protection.",
-    regex: /\d{4}-\d{4}-\d{4}-\d{4}/g,
+    // Exclude patterns that start with API key prefixes or contain common API formats
+    regex: /(?<!sk[_-])(?<!rk[_-])(?<!ghp_)(?<!gho_)(?<!ghu_)(?<!xoxb-)(?<!xoxp-)(?<!xoxz-)(?<!AKIA)(?<!ASIA)(?<!AIza)(?<!ya29\.)(?<!hf_)(?<!npm_)(?<!AC)(?<!SK)\b\d{4}-\d{4}-\d{4}-\d{4}\b(?!-[A-Za-z0-9])/g,
     risk: "high",
     validate: null,
     structuralValidate: null,
@@ -1723,7 +1815,9 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_umid",
     label: "UMID (Unified Multi-Purpose ID)",
     reason: "UMID is the Unified Multi-Purpose ID issued by SSS and represents a unified government identifier credential under RA 10173. Contains SSS system code and includes check digit validation for authentication.",
-    regex: /\d{4}-\d{7}-\d/g,
+    // Negative lookahead/lookbehind to exclude API keys that might match this pattern
+    // Excludes patterns with common API key prefixes before or after
+    regex: /(?<!sk[_-])(?<!rk[_-])(?<!ghp_)(?<!gho_)(?<!ghu_)(?<!xoxb-)(?<!xoxp-)(?<!xoxz-)(?<!AKIA)(?<!ASIA)(?<!AIza)(?<!ya29\.)(?<!hf_)(?<!npm_)(?<!AC)(?<!SK)\b\d{4}-\d{7}-\d\b(?!-[A-Za-z0-9])/g,
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_UMID,
@@ -1740,15 +1834,15 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_passport",
     label: "Philippine Passport",
     reason: "Passport issued by the Bureau of Immigration (BI) is an international travel credential and critical identifier under RA 10173 and UNCHR standards. Philippine passports are recognized globally for travel and identity verification purposes.",
-    regex: /[A-Z]\d{7}[A-Z]|[A-Z]{2}\d{7}/g,
+    regex: /(?:passport\s+(?:number|no\.?|no|id|#)?:?\s*)?(?:^|[\s])[A-Z]{2}\d{7}(?:\s|$|[^\w])|passport\s+(?:number|no\.?|no|id|#)?:?\s*[A-Z]{2}\d{7}/gim,
     risk: "high",
     validate: null,
-    structuralValidate: null,
+    structuralValidate: structuralValidatePHID_Passport,
     sanitize: (m) => {
-      const letters = m.replace(/[0-9]/g, "");
+      const letters = m.replace(/[0-9\s\-.:]/g, "").toUpperCase();
       const digits = m.replace(/[^0-9]/g, "");
-      if (digits.length === 7) {
-        return letters.slice(0, 1) + digits.slice(0, 2) + "*".repeat(3) + digits.slice(-2) + (letters.length > 1 ? letters.slice(-1) : "");
+      if (digits.length === 7 && letters.length >= 2) {
+        return letters.slice(0, 2) + digits.slice(0, 2) + "*".repeat(3) + digits.slice(-2);
       }
       return "[REDACTED-PASSPORT]";
     }
@@ -1758,7 +1852,9 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_prc",
     label: "PRC (Professional Regulation Commission)",
     reason: "PRC license number is a professional credential that identifies individuals in regulated professions under RA 10173. Includes physicians, engineers, lawyers, and other licensed professionals whose identity is critical for professional accountability.",
-    regex: /(?<!\d-)\b\d{7}\b(?!-\d)/g,
+    // Improved pattern: Exclude if preceded by API key context, require 7 digits standalone
+    // Also exclude common API patterns that might appear before the number
+    regex: /(?<!sk[_-])(?<!rk[_-])(?<!ghp_)(?<!gho_)(?<!ghu_)(?<!xoxb-)(?<!xoxp-)(?<!xoxz-)(?<!AKIA)(?<!ASIA)(?<!AIza)(?<!ya29\.)(?<!hf_)(?<!npm_)(?<!AC)(?<!SK)(?<!_)(?<!\d-)(?<!=)(?<!:)\b\d{7}\b(?![-_A-Za-z0-9])/g,
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_PRC,

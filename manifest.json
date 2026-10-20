@@ -31,8 +31,7 @@
         "scanner.js",
         "worker-bridge.js",
         "ui.js",
-        "dom-claude.js",
-        "debug-detector-availability.js"
+        "dom-claude.js"
       ],
       "run_at": "document_idle"
     },

@@ -5,7 +5,7 @@
 //   3. PANEL   — side panel sliding in from the right (moderate / high only)
 //
 // Tier behaviour:
-//   none     → badge: green "Safe — no issues found",  no bar,  no panel
+//   none     → badge: green "No Detected Privacy Risk",  no bar,  no panel
 //   low      → badge: yellow,  bar: yellow,  panel: items only
 //   moderate → badge: orange,  bar: orange,  panel: items + why
 //   high     → badge: red,     bar: red,     panel: items + safe ver + why + Copy/Send btns
@@ -31,7 +31,7 @@ const TrustUI = (() => {
   // ── Badge / bar theme (unchanged by day/night toggle) ─────────────────────
   const THEME = {
     scanning: { bg: "#e5e7eb", text: "#6b7280", dot: "#9ca3af", label: "TrustPrompt is scanning…" },
-    none:     { bg: "#dcfce7", text: "#15803d", dot: "#22c55e", label: "Safe — no issues found" },
+    none:     { bg: "#dcfce7", text: "#15803d", dot: "#22c55e", label: "No Detected Privacy Risk" },
     low:      { bg: "#fef9c3", text: "#a16207", dot: "#eab308", label: "Low risk detected"      },
     moderate: { bg: "#ffedd5", text: "#c2410c", dot: "#f97316", label: "Moderate risk detected"  },
     high:     { bg: "#fee2e2", text: "#b91c1c", dot: "#ef4444", label: "High risk detected"      },
@@ -89,7 +89,6 @@ const TrustUI = (() => {
       btnSendBg:    "#0F5132",   // Forest — Send Anyway button (prominent)
       btnSendText:  "#ffffff",   // White — button label
       btnSendBorder:"#0F5132",   // Forest — button border
-      btnRefText:   "#0F5132",   // Forest — Refresh Rules link
       legendBorder: "#e5e7eb",   // Light gray — legend top border
       legendLabel:  "#4b5563",   // Dark gray — "RISK LEVELS" label
       legendText:   "#111827",   // Near-black — legend item text
@@ -105,40 +104,40 @@ const TrustUI = (() => {
 
   // ── "Why is this flagged?" explanations ────────────────────────────────────
   const WHY = {
-    credit_card:      "Matched pattern: credit/debit card number format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Financial Information.",
-    api_key:          "Matched pattern: API key / token format.\nRule: RA 10173, Sensitive Personal Information (SPI).\nCategory: Authentication Credentials.",
-    jwt:              "Matched pattern: JSON Web Token (three base64url segments).\nRule: RA 10173, SPI.\nCategory: Authentication Credentials.",
-    email:            "Matched pattern: email address format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
-    ph_mobile:        "Matched pattern: PH mobile number format.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
-    phone_intl:       "Matched pattern: international phone number.\nRule: RA 10173, SPI.\nCategory: Contact Information.",
-    ipv4:             "Matched pattern: IPv4 address.\nRule: RA 10173, SPI.\nCategory: Network Identifier.",
-    ipv6:             "Matched pattern: IPv6 address.\nRule: RA 10173, SPI.\nCategory: Network Identifier.",
-    mac_address:      "Matched pattern: MAC address.\nRule: RA 10173, SPI.\nCategory: Network Identifier.",
-    source_code:      "Matched pattern: code block.\nRule: RA 10173, Non-sensitive PI.\nCategory: Technical Data.",
-    context_label:    "Matched pattern: labelled personal field (e.g. Name:, Age:).\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
-    ph_address:       "Matched pattern: Philippine physical address.\nRule: RA 10173, SPI.\nCategory: Location Data.",
-    ph_id_philid:     "Matched pattern: Philippine National ID.\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_umid:       "Matched pattern: UMID (Unified Multi-Purpose ID).\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_passport:   "Matched pattern: Philippine Passport.\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_prc:        "Matched pattern: PRC License (Professional Regulation Commission).\nRule: RA 10173, SPI.\nCategory: Professional ID.",
-    ph_id_postal:     "Matched pattern: Postal ID.\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_pwd:        "Matched pattern: PWD ID (Persons with Disability).\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_senior_citizen: "Matched pattern: Senior Citizen ID.\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_gsis:       "Matched pattern: GSIS (Government Service Insurance System).\nRule: RA 10173, SPI.\nCategory: Employment ID.",
-    ph_id_sss:        "Matched pattern: SSS (Social Security System).\nRule: RA 10173, SPI.\nCategory: Employment ID.",
-    ph_id_philhealth: "Matched pattern: PhilHealth (Health Insurance).\nRule: RA 10173, SPI.\nCategory: Healthcare ID.",
-    ph_id_drivers_license: "Matched pattern: Driver's License (LTO).\nRule: RA 10173, SPI.\nCategory: Government ID.",
-    ph_id_voters:     "Matched pattern: Voter's ID (COMELEC).\nRule: RA 10173, SPI.\nCategory: Electoral ID.",
-    gazetteer_medical:   "Detected medical term in context.\nRule: RA 10173, Sensitive PI — health data.\nCategory: Health Information.",
-    gazetteer_financial: "Detected financial term in context.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
-    gazetteer_nationality_religion: "Detected nationality/religion term.\nRule: RA 10173, Sensitive PI.\nCategory: Belief / Affiliation.",
-    trigger_person_name: "Trigger phrase matched a person name.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
-    trigger_location:    "Trigger phrase matched a location.\nRule: RA 10173, SPI.\nCategory: Location Data.",
-    trigger_health:      "Trigger phrase matched a health condition.\nRule: RA 10173, Sensitive PI.\nCategory: Health Information.",
-    trigger_employer:    "Trigger phrase matched employer/workplace.\nRule: RA 10173, PI.\nCategory: Occupational Data.",
-    trigger_financial:   "Trigger phrase matched financial information.\nRule: RA 10173, SPI.\nCategory: Financial Information.",
-    trigger_age:         "Trigger phrase matched age information.\nRule: RA 10173, PI.\nCategory: Personal Identifier.",
-    trigger_dob:         "Trigger phrase matched date of birth.\nRule: RA 10173, SPI.\nCategory: Personal Identifier.",
+    credit_card:      "Matched pattern: credit/debit card number that passed a validity check.\nWhy it matters: card numbers can be used for fraud if stored or reproduced.\nRule: Personal information (RA 10173); payment card data (PCI DSS).\nCategory: Financial Information.",
+    api_key:          "Matched pattern: API key / access token format.\nWhy it matters: anyone holding it may be able to access your accounts or systems.\nRule: Credential, not personal data (OWASP LLM02:2025).\nCategory: Authentication Credentials.",
+    jwt:              "Matched pattern: JSON Web Token (login token).\nWhy it matters: it can grant access to an account until it expires.\nRule: Credential, not personal data (OWASP LLM02:2025).\nCategory: Authentication Credentials.",
+    email:            "Matched pattern: email address format.\nWhy it matters: it can be used to identify or contact you, including for phishing.\nRule: Personal information (RA 10173).\nCategory: Contact Information.",
+    ph_mobile:        "Matched pattern: Philippine mobile number format.\nWhy it matters: it can be used to identify or contact you, including for scams.\nRule: Personal information (RA 10173).\nCategory: Contact Information.",
+    phone_intl:       "Matched pattern: international phone number format.\nWhy it matters: it can be used to identify or contact you.\nRule: Personal information (RA 10173).\nCategory: Contact Information.",
+    ipv4:             "Matched pattern: IPv4 address.\nWhy it matters: network addresses can help trace a device or location.\nRule: Personal information when linkable to a person (RA 10173).\nCategory: Network Identifier.",
+    ipv6:             "Matched pattern: IPv6 address.\nWhy it matters: network addresses can help trace a device or location.\nRule: Personal information when linkable to a person (RA 10173).\nCategory: Network Identifier.",
+    mac_address:      "Matched pattern: device (MAC) address.\nWhy it matters: it is a hardware identifier that can help trace a specific device.\nRule: Personal information when linkable to a person (RA 10173).\nCategory: Network Identifier.",
+    source_code:      "Matched pattern: block of source code.\nWhy it matters: code may contain proprietary logic or hidden secrets. TrustPrompt cannot tell whether this code is sensitive.\nRule: Not personal data; may be confidential (OWASP LLM02:2025).\nCategory: Technical Data.",
+    context_label:    "Matched pattern: labeled personal field (e.g. Name:, Age:).\nWhy it matters: labeled fields usually hold details about a specific person.\nRule: Personal information (RA 10173).\nCategory: Personal Identifier.",
+    ph_address:       "Matched pattern: Philippine physical address.\nWhy it matters: it can reveal where you live or work.\nRule: Personal information (RA 10173).\nCategory: Location Data.",
+    ph_id_philid:     "Matched pattern: Philippine National ID number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_umid:       "Matched pattern: UMID (Unified Multi-Purpose ID) number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_passport:   "Matched pattern: Philippine passport number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_prc:        "Matched pattern: PRC license number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Professional ID.",
+    ph_id_postal:     "Matched pattern: Postal ID number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_pwd:        "Matched pattern: PWD ID number.\nWhy it matters: it can reveal a disability status and be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_senior_citizen: "Matched pattern: Senior Citizen ID number.\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_gsis:       "Matched pattern: GSIS number.\nWhy it matters: it is tied to government employment and benefits records.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Employment ID.",
+    ph_id_sss:        "Matched pattern: SSS number.\nWhy it matters: it is tied to your social security and benefits records.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Employment ID.",
+    ph_id_philhealth: "Matched pattern: PhilHealth number.\nWhy it matters: it is tied to your health insurance and medical records.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Healthcare ID.",
+    ph_id_drivers_license: "Matched pattern: driver's license number (LTO).\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Government ID.",
+    ph_id_voters:     "Matched pattern: voter's ID number (COMELEC).\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Electoral ID.",
+    gazetteer_medical:   "Detected a health-related term.\nWhy it matters: health details can be sensitive when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Health information, a sensitive category (RA 10173).\nCategory: Health Information.",
+    gazetteer_financial: "Detected a finance-related term.\nWhy it matters: money details can matter when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Financial context (not a listed sensitive category in RA 10173).\nCategory: Financial Information.",
+    gazetteer_nationality_religion: "Detected a nationality or religion term.\nWhy it matters: beliefs and affiliations can be sensitive when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Religious affiliation is sensitive under RA 10173; nationality is not.\nCategory: Belief / Affiliation.",
+    trigger_person_name: "Trigger phrase matched a person's name.\nWhy it matters: names become more revealing when combined with other details.\nRule: Personal information (RA 10173).\nCategory: Personal Identifier.",
+    trigger_location:    "Trigger phrase matched a location.\nWhy it matters: specific locations can reveal where you live or work.\nRule: Personal information when specific (RA 10173).\nCategory: Location Data.",
+    trigger_health:      "Trigger phrase matched a health condition.\nWhy it matters: health details can be sensitive when tied to a person.\nRule: Health information, a sensitive category (RA 10173).\nCategory: Health Information.",
+    trigger_employer:    "Trigger phrase matched an employer or workplace.\nWhy it matters: employer details can help identify you when combined with other information.\nRule: Personal information (RA 10173).\nCategory: Occupational Data.",
+    trigger_financial:   "Trigger phrase matched financial information.\nWhy it matters: money details can matter when tied to a person.\nRule: Financial context (not a listed sensitive category in RA 10173).\nCategory: Financial Information.",
+    trigger_age:         "Trigger phrase matched an age.\nWhy it matters: age is a small detail, but it helps identify you when combined with others.\nRule: Sensitive personal information (RA 10173, Sec. 3(l)(1)).\nCategory: Personal Identifier.",
+    trigger_dob:         "Trigger phrase matched a date of birth.\nWhy it matters: a birth date is commonly used to verify identity.\nRule: Personal information (RA 10173).\nCategory: Personal Identifier.",
   };
 
   // ── Utilities ──────────────────────────────────────────────────────────────
@@ -469,16 +468,32 @@ const TrustUI = (() => {
     const listWrap = document.createElement("div");
     listWrap.id = "tp-panel-list";
     listWrap.style.cssText = `flex:1;overflow-y:auto;padding:12px 16px 8px;background:${pc.panelBg};`;
-    // Hide scrollbar visually while keeping scroll functionality
-    listWrap.style.scrollbarWidth = "none";   // Firefox
-    listWrap.style.msOverflowStyle = "none";  // IE/Edge legacy
-    // WebKit (Chrome): inject a scoped style rule once
-    if (!document.getElementById("tp-scrollbar-hide")) {
-      const s = document.createElement("style");
-      s.id = "tp-scrollbar-hide";
-      s.textContent = "#tp-panel-list::-webkit-scrollbar { display: none; }";
-      document.head.appendChild(s);
+    // Scrollbar — thin, theme-aware (day/night)
+    listWrap.style.scrollbarWidth = "thin";   // Firefox
+    listWrap.style.scrollbarColor = isDark
+      ? "#3a3f55 #1a1d27"   // thumb track — night
+      : "#c7ccd6 #f3f4f6";  // thumb track — day
+    // WebKit (Chrome/Edge): inject themed scrollbar style, replacing any prior rule
+    const existingStyle = document.getElementById("tp-scrollbar-style");
+    if (existingStyle) existingStyle.remove();
+    const s = document.createElement("style");
+    s.id = "tp-scrollbar-style";
+    if (isDark) {
+      s.textContent = [
+        "#tp-panel-list::-webkit-scrollbar { width: 5px; }",
+        "#tp-panel-list::-webkit-scrollbar-track { background: #1a1d27; border-radius: 0 0 0 0; }",
+        "#tp-panel-list::-webkit-scrollbar-thumb { background: #3a3f55; border-radius: 4px; }",
+        "#tp-panel-list::-webkit-scrollbar-thumb:hover { background: #52597a; }",
+      ].join("\n");
+    } else {
+      s.textContent = [
+        "#tp-panel-list::-webkit-scrollbar { width: 5px; }",
+        "#tp-panel-list::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 0 0 0 0; }",
+        "#tp-panel-list::-webkit-scrollbar-thumb { background: #c7ccd6; border-radius: 4px; }",
+        "#tp-panel-list::-webkit-scrollbar-thumb:hover { background: #9ca3af; }",
+      ].join("\n");
     }
+    document.head.appendChild(s);
     listWrap.innerHTML = `<div style="font-size:10px;font-weight:600;letter-spacing:.8px;
       color:${pc.subtitleText};margin-bottom:8px;">DETECTIONS (${findings.length})</div>`;
     for (const f of findings) listWrap.appendChild(buildFindingCard(f, tier));
@@ -495,15 +510,15 @@ const TrustUI = (() => {
     } else {
       if (tier === "high") {
         const btnCopy = document.createElement("button");
-        btnCopy.textContent = "🗒 Copy Safe Version";
+        btnCopy.textContent = "Copy Safe Version";
         btnCopy.style.cssText = "width:100%;background:#166534;color:#fff;border:none;" +
           "border-radius:8px;padding:10px;font-size:13px;font-weight:600;" +
           "cursor:pointer;font-family:inherit;margin-bottom:8px;";
         btnCopy.addEventListener("click", () => {
           if (!safeText) return;
           navigator.clipboard.writeText(safeText).then(() => {
-            btnCopy.textContent = "✅ Copied to clipboard!";
-            setTimeout(() => { btnCopy.textContent = "🗒 Copy Safe Version"; }, 2000);
+            btnCopy.textContent = "✔ Copied to clipboard!";
+            setTimeout(() => { btnCopy.textContent = "Copy Safe Version"; }, 2000);
           });
         });
         footer.appendChild(btnCopy);
@@ -539,10 +554,10 @@ const TrustUI = (() => {
       <div style="margin-top:10px;padding-top:8px;border-top:1px solid ${pc.legendBorder};">
         <div style="font-size:9px;letter-spacing:.7px;color:${pc.legendLabel};margin-bottom:4px;">RISK LEVELS</div>
         <div style="font-size:10px;color:${pc.legendText};line-height:1.8;">
-          <span style="color:#ef4444;">●</span> High — financial / auth data<br>
-          <span style="color:#f97316;">●</span> Moderate — contact / location<br>
-          <span style="color:#eab308;">●</span> Low — metadata / labels<br>
-          <span style="color:#22c55e;">●</span> Safe — no sensitive data
+          <span style="color:#ef4444;">●</span> High — Cards, IDs, Keys, or accumulated data types present<br>
+          <span style="color:#f97316;">●</span> Moderate — Email, phone, address, or date of birth<br>
+          <span style="color:#eab308;">●</span> Low — Limited details, such as name or age/ labels<br>
+          <span style="color:#22c55e;">●</span> No Detected Privacy Risk present - No supported sensitive data found
         </div>
       </div>`;
     panel.appendChild(footer);

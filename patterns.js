@@ -597,6 +597,28 @@ function structuralValidatePHID_Passport(raw) {
   return true;
 }
 
+// ── PERSONAL HEALTH METRICS PATTERNS ────────────────────────────────────────────
+
+/**
+ * Height regex pattern validator.
+ * Detects height in common units: feet/inches, centimeters, meters
+ */
+function validateHeightPattern(raw) {
+  if (!raw || typeof raw !== "string") return false;
+  // Allow formats like: 5'10", 5 feet 10 inches, 170 cm, 1.7 m
+  return /^\d{1,2}\s*(?:feet|ft|')\s*\d{1,2}\s*(?:inches?|in|")?$|^\d{1,3}(?:\.\d{1,2})?\s*(?:cm|centimeters?|m|meters?)$/i.test(raw.trim());
+}
+
+/**
+ * Weight regex pattern validator.
+ * Detects weight in common units: kilograms, pounds, grams
+ */
+function validateWeightPattern(raw) {
+  if (!raw || typeof raw !== "string") return false;
+  // Allow formats like: 70 kg, 154 lbs, 70.5 kilograms
+  return /^\d{1,3}(?:\.\d{1,2})?\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?)$/i.test(raw.trim());
+}
+
 /**
  * Validates TIN (Taxpayer Identification Number) structure.
  * 
@@ -1759,6 +1781,26 @@ const TRUSTPROMPT_PATTERNS = [
     sanitize: (_m) => "[PHILIPPINE ADDRESS REMOVED]"
   },
 
+  {
+    id: "birthday_date",
+    label: "Birthday (Date Format)",
+    reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrological predictions or other personal inferences.",
+    regex: /(?:0?[1-9]|1[0-2])[-\/\.](0?[1-9]|[12]\d|3[01])[-\/\.](19|20)?\d{2}|(?:0?[1-9]|[12]\d|3[01])[-\/\.](0?[1-9]|1[0-2])[-\/\.](19|20)?\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(0?[1-9]|[12]\d|3[01]),?\s+(19|20)\d{2}|(0?[1-9]|[12]\d|3[01])\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(19|20)\d{2}/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[DATE REDACTED]"
+  },
+
+  {
+    id: "age_value",
+    label: "Age (Numeric or Text Format)",
+    reason: "Age is classified as personal demographic information under RA 10173. When combined with other identifiers like name, location, or birth date, age enables targeted fraud, discrimination, and identity-based attacks. Age can be inferred from birth dates or stated directly in text.",
+    regex: /(?:age|edad)\s*[:=]\s*(\d{1,3})\s*(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)?|\d{1,3}\s+(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)(?:\s+old)?/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[AGE REDACTED]"
+  },
+
   // ── PATH C: LINGUISTIC NLP-BASED PATTERNS ──────────────────────────────────
 
   {
@@ -2006,6 +2048,39 @@ const TRUSTPROMPT_PATTERNS = [
       }
       return "[REDACTED-VOTERS-ID]";
     }
+  },
+
+  // -- BLOOD TYPE MENTION
+  {
+    id: "blood_type_mention",
+    label: "Blood Type Mention",
+    reason: "Blood type is personal health information under RA 10173 and is considered sensitive medical data.",
+    regex: /\b(?:blood\s*type|type|rh)\s*[:=\s]?\s*(?:A|B|AB|O)(?:[+-])?|\b(?:A|B|AB|O)[+-]/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[BLOOD TYPE REDACTED]"
+  },
+
+  // -- HEIGHT MENTION
+  {
+    id: "height_mention",
+    label: "Height Mention",
+    reason: "Height is personal physical characteristic information under RA 10173.",
+    regex: /\b(?:(?:height|taas|tall|high)\s*(?:is|:)?\s*)?(?:(\d{1,2})\s*(?:feet|ft|')\s*(\d{1,2})\s*(?:inches?|in|")?|(\d{1,3}(?:\.\d{1,2})?)\s*(?:cm|centimeters?|m|meters?))\s*(?:tall|high)?\b/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[HEIGHT REDACTED]"
+  },
+
+  // -- WEIGHT MENTION
+  {
+    id: "weight_mention",
+    label: "Weight Mention",
+    reason: "Weight is personal physical characteristic information under RA 10173.",
+    regex: /\b(?:(?:weight|timbang|weighs?|heavy|mass)\s*(?:is|:)?\s*)?(?:(\d{1,3}(?:\.\d{1,2})?)\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?|stone))\s*(?:heavy|heavy|kilos?)?\b/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[WEIGHT REDACTED]"
   }
 
 

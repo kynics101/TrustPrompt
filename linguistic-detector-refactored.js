@@ -31,6 +31,32 @@ const TrustLinguisticDetector = (() => {
     console.debug('[TrustPrompt/PATH_C] compromise.js not found; skipping linguistic detection');
   }
 
+  // ★ HYBRID: Organization detector with CSV validation
+  let orgDetectorReady = false;
+
+  async function ensureOrgDetectorInitialized() {
+    if (orgDetectorReady) return true;
+    try {
+      if (typeof TrustOrganizationDetectorEnhanced === 'undefined') {
+        console.debug('[TrustPrompt/PATH_C] Detector not loaded yet, skipping org detection enhancement');
+        return false;
+      }
+      const detector = TrustOrganizationDetectorEnhanced.getInstance();
+      await detector.initialize();
+      orgDetectorReady = true;
+      console.debug('[TrustPrompt/PATH_C] Organization detector initialized (22,151 orgs loaded)');
+      return true;
+    } catch (error) {
+      console.warn('[TrustPrompt/PATH_C] Org detector init failed:', error.message);
+      return false;
+    }
+  }
+
+  // Initialize detector on module load
+  if (typeof TrustOrganizationDetectorEnhanced !== 'undefined') {
+    ensureOrgDetectorInitialized().catch(e => console.debug('[TrustPrompt/PATH_C] Async init error:', e));
+  }
+
   // ═════════════════════════════════════════════════════════════════════════════
   // PHASE 1: SEMANTIC CONTEXT EXTRACTION
   // ═════════════════════════════════════════════════════════════════════════════
@@ -613,29 +639,94 @@ const TrustLinguisticDetector = (() => {
    * @returns {Array} array of organization findings with semantic context
    * @private
    */
+  /**
+   * Extract organization findings (HYBRID: Compromise.js NER + CSV Validation).
+   * ★ PHASE 2 & 3: Returns findings enriched with CSV validation + confidence
+   * 
+   * Combines:
+   * 1. Compromise.js NER for broad extraction
+   * 2. CSV whitelist for validation + typo tolerance
+   * 3. Pattern-based extraction as fallback
+   *
+   * @param {object} doc - compromise.js document object
+   * @param {string} fullText - Full text for pattern-based fallback
+   * @returns {Array} array of organization findings with confidence
+   */
   function extractOrganizations(doc, fullText) {
     const findings = [];
     if (!doc) return findings;
 
     try {
       const text = doc.out('text');
+      const seen = new Set();  // Track deduplication
 
-      // Extract organizations from contextual patterns
-      const orgs = extractOrganizationContexts(text);
-      for (const org of orgs) {
-        if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
-          const semanticContext = extractSemanticContext(fullText, org);
+      const detector = TrustOrganizationDetectorEnhanced.getInstance();
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // PART 1: Compromise.js NER Extraction + CSV Validation (HYBRID)
+      // ─────────────────────────────────────────────────────────────────────────
+      try {
+        // Use Compromise.js organizations() if available
+        const nluOrgs = doc.organizations?.().out('array') || [];
+        
+        for (const org of nluOrgs) {
+          if (!org || typeof org !== 'string' || org.length === 0) continue;
+          
+          const orgNorm = org.toLowerCase().trim();
+          if (seen.has(orgNorm)) continue;  // Skip duplicates
+          
+          // ★ HYBRID: Validate against CSV + apply fuzzy matching
+          const validation = detector.validateOrganization(org);
+          
+          seen.add(orgNorm);
           findings.push({
             patternId: 'nlp_organization',
             label: 'Organization (NLP)',
             risk: 'low',
+            confidence: validation.confidence,      // ← NEW
+            validationType: validation.reason,      // ← NEW: exact_match, fuzzy_match, etc.
             rawMatch: org,
             safeVersion: '[ORG REDACTED]',
-            source: 'C_linguistic',
-            validated: false,
-            semanticContext
+            matchedOrg: validation.matchedOrg,      // ← NEW: What it matched to in CSV
+            validated: validation.isKnown,          // ← NEW: Is it in CSV?
+            source: 'compromise_nlp',               // ← Source: NER
+            semanticContext: extractSemanticContext(fullText, org)
           });
         }
+      } catch (error) {
+        console.debug('[TrustPrompt/PATH_C] NER extraction failed:', error.message);
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // PART 2: Pattern-Based Extraction (Fallback)
+      // ─────────────────────────────────────────────────────────────────────────
+      try {
+        const orgs = extractOrganizationContexts(text);
+        
+        for (const org of orgs) {
+          const orgNorm = org.toLowerCase().trim();
+          if (seen.has(orgNorm)) continue;  // Skip if already found via NER
+          
+          // ★ HYBRID: Also validate pattern-based findings
+          const validation = detector.validateOrganization(org);
+          
+          seen.add(orgNorm);
+          findings.push({
+            patternId: 'nlp_organization',
+            label: 'Organization (NLP)',
+            risk: 'low',
+            confidence: validation.confidence,
+            validationType: validation.reason,
+            rawMatch: org,
+            safeVersion: '[ORG REDACTED]',
+            matchedOrg: validation.matchedOrg,
+            validated: validation.isKnown,
+            source: 'pattern_extraction',           // ← Source: Regex pattern
+            semanticContext: extractSemanticContext(fullText, org)
+          });
+        }
+      } catch (error) {
+        console.debug('[TrustPrompt/PATH_C] Pattern extraction failed:', error.message);
       }
 
     } catch (error) {

@@ -1209,9 +1209,12 @@ const TrustScanner = (() => {
       'ph_id_gsis', 'ph_id_sss', 'ph_id_philhealth',
       'ph_id_drivers_license', 'ph_id_voters',
       'ph_id_pagibig', 'ph_id_police_clearance', 'ph_id_nbi'
+      // NOTE: height_mention and weight_mention are EXCLUDED from context filtering
+      // because they are ALWAYS relevant even in measurement contexts (e.g., "70 kg" is weight, not a phone number)
     ];
 
     // Only apply context filtering to patterns that need it
+    // Height and weight patterns ALWAYS pass through (never filtered by context)
     if (!contextAwarePatterns.includes(patternId)) {
       return false;
     }
@@ -2234,6 +2237,13 @@ const TrustScanner = (() => {
   function mergeAndDedupe(pathA, pathB, pathC, sourceCode = []) {
     const allFindings = [...pathA, ...pathB, ...pathC, ...sourceCode];
 
+    // ── Medical Term Grouping: Normalize related medical terms ──────────────
+    // Group "heavy menstruation" and "menstration" as the same entity
+    // by using normalizedTerm from the findings
+    const medicalTermNormalizationMap = {
+      'gazetteer_medical': new Map()  // Maps normalized term → representative finding
+    };
+
     // ── First pass: deduplicate per (patternId × rawMatch) pair ───────────────
     //
     // KEY DESIGN: the deduplication key is "patternId:rawMatch" — NOT rawMatch alone.
@@ -2250,9 +2260,33 @@ const TrustScanner = (() => {
     // correctly contributing two distinct types to the multiplier.
     const seen = new Map();
     for (const f of allFindings) {
-      const key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
+      // Special handling for medical terms: use normalized form as dedup key
+      let key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
+      
+      if (f.patternId === 'gazetteer_medical' && f.normalizedTerm) {
+        // For medical terms, also check normalized form to group typos/variations
+        const normalizedKey = f.patternId + ":normalized:" + f.normalizedTerm;
+        const existingNormalized = medicalTermNormalizationMap[f.patternId].get(f.normalizedTerm);
+        
+        if (existingNormalized && RISK_ORDER[f.risk] > RISK_ORDER[existingNormalized.risk]) {
+          // Replace with higher-risk version
+          medicalTermNormalizationMap[f.patternId].set(f.normalizedTerm, f);
+        } else if (!existingNormalized) {
+          // Store the first occurrence
+          medicalTermNormalizationMap[f.patternId].set(f.normalizedTerm, f);
+        }
+        // Skip adding to seen map when normalized term exists (we'll add after grouping)
+        continue;
+      }
+      
       const ex  = seen.get(key);
       if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
+    }
+
+    // ── Add grouped medical findings back to seen map ──────────────────────────
+    for (const [normTerm, finding] of medicalTermNormalizationMap['gazetteer_medical'].entries()) {
+      const key = finding.patternId + ":" + finding.rawMatch.trim().toLowerCase();
+      seen.set(key, finding);
     }
 
     // ── Second pass: UMID/SSS overlap suppression ─────────────────────────────
@@ -2361,8 +2395,10 @@ const TrustScanner = (() => {
       }
       
       console.log("[TrustPrompt/scanner] Normalizing...");
-      const { masked, textRegex, textNLP, wasCapsConverted } =
-        TrustNormalizer.normalize(rawText);
+      const masked = TrustNormalizer.sharedLayer(rawText);
+      const textRegex = TrustNormalizer.normalizePath_A(rawText);
+      const textGazetteer = TrustNormalizer.normalizePath_B(rawText);
+      const textNLP = TrustNormalizer.normalizePath_C(rawText);
       
       // ★ RUN SOURCE CODE DETECTION FIRST (before PATH C)
       // This prevents PATH C from misclassifying code tokens as names/orgs
@@ -2404,10 +2440,10 @@ const TrustScanner = (() => {
       console.log(`[TrustPrompt/scanner] PATH A findings: ${pathAFindings.length}${pathAFindings.length > 0 ? ' → ' + pathAFindings.map(f => f.patternId).join(', ') : ''}`);
       
       console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
-      let pathBFindings = TrustGazetteer.scan(textNLP);
+      let pathBFindings = await TrustGazetteer.scan(textGazetteer);
       
       // ★ FILTER PATH B: Remove name and organization detections
-      // Path B should ONLY detect medical, financial, nationality
+      // Path B should detect medical, financial, nationality, sex, eye_color
       pathBFindings = pathBFindings.filter(finding => {
         const patternId = (finding.patternId || '').toLowerCase();
         
@@ -2421,11 +2457,14 @@ const TrustScanner = (() => {
           return false;
         }
         
-        // KEEP: medical, financial, nationality only
+        // KEEP: medical, financial, nationality, religion, sex, eye_color, health
         if (patternId.includes('medical') ||
             patternId.includes('financial') ||
             patternId.includes('nationality') ||
-            patternId.includes('health')) {
+            patternId.includes('religion') ||
+            patternId.includes('health') ||
+            patternId.includes('sex') ||
+            patternId.includes('eye_color')) {
           return true;
         }
         
@@ -2438,32 +2477,54 @@ const TrustScanner = (() => {
       let pathCFindings = [];
       
       // Use linguistic detector (compromise.js based NLP)
+      console.log(`[TrustPrompt/scanner] DEBUG: Checking for TrustLinguisticDetector...`);
+      console.log(`[TrustPrompt/scanner] DEBUG: typeof TrustLinguisticDetector = ${typeof TrustLinguisticDetector}`);
+      console.log(`[TrustPrompt/scanner] DEBUG: window.TrustLinguisticDetector = ${typeof window !== 'undefined' ? typeof window.TrustLinguisticDetector : 'N/A (no window)'}`);
+      console.log(`[TrustPrompt/scanner] DEBUG: globalThis.TrustLinguisticDetector = ${typeof globalThis !== 'undefined' ? typeof globalThis.TrustLinguisticDetector : 'N/A (no globalThis)'}`);
+      
       if (typeof TrustLinguisticDetector !== 'undefined' && TrustLinguisticDetector && TrustLinguisticDetector.scan) {
         try {
+          // ★ WAIT FOR CSV DATA TO LOAD (recommended: up to 5 seconds)
+          // The CSV loading is asynchronous but we need the data for job titles/organizations matching
+          // This ensures occupations.csv and organizations.csv are loaded before running linguistic analysis
+          if (typeof TrustLinguisticDetector.waitForCSVInit === 'function') {
+            console.log(`[TrustPrompt/scanner] Waiting for CSV data to load in PATH C...`);
+            await TrustLinguisticDetector.waitForCSVInit();
+            console.log(`[TrustPrompt/scanner] CSV data loaded, proceeding with PATH C scan`);
+          }
+          
           // Run linguistic detector (compromise.js only)
           // TrustLinguisticDetector.scan() returns findings array directly
+          console.log(`[TrustPrompt/scanner] DEBUG: TrustLinguisticDetector.scan is available, calling it...`);
           pathCFindings = TrustLinguisticDetector.scan(textNLP);
           
           console.log(`[TrustPrompt/scanner] PATH C (linguistic) findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.rawMatch).join(', ') : ''}`);
         } catch (pathCError) {
           console.error("[TrustPrompt/scanner] PATH C (linguistic) error:", pathCError.message);
+          console.error("[TrustPrompt/scanner] PATH C error stack:", pathCError.stack);
           pathCFindings = [];
         }
       } 
       else {
         console.warn("[TrustPrompt/scanner] Linguistic detector not available - PATH C skipped");
+        console.warn(`[TrustPrompt/scanner] DEBUG: TrustLinguisticDetector check failed:`);
+        console.warn(`  - typeof TrustLinguisticDetector: ${typeof TrustLinguisticDetector}`);
+        console.warn(`  - TrustLinguisticDetector truthy: ${!!TrustLinguisticDetector}`);
+        if (TrustLinguisticDetector) {
+          console.warn(`  - TrustLinguisticDetector.scan type: ${typeof TrustLinguisticDetector.scan}`);
+        }
       }
       
-      const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings);
+      const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings);
       console.log("[TrustPrompt/scanner] After merge:", merged.length, "findings - source_code count:", merged.filter(f => f.patternId === 'source_code').length);
       if (merged.length > 0) {
-        console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`));
+        console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch}`));
       }
       
       const findings      = suppressPlaceholders(merged);  // TASK-4.4
       console.log("[TrustPrompt/scanner] After suppressPlaceholders:", findings.length, "findings - source_code count:", findings.filter(f => f.patternId === 'source_code').length);
       if (findings.length > 0) {
-        console.log("[TrustPrompt/scanner] Final findings detail before risk scoring:", findings.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`));
+        console.log("[TrustPrompt/scanner] Final findings detail before risk scoring:", findings.map(f => `${f.patternId}:${f.rawMatch}`));
       }
       
       console.log(`[TrustPrompt/scanner] ★★★ ABOUT TO SCORE: findings.length=${findings.length}, source_code count=${findings.filter(f => f.patternId === 'source_code').length}`);
@@ -2475,10 +2536,10 @@ const TrustScanner = (() => {
         `| findings: ${findings.length} (A:${pathAFindings.length} B:${pathBFindings.length} C:${pathCFindings.length} SRC:${sourceCodeFindings.length})`
       );
       if (findings.length > 0) {
-        console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch.slice(0, 20)}`).join(", "));
+        console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch}`).join(", "));
       }
 
-      return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted };
+      return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted: false };
     } catch (scanError) {
       console.error("[TrustPrompt/scanner] FATAL SCAN ERROR:", scanError.message, scanError.stack);
       // Return safe default on any error

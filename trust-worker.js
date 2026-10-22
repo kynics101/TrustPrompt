@@ -408,11 +408,14 @@ self.onmessage = function (e) {
 
   const t0 = performance.now();
 
-  const { masked, textRegex, textNLP, wasCapsConverted } =
-    TrustNormalizer.normalize(rawText);
+  // Use path-specific normalization for each detection method
+  const masked = TrustNormalizer.sharedLayer(rawText);
+  const textRegex = TrustNormalizer.normalizePath_A(rawText);
+  const textGazetteer = TrustNormalizer.normalizePath_B(rawText);
+  const textNLP = TrustNormalizer.normalizePath_C(rawText);
 
   const pathAFindings = runPathA(textRegex);
-  const pathBFindings = TrustGazetteer.scan(textNLP);
+  const pathBFindings = await TrustGazetteer.scan(textGazetteer);
   
   // PATH C with safe fallback if TrustLinguisticDetector is unavailable
   let pathCFindings = [];
@@ -446,7 +449,7 @@ self.onmessage = function (e) {
     score,
     governance,
     normalisedText:  masked,
-    wasCapsConverted,
+    wasCapsConverted: false,  // With path-specific normalization, we don't track this globally
     elapsedMs
   });
 };

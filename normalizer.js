@@ -1,43 +1,39 @@
-// normalizer.js — TrustPrompt text normalisation pipeline v0.0.6
+// normalizer.js — TrustPrompt text normalisation pipeline v0.0.7
 //
 // ══ ARCHITECTURE ══════════════════════════════════════════════════════════════
 //
 //   rawText
 //     │
 //     ▼
-//   sharedLayer()          — NFKC, invisible unicode, CRLF→LF, trim
+//   sharedLayer()            — NFKC, invisible unicode, CRLF→LF, trim
 //     │
-//     ├─ [copy 1]  masked            → returned as-is for UI display
+//     ├─ normalizePath_A()   → textRegex (for Path A: regex + validators)
+//     │    Minimal whitespace collapse, preserves digit-group separators
+//     │    Code blocks isolated, smart quotes/dashes → ASCII
 //     │
-//     ├─ [copy 2]  regexLayer()      → for Path A (regex + validator)
-//     │              code-block isolation (newlines/indentation preserved)
-//     │              digit-group separator protection (card / phone numbers)
-//     │              smart quotes/dashes/exotic spaces → ASCII
-//     │              prose whitespace collapse (newlines → space)
-//     │              ALL-CAPS guard (prose only, not code)
+//     ├─ normalizePath_B()   → textGazetteer (for Path B: gazetteer + trigger phrases)
+//     │    Conservative punctuation, preserves word boundaries
+//     │    Context-aware, case mostly preserved
 //     │
-//     └─ [copy 3]  linguisticLayer() → for Path B (gazetteer + Compromise NLP)
-//                    smart quotes/dashes/exotic spaces → ASCII
-//                    ALL whitespace → single space
-//                    punctuation normalisation
-//                    sentence boundary detection
-//                    sentence case estimation   ← critical for Compromise
-//                    ALL-CAPS guard
+//     └─ normalizePath_C()   → textNLP (for Path C: Compromise.js NLP)
+//          Well-formed English prose, sentence boundaries clear
+//          Correct capitalization, punctuation normalized
+//          Code blocks isolated so Compromise doesn't parse them
 //
-// ══ RETURN SHAPE ══════════════════════════════════════════════════════════════
+// ══ RETURN SHAPES ═════════════════════════════════════════════════════════════
 //
-//   normalize(rawText) →
-//     {
-//       masked:           string,   // shared layer output — for masked display
-//       textRegex:        string,   // Path A input
-//       textNLP:          string,   // Path B / Compromise input
-//       wasCapsConverted: boolean   // true if ALL-CAPS guard fired
-//     }
+//   normalize(rawText) → { masked, textRegex, textGazetteer, textNLP }
+//     (backward compatible wrapper — calls path-specific functions)
+//
+//   normalizePath_A(rawText) → string  (for Path A: regex detection)
+//   normalizePath_B(rawText) → string  (for Path B: gazetteer detection)
+//   normalizePath_C(rawText) → string  (for Path C: Compromise NLP detection)
 //
 // ══ INDIVIDUAL LAYERS (exported for unit testing) ═════════════════════════════
-//   sharedLayer(raw)          → string
-//   regexLayer(shared)        → { text, wasCapsConverted }
-//   linguisticLayer(shared)   → { text, wasCapsConverted }
+//   sharedLayer(raw)           → string
+//   normalizePath_A(raw)       → string
+//   normalizePath_B(raw)       → string
+//   normalizePath_C(raw)       → string
 //
 // =============================================================================
 
@@ -123,150 +119,188 @@ const TrustNormalizer = (() => {
     return { text: fire ? toSentenceCase(str) : str, wasCapsConverted: fire };
   }
 
-  // ── LAYER 2a: REGEX ──────────────────────────────────────────────────────────
-  // Prepares text for Path A (regex + validator.js).
-  //
-  // Design constraints:
-  //   CODE BLOCKS  — ```…``` and long `…` must keep newlines/indentation.
-  //   CARD NUMBERS — spaces/hyphens between digit groups must survive.
-  //   TOKENS       — . _ - / + = @ : inside credentials must not be stripped.
-  //   PROSE        — everything else flattened to single-space for clean matching.
-  //
-  // Placeholder characters chosen to be:
-  //   • Outside normal ASCII so they never appear in real prompts
-  //   • Not null bytes (which corrupt JS string operations)
-  //   • Not in the NFKC / invisible strip sets above
-  //   U+E000 §CODE_n§  (Private Use Area — safe placeholder)
-  //   U+E001 §DS_n§    (digit-separator placeholder)
-
+  // ── CONSTANTS FOR CODE BLOCK HANDLING ─────────────────────────────────────────
   const CODE_BLOCK_RE = /```[\s\S]*?```|`[^`\n]{10,}`/g;
-  const CODE_PH_OPEN  = "\uE000";   // private-use open sentinel
-  const CODE_PH_CLOSE = "\uE001";   // private-use close sentinel
-  const DS_PH_OPEN    = "\uE002";
-  const DS_PH_CLOSE   = "\uE003";
+  const CODE_PH = "[CODE_BLOCK]";  // Simple placeholder for code blocks
 
-  function regexLayer(shared) {
+  // ── PATH A: REGEX ────────────────────────────────────────────────────────────
+  // Prepares text for Path A (regex + validator).
+  // Goal: Preserve digit-group separators, keep structure intact.
 
-    // Step 1 — Extract code blocks into a side-store.
-    // Replace each block with a sentinel that includes its index.
-    // We also preserve any leading/trailing newline that was adjacent to the
-    // fence so the surrounding prose collapses cleanly around it.
+  function normalizePath_A(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    
+    let text = sharedLayer(raw);
+    
+    // Step 1: Extract code blocks (preserve structure, don't parse as regex targets)
     const codeBlocks = [];
-    let prose = shared.replace(CODE_BLOCK_RE, (match) => {
-      const idx = codeBlocks.length;
+    text = text.replace(CODE_BLOCK_RE, (match) => {
       codeBlocks.push(match);
-      // Wrap placeholder in newlines so prose whitespace collapse doesn't
-      // merge the surrounding text into the placeholder token.
-      return `\n${CODE_PH_OPEN}${idx}${CODE_PH_CLOSE}\n`;
+      return `\n${CODE_PH}\n`;
     });
-
-    // Step 2 — ASCII punctuation on prose (sentinels are in PUA, untouched).
-    prose = asciiPunctuation(prose);
-
-    // Step 3 — Protect digit-group separators before whitespace collapse.
-    // Matches a space or hyphen between two digit characters.
-    // Covers: "4111 1111", "4111-1111", "+63 917", "0917 123"
-    const digitSepStore = [];
-    prose = prose.replace(/(\d)([ -])(\d)/g, (m) => {
-      const idx = digitSepStore.length;
-      digitSepStore.push(m);
-      return `${DS_PH_OPEN}${idx}${DS_PH_CLOSE}`;
+    
+    // Step 2: Convert smart quotes/dashes to ASCII
+    text = asciiPunctuation(text);
+    
+    // Step 3: PRESERVE digit-group separators
+    // Don't collapse spaces/hyphens between digits
+    // Keep: "4111 1111", "4111-1111", "+63 917 123 4567"
+    
+    // Step 4: Minimal whitespace collapse (keep newlines, collapse spaces/tabs)
+    text = text.replace(/[ \t]+/g, " ");  // Only collapse spaces/tabs, not newlines
+    text = text.replace(/\n+/g, "\n");    // Normalize multiple newlines to single
+    
+    // Step 5: ALL-CAPS guard
+    const lines = text.split("\n");
+    const processedLines = lines.map(line => {
+      // Only apply capsGuard to non-code lines
+      if (line === CODE_PH) return line;
+      const { text: guardedLine } = capsGuard(line);
+      return guardedLine;
     });
-
-    // Step 4 — Collapse all prose whitespace (including newlines) to one space.
-    // The sentinels are single chars so they survive this intact.
-    prose = prose.replace(/\s+/g, " ").trim();
-
-    // Step 5 — Restore digit separators.
-    prose = prose.replace(
-      new RegExp(`${DS_PH_OPEN}(\\d+)${DS_PH_CLOSE}`, "g"),
-      (_, i) => digitSepStore[Number(i)]
-    );
-
-    // Step 6 — ALL-CAPS guard on prose only (before reinserting code).
-    const { text: guardedProse, wasCapsConverted } = capsGuard(prose);
-    prose = guardedProse;
-
-    // Step 7 — Reinsert code blocks at their sentinels.
-    // Trim the single surrounding spaces the collapse left around sentinels.
-    let result = prose.replace(
-      new RegExp(` ?${CODE_PH_OPEN}(\\d+)${CODE_PH_CLOSE} ?`, "g"),
-      (_, i) => "\n" + codeBlocks[Number(i)] + "\n"
-    );
-
-    // Clean up any double newlines introduced by the reinsertion
-    result = result.replace(/\n{3,}/g, "\n\n").trim();
-
-    return { text: result, wasCapsConverted };
+    text = processedLines.join("\n");
+    
+    // Step 6: Restore code blocks
+    // Don't try to parse code blocks as regex targets
+    text = text.trim();
+    
+    return text;
   }
 
-  // ── LAYER 2b: LINGUISTIC ─────────────────────────────────────────────────────
-  // Prepares text for Path B (gazetteer + Compromise NLP).
-  // Goal: well-formed English prose with correct capitalisation and sentence
-  // boundaries so Compromise can reliably find names, job titles, and orgs.
+  // ── PATH B: GAZETTEER ────────────────────────────────────────────────────────
+  // Prepares text for Path B (gazetteer + trigger phrases).
+  // Goal: Preserve word boundaries and context.
 
-  function linguisticLayer(shared) {
-    let out = asciiPunctuation(shared);
-
-    // Step 1 — Collapse ALL whitespace (incl. newlines) into a single space.
-    // Compromise works on a flat prose string, not multi-line fragments.
-    out = out.replace(/\s+/g, " ").trim();
-
-    // Step 2 — Punctuation normalisation.
-    out = out.replace(/([.!?])\1+/g,  "$1");          // "!!!" → "!"
-    out = out.replace(/ ([,;:!?.])/g, "$1");           // "hello ," → "hello,"
-    out = out.replace(/([,;:!?.])([a-zA-Z])/g, "$1 $2"); // "hello,world" → "hello, world"
-    out = out.replace(/,\s+/g, ", ");                  // normalise comma-space
-
-    // Step 3 — Sentence boundary detection (conservative).
-    // Insert a "." when a lowercase word is followed by an uppercase word that
-    // doesn't look like a proper-noun continuation of the same sentence.
-    out = out.replace(/([a-z])( )([A-Z][a-z]{2,})/g, (full, end, sp, start) => {
-      // Don't insert a period if preceded by a common verb (part of same sentence)
-      const verbEnding = /\b(?:is|are|was|were|be|have|has|had|do|does|did|will|would|could|should|may|might|can|shall|tell|send|help|give|need|want|please|named?|called?)$/i;
-      const prefix = full.slice(0, 1 + sp.length); // everything up to the uppercase word
-      if (verbEnding.test(end)) return full;
-      return end + "." + sp + start;
+  function normalizePath_B(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    
+    let text = sharedLayer(raw);
+    
+    // Step 1: Extract code blocks
+    const codeBlocks = [];
+    text = text.replace(CODE_BLOCK_RE, (match) => {
+      codeBlocks.push(match);
+      return `\n${CODE_PH}\n`;
     });
-
-    // Step 4 — Sentence case estimation.
-    const { text: afterCaps, wasCapsConverted } = capsGuard(out);
-    out = afterCaps;
-
-    // Even if capsGuard didn't fire, ensure every sentence starts capitalised.
-    // Skip the first char if it is a leading quote/bracket so capitalisation
-    // lands on the actual first letter.
-    out = out.replace(/^(["'(\[{]*)([a-z])/, (_, lead, c) => lead + c.toUpperCase());
-    // Capitalise after sentence-ending punctuation
-    out = out.replace(/([.!?]\s+)([a-z])/g, (_, p, l) => p + l.toUpperCase());
-
-    return { text: out, wasCapsConverted };
+    
+    // Step 2: Convert smart quotes/dashes to ASCII
+    text = asciiPunctuation(text);
+    
+    // Step 3: Conservative punctuation normalization
+    // Remove multiple spaces/punctuation, but preserve word boundaries
+    text = text.replace(/\s+/g, " ");  // Collapse whitespace to single space
+    text = text.replace(/([,;:!?.])(?=[a-zA-Z0-9])/g, "$1 ");  // Add space after punct if before word
+    text = text.replace(/\s+([,;:!?.])/g, "$1");  // Remove space before punct
+    
+    // Step 4: Normalize comma-space pattern
+    text = text.replace(/,\s+/g, ", ");
+    
+    // Step 5: Restore code blocks as placeholders (gazetteer won't match inside them)
+    text = text.replace(new RegExp(CODE_PH, "g"), " [CODE BLOCK] ");
+    
+    // Step 6: Preserve case (important for org/location matching)
+    text = text.trim();
+    
+    return text;
   }
 
-  // ── PUBLIC API ────────────────────────────────────────────────────────────────
+  // ── PATH C: LINGUISTIC (COMPROMISE.JS) ───────────────────────────────────────
+  // Prepares text for Path C (Compromise.js NLP).
+  // Goal: Well-formed English prose with sentence boundaries clear.
+
+  function normalizePath_C(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    
+    let text = sharedLayer(raw);
+    
+    // Step 1: Extract code blocks (CRITICAL - Compromise shouldn't parse them)
+    const codeBlocks = [];
+    text = text.replace(CODE_BLOCK_RE, (match) => {
+      codeBlocks.push(match);
+      return `\n[CODE_${codeBlocks.length - 1}]\n`;
+    });
+    
+    // Step 2: Convert smart quotes/dashes to ASCII
+    text = asciiPunctuation(text);
+    
+    // Step 3: Collapse ALL whitespace to single space (Compromise needs flat text)
+    text = text.replace(/\s+/g, " ").trim();
+    
+    // Step 4: Smart punctuation normalization
+    text = text.replace(/([.!?])\1+/g, "$1");  // Multiple punct → single
+    
+    // CRITICAL: Always ensure space after punctuation before letter/number
+    text = text.replace(/([,;:!?.])([a-zA-Z0-9])/g, "$1 $2");
+    
+    // Remove space before punctuation
+    text = text.replace(/\s+([,;:!?.])/g, "$1");
+    
+    // Step 5: Sentence boundary detection (avoid false sentence breaks)
+    // Insert period between lowercase word + uppercase word, UNLESS:
+    //   - Preceded by preposition/connector
+    //   - Followed by title (Mr, Dr, etc.)
+    //   - Preceded by common first name
+    const prepositionsAndConnectors = /\b(?:for|to|with|in|at|by|from|as|or|of|on|up|and|the|is|are|was|were|be|have|has|had)$/i;
+    const commonFirstNames = /\b(?:John|Mary|James|David|Robert|Michael|William|Richard|Charles|Joseph|Thomas|Alice|Bob|Charlie|Maria|Jose|Anna|Juan|Carlos|Luis|Pedro|Miguel|Jennifer|Jessica|Sarah|Laura|Susan|Karen|Nancy|Lisa|Sandra|Betty|Patricia|Margaret|Barbara|Dorothy|Kyleen|Maricel|Jerralyn)$/i;
+    
+    text = text.replace(/(\b[a-z]+)( )([A-Z][a-z]{2,})/g, (full, word, sp, start) => {
+      if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word)) {
+        return full;  // Don't insert period
+      }
+      return word + "." + sp + start;
+    });
+    
+    // Step 6: Ensure correct sentence case
+    // Capitalize first letter
+    text = text.replace(/^([a-z])/, c => c.toUpperCase());
+    // Capitalize after sentence punctuation
+    text = text.replace(/([.!?]\s+)([a-z])/g, (_, p, l) => p + l.toUpperCase());
+    // Restore standalone "I"
+    text = text.replace(/\bi\b/g, "I");
+    
+    // Step 7: Restore code blocks as neutral placeholders (not sentences)
+    text = text.replace(/\[CODE_(\d+)\]/g, " [CODE BLOCK] ");
+    
+    // Step 8: ALL-CAPS guard
+    const { text: guardedText } = capsGuard(text);
+    text = guardedText;
+    
+    text = text.trim();
+    
+    return text;
+  }
+
+  // ── BACKWARD COMPATIBLE PUBLIC API ────────────────────────────────────────────
 
   /**
-   * Run the full normalisation pipeline.
+   * Run the full normalisation pipeline (backward compatible).
    *
    * @param   {string} rawText
    * @returns {{
-   *   masked:           string,
-   *   textRegex:        string,
-   *   textNLP:          string,
-   *   wasCapsConverted: boolean
+   *   masked:        string,
+   *   textRegex:     string,
+   *   textGazetteer: string,
+   *   textNLP:       string
    * }}
    */
   function normalize(rawText) {
     if (!rawText || typeof rawText !== "string") {
-      return { masked: "", textRegex: "", textNLP: "", wasCapsConverted: false };
+      return { masked: "", textRegex: "", textGazetteer: "", textNLP: "" };
     }
     const masked = sharedLayer(rawText);
-    const { text: textRegex, wasCapsConverted: capsA } = regexLayer(masked);
-    const { text: textNLP,   wasCapsConverted: capsB } = linguisticLayer(masked);
-    return { masked, textRegex, textNLP, wasCapsConverted: capsA || capsB };
+    const textRegex = normalizePath_A(rawText);
+    const textGazetteer = normalizePath_B(rawText);
+    const textNLP = normalizePath_C(rawText);
+    return { masked, textRegex, textGazetteer, textNLP };
   }
 
-  return { normalize, sharedLayer, regexLayer, linguisticLayer };
+  return { 
+    normalize, 
+    sharedLayer, 
+    normalizePath_A, 
+    normalizePath_B, 
+    normalizePath_C 
+  };
 
 })();
 

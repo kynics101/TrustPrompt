@@ -31,12 +31,14 @@
 //
 // Dependencies: ph-address-db.js (loaded before this file)
 
-/* global PH_ADDRESS_DB, TrustGazetteer */
+/* global PH_ADDRESS_DB, TrustGazetteer, MEDICAL_TERMS_DATA, FINANCIAL_TERMS_DATA, ORGANIZATIONS_DATA */
 
 const TrustGazetteer = (() => {
 
-  // ── B1: GAZETTEER WORD LISTS ──────────────────────────────────────────────
-  //
+  // ── PRELOADED TERM DATA (loaded from JavaScript modules) ────────────────
+  // These are directly injected via manifest.json content script loading.
+  // No async loading needed — data is available synchronously.
+  
   // Sources:
   //   medical             — NHS A-Z common conditions (SRC-GAZ-002)
   //                         Plain-language names a user would type in a prompt.
@@ -52,221 +54,133 @@ const TrustGazetteer = (() => {
   //
   // All entries are lowercase. Regex matching is case-insensitive.
 
-  // ── Medical — single words ─────────────────────────────────────────────────
-  // Source: NHS A-Z (SRC-GAZ-002) — plain-language condition names
-  const MEDICAL_WORDS = [
-    // A
-    "abscess", "acne", "addiction", "adhd", "aids", "alcoholism", "allergy",
-    "alopecia", "alzheimer", "anaemia", "anemia", "anaphylaxis", "angina",
-    "angioedema", "anorexia", "anxiety", "appendicitis", "arrhythmia",
-    "arthritis", "asthma", "ataxia", "autism",
-    // B
-    "bipolar", "bronchitis", "bulimia",
-    // C
-    "cancer", "candida", "cataracts", "chemotherapy", "chickenpox", "chlamydia",
-    "cholesterol", "cirrhosis", "colitis", "conjunctivitis", "constipation",
-    "copd", "covid", "cystitis",
-    // D
-    "dementia", "dengue", "depression", "dermatitis", "diabetes", "dialysis",
-    "diarrhea", "diarrhoea", "diverticulitis", "dyslexia", "dystonia",
-    // E
-    "eczema", "emphysema", "endometriosis", "epilepsy",
-    // F
-    "fibromyalgia", "flu",
-    // G
-    "gallstones", "gastritis", "gastroenteritis", "gerd", "glaucoma",
-    "gonorrhea", "gonorrhoea", "gout",
-    // H
-    "haemophilia", "haemorrhoids", "hemophilia", "hemorrhoids",
-    "hepatitis", "herpes", "hiv", "hypertension",
-    "hyperthyroidism", "hypothyroidism",
-    // I
-    "impetigo", "infertility", "influenza", "insomnia", "insulin",
-    // K
-    "kidney",
-    // L
-    "laryngitis", "leukemia", "leukaemia", "lupus",
-    // M
-    "malaria", "malnutrition", "measles", "meningitis", "menopause",
-    "mesothelioma", "migraine", "mpox", "mumps",
-    // N
-    "neuropathy",
-    // O
-    "obesity", "ocd", "osteoarthritis", "osteoporosis",
-    // P
-    "pancreatitis", "parkinson", "pneumonia", "polio", "pregnancy", "pregnant",
-    "psoriasis", "psychosis", "ptsd",
-    // R
-    "rabies", "rheumatism",
-    // S
-    "scabies", "schizophrenia", "scoliosis", "seizure", "sepsis",
-    "shingles", "sickle", "sinusitis", "stroke", "syphilis",
-    // T
-    "thalassemia", "thrombosis", "thyroid", "tinnitus", "tonsillitis",
-    "tuberculosis",
-    // U
-    "ulcer",
-    // V
-    "vasculitis", "vertigo", "vitiligo",
-    // W
-    "whooping",
-    // Y / Z
-    "zika"
+  // Initialize term arrays from JavaScript data
+  let MEDICAL_WORDS = [];
+  let MEDICAL_PHRASES = [];
+  let FINANCIAL_WORDS = [];
+  let FINANCIAL_PHRASES = [];
+
+  // Load medical terms from terms-medical.js
+  // MEDICAL_TERMS_DATA is injected by manifest.json before this file loads
+  console.log('[TrustGazetteer] Checking for MEDICAL_TERMS_DATA:', typeof MEDICAL_TERMS_DATA, Array.isArray(MEDICAL_TERMS_DATA ? MEDICAL_TERMS_DATA : null));
+  if (typeof MEDICAL_TERMS_DATA !== 'undefined' && Array.isArray(MEDICAL_TERMS_DATA)) {
+    console.log('[TrustGazetteer] ✅ Found MEDICAL_TERMS_DATA, loading', MEDICAL_TERMS_DATA.length, 'terms');
+    const medicalTerms = MEDICAL_TERMS_DATA.map(t => t.toLowerCase());
+    MEDICAL_PHRASES = medicalTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+    MEDICAL_WORDS = medicalTerms.filter(t => !t.includes(' '));
+  } else if (typeof window !== 'undefined' && window.MEDICAL_TERMS_DATA) {
+    console.log('[TrustGazetteer] ✅ Found window.MEDICAL_TERMS_DATA, loading', window.MEDICAL_TERMS_DATA.length, 'terms');
+    const medicalTerms = window.MEDICAL_TERMS_DATA.map(t => t.toLowerCase());
+    MEDICAL_PHRASES = medicalTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+    MEDICAL_WORDS = medicalTerms.filter(t => !t.includes(' '));
+  } else {
+    console.warn('[TrustGazetteer] ❌ MEDICAL_TERMS_DATA not found in global scope');
+  }
+
+  // Load financial terms from terms-financial.js
+  // FINANCIAL_TERMS_DATA is injected by manifest.json before this file loads
+  console.log('[TrustGazetteer] Checking for FINANCIAL_TERMS_DATA:', typeof FINANCIAL_TERMS_DATA, Array.isArray(FINANCIAL_TERMS_DATA ? FINANCIAL_TERMS_DATA : null));
+  if (typeof FINANCIAL_TERMS_DATA !== 'undefined' && Array.isArray(FINANCIAL_TERMS_DATA)) {
+    console.log('[TrustGazetteer] ✅ Found FINANCIAL_TERMS_DATA, loading', FINANCIAL_TERMS_DATA.length, 'terms');
+    const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+    FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+    FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+  } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
+    console.log('[TrustGazetteer] ✅ Found window.FINANCIAL_TERMS_DATA, loading', window.FINANCIAL_TERMS_DATA.length, 'terms');
+    const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+    FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+    FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+  } else {
+    console.warn('[TrustGazetteer] ❌ FINANCIAL_TERMS_DATA not found in global scope');
+  }
+
+  // Also load organizations data if available
+  let ORGANIZATIONS_WORDS = [];
+  if (typeof ORGANIZATIONS_DATA !== 'undefined' && Array.isArray(ORGANIZATIONS_DATA)) {
+    ORGANIZATIONS_WORDS = ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+  } else if (typeof window !== 'undefined' && window.ORGANIZATIONS_DATA) {
+    ORGANIZATIONS_WORDS = window.ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+  }
+
+  // ── PERFORMANCE: Pre-compile combined regexes ─────────────────────────────
+  //
+  // Called once at module load time. Each category gets:
+  //   _WORD_RE   — single alternation regex for all single-word terms
+  //   _PHRASE_RE — single alternation regex for all multi-word phrases
+  //              (or null if no phrases in that category)
+  //
+  // Both use word-boundary anchors (\b) and case-insensitive flag.
+  // Hyphen in multi-word phrases is escaped for regex safety.
+
+  function _escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function _buildWordRegex(words) {
+    if (!words || words.length === 0) return null;
+    const escaped = words.map(_escapeRegex);
+    return new RegExp("\\b(?:" + escaped.join("|") + ")\\b", "gi");
+  }
+
+  function _buildPhraseRegex(phrases) {
+    if (!phrases || phrases.length === 0) return null;
+    // Phrases already sorted longest-first by the arrays above
+    const escaped = phrases.map(_escapeRegex);
+    return new RegExp("(?:" + escaped.join("|") + ")", "gi");
+  }
+
+  // Pre-compiled at load time — initialized from loaded data
+  let MEDICAL_WORD_RE    = null;
+  let MEDICAL_PHRASE_RE  = null;
+  let FIN_WORD_RE        = null;
+  let FIN_PHRASE_RE      = null;
+
+  // Initialize and rebuild regexes from loaded term data
+  function initializeTerms() {
+    rebuildGazetteers();  // Ensure GAZETTEER has the latest data
+    MEDICAL_WORD_RE = _buildWordRegex(MEDICAL_WORDS);
+    MEDICAL_PHRASE_RE = _buildPhraseRegex(MEDICAL_PHRASES);
+    FIN_WORD_RE = _buildWordRegex(FINANCIAL_WORDS);
+    FIN_PHRASE_RE = _buildPhraseRegex(FINANCIAL_PHRASES);
+    // Note: Nationality regexes are immutable (const), so they're built on first load
+    // Rebuild is not needed unless the nationality lists change at runtime (unlikely)
+    console.log('[TrustGazetteer] Initialized with ' + MEDICAL_WORDS.length + ' medical terms, ' + FINANCIAL_WORDS.length + ' financial terms, ' + ORGANIZATIONS_WORDS.length + ' organization terms (direct JS loading, no CSV needed)');
+  }
+
+  // ── PERSONAL DESCRIPTORS ──────────────────────────────────────────────────
+  // Physical characteristics that are PII when attributed to a person
+
+  // Eye color — common color descriptors people use to describe themselves
+  const EYE_COLOR_TERMS = [
+    "blue", "blue eyes",
+    "brown", "brown eyes",
+    "black", "black eyes",          // Note: "black" also appears in nationality context
+    "green", "green eyes",
+    "gray", "gray eyes",
+    "grey", "grey eyes",
+    "hazel", "hazel eyes",
+    "amber", "amber eyes",
+    "light blue", "dark blue",
+    "light brown", "dark brown",
+    "light green", "dark green"
   ];
 
-  // ── Medical — multi-word phrases ───────────────────────────────────────────
-  // Sorted longest-first so longer phrases shadow shorter substrings in display
-  const MEDICAL_PHRASES = [
-    "chronic obstructive pulmonary disease",
-    "attention deficit hyperactivity disorder",
-    "myalgic encephalomyelitis chronic fatigue syndrome",
-    "obsessive compulsive disorder",
-    "post-traumatic stress disorder",
-    "polycystic ovary syndrome",
-    "irritable bowel syndrome",
-    "inflammatory bowel disease",
-    "seasonal affective disorder",
-    "pelvic inflammatory disease",
-    "non-alcoholic fatty liver disease",
-    "motor neurone disease",
-    "deep vein thrombosis",
-    "generalised anxiety disorder",
-    "generalized anxiety disorder",
-    "social anxiety disorder",
-    "peripheral neuropathy",
-    "personality disorder",
-    "obstructive sleep apnoea",
-    "obstructive sleep apnea",
-    "sickle cell disease",
-    "sickle cell anaemia",
-    "rheumatoid arthritis",
-    "psoriatic arthritis",
-    "binge eating disorder",
-    "postnatal depression",
-    "multiple sclerosis",
-    "celiac disease",
-    "coeliac disease",
-    "crohn's disease",
-    "crohns disease",
-    "heart failure",
-    "heart disease",
-    "heart attack",
-    "high blood pressure",
-    "low blood pressure",
-    "blood pressure",
-    "kidney disease",
-    "kidney failure",
-    "kidney stones",
-    "kidney infection",
-    "liver disease",
-    "liver failure",
-    "liver cancer",
-    "eating disorder",
-    "panic attack",
-    "panic disorder",
-    "anxiety disorder",
-    "bipolar disorder",
-    "chronic fatigue",
-    "chronic pain",
-    "sleep apnea",
-    "sleep apnoea",
-    "whooping cough",
-    "thyroid disease",
-    "thyroid cancer",
-    "breast cancer",
-    "lung cancer",
-    "skin cancer",
-    "cervical cancer",
-    "ovarian cancer",
-    "prostate cancer",
-    "testicular cancer",
-    "colorectal cancer",
-    "bowel cancer",
-    "stomach cancer",
-    "bladder cancer",
-    "womb cancer",
-    "uterine cancer",
-    "spina bifida",
-    "spinal stenosis",
-    "varicose veins",
-    "vascular dementia",
-    "food allergy",
-    "food poisoning",
-    "lactose intolerance",
-    "hay fever",
-    "type 2 diabetes",
-    "type 1 diabetes",
-    "down syndrome",
-    "downs syndrome",
-    "down's syndrome",
-    "urinary tract infection",
-    "urinary incontinence"
-  ].sort((a, b) => b.length - a.length);
-
-  // ── Financial — single words ───────────────────────────────────────────────
-  // Source: FinRAD (SRC-GAZ-003) + BSP Glossary (SRC-GAZ-004)
-  const FINANCIAL_WORDS = [
-    // Core personal financial distress terms (FinRAD)
-    "bankrupt", "bankruptcy", "insolvent", "insolvency",
-    "foreclosure", "foreclosed", "repossession", "repossessed",
-    "garnishment", "garnished",
-    "debt", "debts", "indebted",
-    "loan", "loans",
-    "mortgage", "mortgaged",
-    "overdue", "delinquent",
-    "collateral", "lien",
-    "liquidation", "liquidated",
-    // BSP Philippines-specific terms (SRC-GAZ-004)
-    "restructured",
-    "dacion",                  // dacion en pago
-    "nonperforming",
-    "overdraft",
-    "amortization", "amortisation",
-    "installment", "instalment",
-    "arrears",
-    "default",
-    // General financial disclosure indicators
-    "pension", "annuity",
-    "remittance", "remit",
-    "payroll", "salary", "salaries",
-    "income", "earnings",
-    "allowance",
-    "subsidy", "subsidized",
-    "retrenchment", "retrenched",
-    "redundancy", "redundant",
-    "severance",
-    "inheritance",
-    "alimony", "beneficiary"
+  // Sex / Gender — self-identified biological sex or gender identity
+  const SEX_GENDER_TERMS = [
+    "female",
+    "male",
+    "intersex",
+    "non-binary", "nonbinary",
+    "woman", "man",
+    "girl", "boy",
+    "femme", "masc",
+    "genderqueer", "genderfluid",
+    "agender",
+    "bigender",
+    "two-spirit"
   ];
 
-  // ── Financial — multi-word phrases ─────────────────────────────────────────
-  const FINANCIAL_PHRASES = [
-    "non-performing loan",
-    "nonperforming loan",
-    "past due",
-    "past-due",
-    "foreclosed asset",
-    "debt consolidation",
-    "credit card debt",
-    "personal loan",
-    "housing loan",
-    "car loan",
-    "auto loan",
-    "student loan",
-    "payday loan",
-    "cash advance",
-    "minimum wage",
-    "net income",
-    "gross income",
-    "take home pay",
-    "take-home pay",
-    "out of work",
-    "lost my job",
-    "filed for bankruptcy",
-    "declared bankrupt"
-  ].sort((a, b) => b.length - a.length);
-
-  // ── Nationality — single words ─────────────────────────────────────────────
+  // ── Nationality — single words ─────────────────────────────────────────────────
   // Sources:
   //   SRC-GAZ-001 — country-nationality-list MIT (nationality adjectives)
   //   Part A/B audit (2026-08-29) — Filipino/Taglish self-identifiers, PH
@@ -283,7 +197,6 @@ const TrustGazetteer = (() => {
   //
   // Word-boundary (\b) guards are applied by _buildWordRegex(). All entries lowercase.
   const NATIONALITY_WORDS = [
-    // ── Asia-Pacific — nationality adjectives ─────────────────────────────────
     "filipino", "filipina",
     "pilipino", "pilipina",       // Tagalog-language spellings (different string, not a typo)
     "philipino", "philipina",     // very common one-l misspellings
@@ -459,15 +372,6 @@ const TrustGazetteer = (() => {
     return new RegExp("(?:" + escaped.join("|") + ")", "gi");
   }
 
-  // Pre-compiled at load time — reused on every scan call
-  const MEDICAL_WORD_RE    = _buildWordRegex(MEDICAL_WORDS);
-  const MEDICAL_PHRASE_RE  = _buildPhraseRegex(MEDICAL_PHRASES);
-  const FIN_WORD_RE        = _buildWordRegex(FINANCIAL_WORDS);
-  const FIN_PHRASE_RE      = _buildPhraseRegex(FINANCIAL_PHRASES);
-  const NAT_WORD_RE        = _buildWordRegex(NATIONALITY_WORDS);
-  const NAT_PHRASE_RE      = _buildPhraseRegex(NATIONALITY_PHRASES);
-
-
   // ── B2: TRIGGER PHRASES ───────────────────────────────────────────────────
   // Each entry:
   //   phrase   — canonical trigger (lowercase)
@@ -488,7 +392,8 @@ const TrustGazetteer = (() => {
     { phrase: "i'm",                  category: "age",          risk: "low",   followPattern: /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ },
     { phrase: "my age is",            category: "age",          risk: "low"    },
     { phrase: "i was born",           category: "dob",          risk: "low"    },
-    { phrase: "my birthday is",       category: "dob",          risk: "low"    },
+    { phrase: "my birthday is",       category: "dob",          risk: "low",   followPattern: /^(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2},?\s*\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/i },
+    { phrase: "my birthday is on",    category: "dob",          risk: "low",   followPattern: /^(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2},?\s*\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/i },
     { phrase: "date of birth",        category: "dob",          risk: "low"    },
     // Location
     // NOTE: "medium" is not a valid RISK_ORDER key — all values must be "low", "moderate", or "high".
@@ -504,6 +409,8 @@ const TrustGazetteer = (() => {
     { phrase: "address ko",           category: "location",     risk: "low" },
     // Health
     { phrase: "i have",               category: "health",       risk: "low", requireGazetteer: "medical" },
+    { phrase: "i am experiencing",    category: "health",       risk: "low", requireGazetteer: "medical" },
+    { phrase: "i'm experiencing",     category: "health",       risk: "low", requireGazetteer: "medical" },
     { phrase: "i was diagnosed",      category: "health",       risk: "low" },
     { phrase: "i am diagnosed",       category: "health",       risk: "low" },
     { phrase: "i suffer from",        category: "health",       risk: "low" },
@@ -522,14 +429,21 @@ const TrustGazetteer = (() => {
     { phrase: "i earn",               category: "financial",    risk: "low" },
     { phrase: "my income is",         category: "financial",    risk: "low" },
     { phrase: "my account number is", category: "financial",    risk: "high"   },
-    { phrase: "my card number is",    category: "financial",    risk: "high"   }
+    { phrase: "my card number is",    category: "financial",    risk: "high"   },
+    // Physical Descriptors — eye color and sex/gender
+    { phrase: "my eye color is",      category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },
+    { phrase: "my eyes are",          category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },
+    { phrase: "i have",               category: "eye_color",    risk: "low",   requireGazetteer: "eye_color",   followPattern: /^(blue|brown|black|green|gray|grey|hazel|amber)\s*(eyes)?/ },
+    { phrase: "my sex is",            category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender" },
+    { phrase: "my gender is",         category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender" },
+    { phrase: "i am",                 category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender",   followPattern: /^(female|male|intersex|non-binary|nonbinary|woman|man|girl|boy|femme|masc|genderqueer|genderfluid|agender|bigender)/ }
   ];
 
   // ── GAZETTEER OBJECT — Aggregated word/phrase lists for validation ─────────
   // Used by runTriggerScan() to validate extracted spans against gazetteers.
   // When trigger.requireGazetteer is set, the extracted value must contain
   // at least one term from GAZETTEER[trigger.requireGazetteer].
-  const GAZETTEER = {
+  let GAZETTEER = {
     medical: [
       ...MEDICAL_WORDS,
       ...MEDICAL_PHRASES
@@ -538,11 +452,65 @@ const TrustGazetteer = (() => {
       ...FINANCIAL_WORDS,
       ...FINANCIAL_PHRASES
     ],
+    organizations: ORGANIZATIONS_WORDS,
+    eye_color: EYE_COLOR_TERMS,
+    sex_gender: SEX_GENDER_TERMS,
     nationality_religion: [
       ...NATIONALITY_WORDS,
       ...NATIONALITY_PHRASES
     ]
   };
+
+  // Helper function to rebuild GAZETTEER if data loads after initialization
+  function rebuildGazetteers() {
+    // Reload from globals in case they've been updated
+    if (typeof MEDICAL_TERMS_DATA !== 'undefined' && Array.isArray(MEDICAL_TERMS_DATA)) {
+      const medicalTerms = MEDICAL_TERMS_DATA.map(t => t.toLowerCase());
+      MEDICAL_PHRASES = medicalTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+      MEDICAL_WORDS = medicalTerms.filter(t => !t.includes(' '));
+    } else if (typeof window !== 'undefined' && window.MEDICAL_TERMS_DATA) {
+      const medicalTerms = window.MEDICAL_TERMS_DATA.map(t => t.toLowerCase());
+      MEDICAL_PHRASES = medicalTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+      MEDICAL_WORDS = medicalTerms.filter(t => !t.includes(' '));
+    }
+    
+    if (typeof FINANCIAL_TERMS_DATA !== 'undefined' && Array.isArray(FINANCIAL_TERMS_DATA)) {
+      const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+      FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+      FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+    } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
+      const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+      FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
+      FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+    }
+
+    if (typeof ORGANIZATIONS_DATA !== 'undefined' && Array.isArray(ORGANIZATIONS_DATA)) {
+      ORGANIZATIONS_WORDS = ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+    } else if (typeof window !== 'undefined' && window.ORGANIZATIONS_DATA) {
+      ORGANIZATIONS_WORDS = window.ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+    }
+
+    // Rebuild GAZETTEER with fresh data
+    GAZETTEER = {
+      medical: [
+        ...MEDICAL_WORDS,
+        ...MEDICAL_PHRASES
+      ],
+      financial: [
+        ...FINANCIAL_WORDS,
+        ...FINANCIAL_PHRASES
+      ],
+      organizations: ORGANIZATIONS_WORDS,
+      eye_color: EYE_COLOR_TERMS,
+      sex_gender: SEX_GENDER_TERMS,
+      nationality_religion: [
+        ...NATIONALITY_WORDS,
+        ...NATIONALITY_PHRASES
+      ]
+    };
+    
+    console.log('[TrustGazetteer] Gazetteers rebuilt: ' + MEDICAL_WORDS.length + ' medical, ' + FINANCIAL_WORDS.length + ' financial, ' + ORGANIZATIONS_WORDS.length + ' organizations');
+  }
 
   // Stop words — extracting a span halts when one of these is the next word
   const STOP_WORDS = new Set([
@@ -570,8 +538,12 @@ const TrustGazetteer = (() => {
     employer:     { label: "Employer / Workplace",  sanitize: (_) => "[EMPLOYER REDACTED]"           },
     religion:     { label: "Religion / Belief",     sanitize: (_) => "[BELIEF INFO REDACTED]"        },
     financial:    { label: "Financial Information", sanitize: (_) => "[FINANCIAL INFO REDACTED]"     },
+    eye_color:    { label: "Eye Color",             sanitize: (_) => "[EYE COLOR REDACTED]"          },
+    sex_gender:   { label: "Sex / Gender",          sanitize: (_) => "[SEX/GENDER REDACTED]"         },
     // ── B1 gazetteer scan categories (must match GAZETTEER object keys) ───
     medical:             { label: "Medical Term",            sanitize: (v) => "[MEDICAL: " + v + "]"          },
+    financial:           { label: "Financial Term",          sanitize: (v) => "[FINANCIAL: " + v + "]"        },
+    organizations:       { label: "Organization",            sanitize: (v) => "[ORGANIZATION: " + v + "]"     },
     nationality_religion: { label: "Nationality / Religion", sanitize: (v) => "[NATIONALITY/RELIGION: " + v + "]" },
     // Legacy aliases kept for backwards compat
     medical_term: { label: "Medical Term",          sanitize: (v) => "[MEDICAL: " + v + "]"          },
@@ -604,28 +576,226 @@ const TrustGazetteer = (() => {
     return 1 - levenshtein(a, b) / maxLen;
   }
 
-  const FUZZY_THRESHOLD = 0.80; // ≥ 0.80 similarity required
+  /**
+   * ★ NEW: Detect and reject prefix/suffix variations
+   * Examples:
+   *   tuberculosis → epituberculosis (prefix "epi")
+   *   tuberculosis → tuberculosisss (suffix repeated)
+   * 
+   * Heuristic: If one string contains the other as a substring,
+   * and the difference is > 20% length growth, it's likely a different term.
+   * 
+   * @param {string} text - First string to compare
+   * @param {string} term - Second string to compare
+   * @param {number} threshold - Growth percentage to reject (default: 20%)
+   * @returns {boolean} true if this is a prefix/suffix variation to reject
+   * @private
+   */
+  function isPrefixSuffixVariation(text, term, threshold = 20) {
+    // If one is a substring of the other
+    if (text.includes(term) || term.includes(text)) {
+      const shorter = Math.min(text.length, term.length);
+      const longer = Math.max(text.length, term.length);
+      
+      // Calculate growth percentage
+      const growthPercent = ((longer - shorter) / shorter) * 100;
+      
+      // If growth > threshold, it's likely a different term (prefix/suffix variant)
+      // Examples:
+      //   tuberculosis (12) → epituberculosis (15): 25% growth → REJECT
+      //   mestration (10) → menstruation (12): 20% growth → BORDERLINE (allow)
+      if (growthPercent > threshold) {
+        return true;  // Reject as prefix/suffix variation
+      }
+    }
+    
+    return false;  // Not a prefix/suffix variation
+  }
+
+  // ★ CRITICAL: Increased from 0.80 to 0.90 to prevent false positives while catching real typos
+  // 0.80 allowed "tuberculosis" (12 chars) to match "epituberculosis" (15 chars) = different diseases!
+  // 0.90 requires high similarity but still catches common typos like "menstration" → "menstruation"
+  // Combined with length-ratio validation (min 85%), this prevents 25% length differences
+  const FUZZY_THRESHOLD = 0.90; // ≥ 0.90 similarity required for medical terms
 
   /**
-   * Fuzzy-match a trigger phrase against the text using Levenshtein similarity ≥ 0.80.
+   * Fuzzy-match a trigger phrase against the text using Levenshtein similarity ≥ 0.90.
    * Slides a word-window across the text and checks similarity of each window
    * against the canonical phrase.
+   * 
+   * ★ ENHANCED: Now rejects prefix/suffix variations before checking similarity
    */
   function fuzzyMatchPhrase(text, phrase) {
-    const phraseWords = phrase.split(" ");
+    const phraseWords = phrase.toLowerCase().split(" ");
     const textWords   = text.toLowerCase().split(/\s+/);
     const wLen        = phraseWords.length;
 
     for (let i = 0; i <= textWords.length - wLen; i++) {
       const window = textWords.slice(i, i + wLen).join(" ");
-      if (similarityRatio(window, phrase) >= FUZZY_THRESHOLD) {
+      
+      // ★ NEW: Reject prefix/suffix variations before calculating similarity
+      if (isPrefixSuffixVariation(window, phrase.toLowerCase(), 20)) {
+        continue;  // Skip this potential match
+      }
+      
+      if (similarityRatio(window, phrase.toLowerCase()) >= FUZZY_THRESHOLD) {
         return { matched: true, startWordIdx: i, endWordIdx: i + wLen };
       }
     }
     return { matched: false };
   }
 
-  // ── Value extraction (FIX #3 — no-punctuation boundary) ──────────────────
+  /**
+   * Fuzzy-match a single medical term against text using Levenshtein similarity.
+   * Returns all matches found in the text with their positions.
+   * Handles typos like "menstration" → "menstruation" with ≥ 0.90 similarity.
+   * 
+   * ★ ENHANCED: Now rejects prefix/suffix variations before checking similarity
+   * This prevents "tuberculosis" from matching "epituberculosis"
+   * 
+   * @param {string} text - The text to search in
+   * @param {string} term - The medical term to find (e.g., "menstruation")
+   * @param {number} threshold - Similarity threshold (default 0.90)
+   * @returns {Array} Array of { matchText, index, canonical } objects
+   */
+  function fuzzyMatchMedicalTerm(text, term, threshold = FUZZY_THRESHOLD) {
+    const textWords = text.toLowerCase().split(/\s+/);
+    const termWords = term.toLowerCase().split(/\s+/);
+    const tLen = termWords.length;
+    const matches = [];
+
+    // Single-word terms: match individual words
+    if (tLen === 1) {
+      textWords.forEach((word, idx) => {
+        // Remove trailing punctuation for comparison
+        const cleanWord = word.replace(/[.,!?;:'"]/g, "");
+        
+        // ★ NEW: Reject prefix/suffix variations before calculating distance
+        if (isPrefixSuffixVariation(cleanWord, term.toLowerCase(), 20)) {
+          return;  // Skip this potential match
+        }
+        
+        // ★ CRITICAL FIX: Prevent matching terms with drastically different lengths
+        // Example: "tuberculosis" (12 chars) should NOT fuzzy-match "epituberculosis" (15 chars)
+        // Allow max 15% length difference (length ratio between 0.85 and 1.18)
+        const minLen = Math.min(cleanWord.length, term.length);
+        const maxLen = Math.max(cleanWord.length, term.length);
+        const lengthRatio = minLen / maxLen;
+        
+        if (lengthRatio < 0.85) {
+          // Terms differ too much in length — skip fuzzy match
+          // This prevents "tuberculosis" matching "epituberculosis" which differ by 25%
+          return;
+        }
+        
+        const similarity = similarityRatio(cleanWord, term.toLowerCase());
+        
+        if (similarity >= threshold && cleanWord.length > 0) {
+          matches.push({
+            matchText: word,
+            index: idx,
+            canonical: term,
+            similarity: similarity
+          });
+        }
+      });
+    } else {
+      // Multi-word terms: match word sequences
+      for (let i = 0; i <= textWords.length - tLen; i++) {
+        const window = textWords.slice(i, i + tLen).join(" ");
+        
+        // ★ NEW: Reject prefix/suffix variations before calculating distance
+        if (isPrefixSuffixVariation(window, term.toLowerCase(), 20)) {
+          continue;  // Skip this potential match
+        }
+        
+        const similarity = similarityRatio(window, term.toLowerCase());
+        
+        if (similarity >= threshold) {
+          matches.push({
+            matchText: window,
+            startIndex: i,
+            endIndex: i + tLen,
+            canonical: term,
+            similarity: similarity
+          });
+        }
+      }
+    }
+
+    return matches;
+  }
+
+  // ── MEDICAL TERM GROUPING ────────────────────────────────────────────────────
+  // Normalizes related medical terms to a canonical form for better grouping
+  // Examples:
+  //   - "menstration" (typo) → "menstruation" (canonical)
+  //   - "heavy menstruation" + "menstration" → grouped as 1 finding
+  
+  const MEDICAL_TERM_NORMALIZATION = {
+    // Menstruation variations (very common typo)
+    'menstration': 'menstruation',
+    'mensuration': 'menstruation',
+    'menstreation': 'menstruation',
+    'menstraton': 'menstruation',
+    'mentration': 'menstruation',
+    // Common typo patterns for other terms
+    'diabeties': 'diabetes',
+    'diabetic': 'diabetes',
+    'diebetes': 'diabetes',
+    'asma': 'asthma',
+    'athsma': 'asthma',
+    'depression': 'depression',  // already correct
+    'anxeity': 'anxiety',
+    'anxety': 'anxiety',
+    'maleria': 'malaria',
+    'malaria': 'malaria',  // already correct
+    'pneumonia': 'pneumonia',  // already correct
+    'bronchitis': 'bronchitis',  // already correct
+    'tonsillitis': 'tonsillitis',  // already correct
+    'migrane': 'migraine',
+    'migrain': 'migraine',
+    'headache': 'headache',  // already correct
+    'cancre': 'cancer',
+    'canser': 'cancer',
+    'cardiak': 'cardiac',
+    'hypetension': 'hypertension',
+    'hypertention': 'hypertension',
+    'cholestoral': 'cholesterol',
+    'cholestrol': 'cholesterol'
+    // Add more as discovered
+  };
+
+  /**
+   * Normalize a medical term to its canonical form for grouping.
+   * Handles typos and variations so "menstration" and "menstruation" are grouped together.
+   * 
+   * @param {string} term - The medical term to normalize
+   * @returns {string} The canonical form, or original if no mapping exists
+   */
+  function normalizeMedicalTerm(term) {
+    const lower = term.toLowerCase();
+    return MEDICAL_TERM_NORMALIZATION[lower] || lower;
+  }
+
+  /**
+   * Get human-readable correction message for a typo.
+   * Shows "menstration" → "menstruation" format for user awareness.
+   * 
+   * @param {string} typo - The typo variant detected
+   * @param {string} canonical - The correct spelling
+   * @returns {string} Correction message, or empty if not a typo
+   */
+  function getCorrectionMessage(typo, canonical) {
+    const typoLower = typo.toLowerCase();
+    const canonicalLower = canonical.toLowerCase();
+    
+    // Only show correction if they're actually different
+    if (typoLower !== canonicalLower) {
+      return `"${typo}" corrected to "${canonical}"`;
+    }
+    return "";
+  }
 
   /**
    * Extract the "value" that follows a matched trigger phrase.
@@ -736,6 +906,14 @@ const TrustGazetteer = (() => {
         return /\d/.test(span) ||
                gazetteers.financial.some(t => span.toLowerCase().includes(t));
 
+      case "eye_color":
+        // Eye color must be a recognized color term from the gazetteer
+        return gazetteers.eye_color.some(t => span.toLowerCase().includes(t));
+
+      case "sex_gender":
+        // Sex/gender must be a recognized term from the gazetteer
+        return gazetteers.sex_gender.some(t => span.toLowerCase().includes(t));
+
       default:
         return span.length >= 2;
     }
@@ -796,6 +974,11 @@ const TrustGazetteer = (() => {
     // 2. "Have diabetes", "have depression", etc. - personal possession
     if (/\bhave\b/.test(contextLower) && category === "medical") {
       return true;  // Risky: "I have diabetes"
+    }
+
+    // 2b. "Am experiencing" or "experiencing" for medical terms
+    if (/\b(experiencing|experience|am experiencing|i'm experiencing)\b/.test(contextLower) && category === "medical") {
+      return true;  // Risky: "I am experiencing heavy menstruation"
     }
 
     // 3. Possessive personal disclosure: "My X is", "Our X"
@@ -880,10 +1063,11 @@ const TrustGazetteer = (() => {
   function runGazetteerScan(text) {
     const findings = [];
     const lower = text.toLowerCase();
+    const seen = new Set();  // Track already-found items to avoid duplicates
 
     for (const [category, terms] of Object.entries(GAZETTEER)) {
       for (const term of terms) {
-        // Use word boundary to avoid partial matches
+        // ── EXACT MATCH (original behavior) ────────────────────────────────
         const re = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "i");
         let match;
         const globalRe = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "gi");
@@ -905,15 +1089,90 @@ const TrustGazetteer = (() => {
           // B1 findings: bare gazetteer terms detected in risky context
           // These have proper structure for scoring and display
           const meta = CATEGORY_META[category] || { label: category, sanitize: () => "[REDACTED]" };
-          findings.push({
-            patternId:   "gazetteer_" + category,
-            label:       meta.label,
-            risk:        "low",  // Base risk for gazetteer terms
-            rawMatch:    match[0],
-            safeVersion: meta.sanitize ? meta.sanitize(match[0]) : "[REDACTED]",
-            source:      "B1_gazetteer",
-            validated:   false
-          });
+          const dedupeKey = category + ":" + match[0].toLowerCase();
+          
+          if (!seen.has(dedupeKey)) {
+            findings.push({
+              patternId:   "gazetteer_" + category,
+              label:       meta.label,
+              risk:        "low",  // Base risk for gazetteer terms
+              // ★ For consistency, use normalized term for rawMatch
+              rawMatch:    category === "medical" ? normalizeMedicalTerm(match[0]) : match[0],
+              originalMatch: match[0],  // Keep original for reference
+              safeVersion: meta.sanitize ? meta.sanitize(match[0]) : "[REDACTED]",
+              source:      "B1_gazetteer",
+              validated:   false,
+              matchType:   "exact",
+              normalizedTerm: category === "medical" ? normalizeMedicalTerm(match[0]) : undefined
+            });
+            seen.add(dedupeKey);
+          }
+        }
+
+        // ── FUZZY MATCH (new: for medical terms with typo tolerance) ────────
+        // Only apply fuzzy matching to medical category to catch typos like "menstration"
+        if (category === "medical") {
+          const fuzzyMatches = fuzzyMatchMedicalTerm(text, term, FUZZY_THRESHOLD);
+          
+          for (const fuzzyMatch of fuzzyMatches) {
+            // Skip if this exact text already found via exact match
+            const dedupeKey = category + ":" + fuzzyMatch.matchText.toLowerCase();
+            if (seen.has(dedupeKey)) {
+              continue;
+            }
+            
+            // Only report fuzzy matches if similarity is good but not perfect (>= threshold, < 1.0)
+            if (fuzzyMatch.similarity < 1.0 && fuzzyMatch.similarity >= FUZZY_THRESHOLD) {
+              // Analyze context before flagging as PII
+              // For fuzzy matches, find the character position in the original text
+              let charIndex = 0;
+              let wordCount = 0;
+              const searchText = text.toLowerCase();
+              const matchLower = fuzzyMatch.matchText.toLowerCase();
+              charIndex = searchText.indexOf(matchLower);
+              
+              if (charIndex >= 0) {
+                const isRiskyContext = analyzeTermContext(text, charIndex, fuzzyMatch.matchText.length, category);
+                
+                if (!isRiskyContext) {
+                  console.log(
+                    '[TrustPrompt/PATH_B/B1] Filtered safe context (fuzzy): "' + fuzzyMatch.matchText + 
+                    '" in category "' + category + '"'
+                  );
+                  continue;  // Skip this match
+                }
+              }
+
+              const meta = CATEGORY_META[category] || { label: category, sanitize: () => "[REDACTED]" };
+              const correctionMsg = getCorrectionMessage(fuzzyMatch.matchText, fuzzyMatch.canonical);
+              
+              findings.push({
+                patternId:   "gazetteer_" + category,
+                label:       meta.label,
+                risk:        "low",
+                // ★ DISPLAY CORRECTED SPELLING: Show what was found, but normalize to canonical form for display
+                // For fuzzy matches, display the canonical/correct spelling instead of the typo
+                rawMatch:    fuzzyMatch.canonical,         // Display corrected spelling (canonical term)
+                originalMatch: fuzzyMatch.matchText,       // Keep actual matched typo for reference
+                canonicalMatch: fuzzyMatch.canonical,      // The canonical form from DB (for grouping)
+                safeVersion: meta.sanitize ? meta.sanitize(fuzzyMatch.canonical) : "[REDACTED]",
+                source:      "B1_gazetteer_fuzzy",
+                validated:   false,
+                matchType:   "fuzzy",
+                similarity:  fuzzyMatch.similarity.toFixed(2),
+                detectedAs:  fuzzyMatch.matchText,         // ★ NEW: Show what was actually detected (the typo)
+                correctedTo: fuzzyMatch.canonical,         // ★ NEW: Show the correction
+                correctionMessage: correctionMsg,         // Shows what was found vs what's in DB
+                normalizedTerm: normalizeMedicalTerm(fuzzyMatch.matchText)  // Normalize what was actually found
+              });
+              seen.add(dedupeKey);
+              
+              console.log(
+                '[TrustPrompt/PATH_B/B1] Fuzzy match found: "' + fuzzyMatch.matchText + 
+                '" → "' + fuzzyMatch.canonical + '" (similarity: ' + fuzzyMatch.similarity.toFixed(2) + ')'
+              );
+            }
+          }
         }
       }
     }
@@ -1073,6 +1332,9 @@ const TrustGazetteer = (() => {
 
     return combined;
   }
+
+  // Initialize terms on module load (synchronous - no async needed)
+  initializeTerms();
 
   return { scan };
 

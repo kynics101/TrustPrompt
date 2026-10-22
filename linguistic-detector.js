@@ -13,7 +13,7 @@
 // Graceful degradation: If compromise.js is unavailable, returns empty findings
 // without error, allowing scanner to continue with PATH A/B results only.
 
-/* global window */
+/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA */
 
 const TrustLinguisticDetector = (() => {
 
@@ -30,12 +30,481 @@ const TrustLinguisticDetector = (() => {
     'test', 'demo', 'sample', 'admin', 'root'
   ]);
 
+  // Non-name words that get capitalized but are not names
+  // These are typically adjectives, nouns, or descriptors that should not be treated as person names
+  const NON_NAME_WORDS = new Set([
+    // ★ CRITICAL: Possessive pronouns and determiners — MUST NEVER be treated as first name
+    // These always precede nouns/descriptors, never person names
+    'my', 'your', 'his', 'her', 'its', 'our', 'their',
+    'mine', 'yours', 'theirs',
+    'a', 'an', 'the', 'this', 'that', 'these', 'those',
+    
+    // ★ EXPANDED: Added common verbs, participles, and discourse markers causing false positives
+    
+    // Adjectives (descriptive) — ★ CRITICAL: Includes adjectives that commonly appear before nouns
+    'heavy', 'light', 'small', 'large', 'big', 'little', 'new', 'old', 'young', 'ancient',
+    'fast', 'slow', 'quick', 'rapid', 'bright', 'dark', 'long', 'short', 'tall', 'wide',
+    'hot', 'cold', 'warm', 'cool', 'thick', 'thin', 'strong', 'weak', 'tight', 'loose',
+    'good', 'bad', 'better', 'worse', 'best', 'worst', 'nice', 'ugly', 'pretty', 'beautiful',
+    'smart', 'dumb', 'clever', 'silly', 'funny', 'serious', 'happy', 'sad', 'angry', 'calm',
+    'famous', 'unknown', 'unique', 'common', 'special', 'normal', 'rare', 'modern', 'current',
+    'genuine', 'optimal', 'sufficient', 'adequate', 'true', 'false', 'real', 'virtual', 'late',
+    'early', 'late', 'initial', 'final', 'social', 'economic', 'political', 'cultural',
+    
+    // ★ NEW: Discourse markers & connectors (prevent "According to X" → X being flagged as name)
+    'according', 'regarding', 'concerning', 'considering', 'given', 'speaking', 'talking',
+    'based', 'depending', 'following', 'contrary', 'unlike', 'similar', 'compared',
+    'relative', 'relevant', 'adjacent', 'opposite', 'however', 'therefore',
+    'moreover', 'furthermore', 'nevertheless', 'meanwhile', 'likewise', 'hence', 'thus',
+    
+    // ★ CRITICAL FIX: Present participles/gerunds (avoid "Experiencing X" → X being flagged as name)
+    // These are verb-participles ending in -ing that commonly appear before nouns
+    'experiencing', 'reporting', 'stating', 'saying', 'telling', 'asking', 'calling',
+    'including', 'excluding', 'considering', 'regarding', 'concerning', 'involving',
+    'creating', 'making', 'taking', 'giving', 'getting', 'showing', 'finding', 'leaving',
+    'using', 'providing', 'containing', 'requiring', 'adding', 'offering', 'having',
+    'going', 'running', 'walking', 'talking', 'working', 'helping', 'doing', 'being',
+    'understanding', 'managing', 'handling', 'processing', 'recognizing', 'bringing',
+    'developing', 'improving', 'establishing', 'changing', 'building', 'planning',
+    
+    // ★ CRITICAL: Additional -ing forms for better coverage
+    'existing', 'existing', 'pending', 'rising', 'falling', 'growing', 'declining',
+    'increasing', 'decreasing', 'maintaining', 'controlling', 'monitoring', 'tracking',
+    'measuring', 'assessing', 'evaluating', 'analyzing', 'designing', 'engineering',
+    
+    // ★ NEW: Common verbs in past tense (avoid "Worked X", "Lived Y" → X, Y as names)
+    'worked', 'lived', 'played', 'called', 'named', 'heard', 'seen', 'found', 'left',
+    'made', 'went', 'came', 'said', 'gave', 'got', 'took', 'put', 'sent', 'showed',
+    'reported', 'stated', 'told', 'asked', 'gave', 'helped', 'helped', 'offered',
+    
+    // Temporal/Spatial
+    'future', 'past', 'present', 'today', 'tomorrow', 'yesterday', 'now', 'then', 'here', 'there',
+    'above', 'below', 'inside', 'outside', 'before', 'after', 'during', 'between', 'through',
+    'morning', 'afternoon', 'evening', 'night', 'day', 'week', 'month', 'year', 'time', 'hour',
+    
+    // Abstract nouns & common concepts
+    'number', 'thing', 'stuff', 'world', 'place', 'way', 'reason', 'cause', 'result', 'effect',
+    'start', 'end', 'beginning', 'middle', 'center', 'point', 'line', 'space', 'system', 'process',
+    'issue', 'problem', 'challenge', 'situation', 'context', 'scenario', 'topic', 'subject',
+    'information', 'knowledge', 'data', 'content', 'document', 'file', 'record',
+    
+    // ★ CRITICAL: Personal attribute words - NOT person names (e.g., "My birthday", "Your address", "His email")
+    // These should be filtered when paired with possessive pronouns
+    'birthday', 'age', 'email', 'phone', 'address', 'job', 'title', 'company', 'department', 
+    'ssn', 'password', 'pin', 'account', 'license', 'gender', 'sex', 'height', 'weight', 
+    'color', 'eyes', 'hair', 'health', 'condition', 'salary', 'income', 'location', 'country', 
+    'city', 'state', 'zip', 'religion', 'belief', 'nationality', 'status', 'relationship', 
+    'spouse', 'parent', 'child', 'sibling', 'emergency', 'contact', 'reference', 'description', 
+    'notes', 'comments', 'details', 'preference', 'hobby', 'interest', 'experience', 'qualification'
+  ]);
+
   // Common job titles used for optional filtering
   const COMMON_JOB_TITLES = new Set([
     'manager', 'engineer', 'developer', 'analyst', 'designer', 'director',
     'coordinator', 'specialist', 'consultant', 'assistant', 'associate',
     'person', 'people', 'employee', 'staff', 'worker'
   ]);
+
+  // ★ JAVASCRIPT-FIRST APPROACH: Terms loaded directly from JS modules
+  // No async loading needed — data is available synchronously from OCCUPATIONS_DATA and ORGANIZATIONS_DATA
+  let EXTENSIVE_JOB_TITLES = new Set();
+  let EXTENSIVE_JOB_TITLES_ARRAY = [];  // For length-sorted matching
+  let EXTENSIVE_ORGANIZATIONS = new Set();
+  let EXTENSIVE_ORGANIZATIONS_ARRAY = [];  // For length-sorted matching
+  let ORG_KEYWORDS_INDEX = new Map();  // Keyword → org names mapping
+
+  /**
+   * Initialize EXTENSIVE_JOB_TITLES from OCCUPATIONS_DATA JavaScript array
+   * Called on module load to populate the complete job titles set
+   * Sorts by length (longest first) for optimal matching
+   * @private
+   */
+  function initializeExtensiveJobTitles() {
+    try {
+      console.log('[TrustLinguisticDetector] Initializing job titles from OCCUPATIONS_DATA...');
+      
+      // Check if OCCUPATIONS_DATA is available from terms-occupations.js
+      if (typeof OCCUPATIONS_DATA === 'undefined' || !Array.isArray(OCCUPATIONS_DATA)) {
+        throw new Error('OCCUPATIONS_DATA not available - ensure terms-occupations.js is loaded first');
+      }
+      
+      // Convert to lowercase and create set
+      const titles = OCCUPATIONS_DATA
+        .map(title => title.toLowerCase())
+        .filter(title => title && title.length > 0);
+      
+      console.log(`[TrustLinguisticDetector] Loaded ${titles.length} job titles from OCCUPATIONS_DATA`);
+      
+      // Populate the Set with unique titles
+      EXTENSIVE_JOB_TITLES = new Set(titles);
+      
+      // Sort by length (longest first) for fuzzy matching and multi-word matching
+      EXTENSIVE_JOB_TITLES_ARRAY = Array.from(titles).sort((a, b) => b.length - a.length);
+      
+      console.log(`[TrustLinguisticDetector] ✅ Successfully loaded ${EXTENSIVE_JOB_TITLES.size} job titles`);
+      console.log(`[TrustLinguisticDetector] First 5 titles: ${EXTENSIVE_JOB_TITLES_ARRAY.slice(0, 5).join(', ')}`);
+      console.log(`[TrustLinguisticDetector] Contains 'gynecologist': ${EXTENSIVE_JOB_TITLES.has('gynecologist')}`);
+      return true;
+    } catch (error) {
+      console.error('[TrustLinguisticDetector] ❌ Failed to load job titles:', error);
+      console.error('[TrustLinguisticDetector] Error message:', error.message);
+      console.warn('[TrustLinguisticDetector] Falling back to basic COMMON_JOB_TITLES only');
+      // Graceful degradation: fall back to common titles if JS data unavailable
+      EXTENSIVE_JOB_TITLES = new Set(COMMON_JOB_TITLES);
+      EXTENSIVE_JOB_TITLES_ARRAY = Array.from(COMMON_JOB_TITLES);
+      return false;
+    }
+  }
+
+  /**
+   * Initialize EXTENSIVE_ORGANIZATIONS from ORGANIZATIONS_DATA JavaScript array
+   * Builds indexes for efficient multi-pass matching
+   * @private
+   */
+  function initializeExtensiveOrganizations() {
+    try {
+      console.log('[TrustLinguisticDetector] Initializing organizations from ORGANIZATIONS_DATA...');
+      
+      // Check if ORGANIZATIONS_DATA is available from terms-organizations.js
+      if (typeof ORGANIZATIONS_DATA === 'undefined' || !Array.isArray(ORGANIZATIONS_DATA)) {
+        throw new Error('ORGANIZATIONS_DATA not available - ensure terms-organizations.js is loaded first');
+      }
+      
+      // Convert to lowercase, handle quoted values, and filter
+      const orgs = ORGANIZATIONS_DATA
+        .map(org => {
+          const trimmed = org.trim();
+          // Handle quoted values (e.g., "Abad Outsourcing Co., Ltd.")
+          if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+            return trimmed.slice(1, -1).trim();
+          }
+          return trimmed;
+        })
+        .filter(org => org && org.length > 2);
+      
+      console.log(`[TrustLinguisticDetector] Loaded ${orgs.length} organizations from ORGANIZATIONS_DATA`);
+      
+      // Populate Sets and arrays
+      EXTENSIVE_ORGANIZATIONS = new Set(orgs.map(o => o.toLowerCase()));
+      EXTENSIVE_ORGANIZATIONS_ARRAY = Array.from(orgs).sort((a, b) => b.length - a.length);
+      
+      // Build keyword index for component matching
+      for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
+        const keywords = org.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        for (const keyword of keywords) {
+          if (!ORG_KEYWORDS_INDEX.has(keyword)) {
+            ORG_KEYWORDS_INDEX.set(keyword, []);
+          }
+          ORG_KEYWORDS_INDEX.get(keyword).push(org);
+        }
+      }
+      
+      console.log(`[TrustLinguisticDetector] ✅ Successfully loaded ${EXTENSIVE_ORGANIZATIONS.size} organizations`);
+      console.log(`[TrustLinguisticDetector] First 5 organizations: ${EXTENSIVE_ORGANIZATIONS_ARRAY.slice(0, 5).join(', ')}`);
+      console.log(`[TrustLinguisticDetector] Contains 'accenture': ${EXTENSIVE_ORGANIZATIONS.has('accenture')}`);
+      return true;
+    } catch (error) {
+      console.error('[TrustLinguisticDetector] ❌ Failed to load organizations:', error);
+      console.error('[TrustLinguisticDetector] Error message:', error.message);
+      EXTENSIVE_ORGANIZATIONS = new Set();
+      EXTENSIVE_ORGANIZATIONS_ARRAY = [];
+      ORG_KEYWORDS_INDEX = new Map();
+      return false;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────────
+  // CSV-FIRST UTILITY FUNCTIONS
+  // ──────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Levenshtein distance between two strings
+   * Measures edit distance (insertions, deletions, substitutions)
+   * Used for fuzzy matching with typo tolerance
+   * @private
+   */
+  function levenshteinDistance(str1, str2) {
+    const track = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(0));
+    
+    for (let i = 0; i <= str1.length; i += 1) {
+      track[0][i] = i;
+    }
+    for (let j = 0; j <= str2.length; j += 1) {
+      track[j][0] = j;
+    }
+    
+    for (let j = 1; j <= str2.length; j += 1) {
+      for (let i = 1; i <= str1.length; i += 1) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        track[j][i] = Math.min(
+          track[j][i - 1] + 1,
+          track[j - 1][i] + 1,
+          track[j - 1][i - 1] + indicator
+        );
+      }
+    }
+    
+    return track[str2.length][str1.length];
+  }
+
+  /**
+   * ★ NEW: Detect and reject prefix/suffix variations
+   * Examples:
+   *   tuberculosis → epituberculosis (prefix "epi")
+   *   tuberculosis → tuberculosisss (suffix repeated)
+   * 
+   * Heuristic: If one string contains the other as a substring,
+   * and the difference is > 20% length growth, it's likely a different term.
+   * 
+   * @param {string} text - First string to compare
+   * @param {string} term - Second string to compare
+   * @param {number} threshold - Growth percentage to reject (default: 20%)
+   * @returns {boolean} true if this is a prefix/suffix variation to reject
+   * @private
+   */
+  function isPrefixSuffixVariation(text, term, threshold = 20) {
+    // If one is a substring of the other
+    if (text.includes(term) || term.includes(text)) {
+      const shorter = Math.min(text.length, term.length);
+      const longer = Math.max(text.length, term.length);
+      
+      // Calculate growth percentage
+      const growthPercent = ((longer - shorter) / shorter) * 100;
+      
+      // If growth > threshold, it's likely a different term (prefix/suffix variant)
+      // Examples:
+      //   tuberculosis (12) → epituberculosis (15): 25% growth → REJECT
+      //   mestration (10) → menstruation (12): 20% growth → BORDERLINE (allow)
+      if (growthPercent > threshold) {
+        return true;  // Reject as prefix/suffix variation
+      }
+    }
+    
+    return false;  // Not a prefix/suffix variation
+  }
+
+  /**
+   * Fuzzy find matches in text with Levenshtein distance tolerance
+   * Handles typos, missing words, word order changes
+   * 
+   * ★ ENHANCED: Now rejects prefix/suffix variations before applying Levenshtein
+   * This prevents "tuberculosis" from matching "epituberculosis"
+   * 
+   * @param {string} text - Text to search in
+   * @param {string} pattern - Pattern to find
+   * @param {number} maxDistance - Max edit distance to tolerate (default: 2)
+   * @returns {Array} array of matched strings
+   * @private
+   */
+  function fuzzyFind(text, pattern, maxDistance = 2) {
+    const textWords = text.toLowerCase().split(/[\s,;.!?'"\-()]+/).filter(w => w.length > 0);
+    const patternWords = pattern.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    
+    if (patternWords.length === 0) return [];
+    
+    const matches = [];
+    const patternLength = patternWords.length;
+    
+    // Slide window over text words and compute distance
+    for (let i = 0; i <= textWords.length - patternLength; i++) {
+      const textPhrase = textWords.slice(i, i + patternLength).join(' ');
+      
+      // ★ NEW: Reject prefix/suffix variations before calculating distance
+      if (isPrefixSuffixVariation(textPhrase, pattern.toLowerCase(), 20)) {
+        continue;  // Skip this potential match
+      }
+      
+      const distance = levenshteinDistance(textPhrase, pattern.toLowerCase());
+      
+      if (distance <= maxDistance) {
+        matches.push(textPhrase);
+      }
+    }
+    
+    return matches;
+  }
+
+  /**
+   * Escape special regex characters
+   * @private
+   */
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Find actual text span in original text (for POS tagging)
+   * Returns the matched substring with original casing preserved
+   * @private
+   */
+  function findActualSpan(text, pattern) {
+    const lowerText = text.toLowerCase();
+    const lowerPattern = pattern.toLowerCase();
+    const index = lowerText.indexOf(lowerPattern);
+    
+    if (index === -1) return pattern;
+    return text.slice(index, index + pattern.length);
+  }
+
+  /**
+   * Check if span appears in job context
+   * Looks for job trigger phrases before the span
+   * @private
+   */
+  function checkJobContext(text, actualSpan) {
+    const index = text.toLowerCase().indexOf(actualSpan.toLowerCase());
+    if (index === -1) return false;
+    
+    // Look back up to 50 characters for job indicators
+    const before = text.slice(Math.max(0, index - 50), index).toLowerCase();
+    
+    const jobTriggers = [
+      'is a ', 'is an ', 'is the ',
+      'am a ', 'am an ', 'am the ',           // ★ FIX: Added "am" for "I am a" constructions
+      'are a ', 'are an ', 'are the ',       // ★ FIX: Added "are" for plural/formal
+      'was a ', 'was an ', 'was the ',       // ★ FIX: Added "was" for past tense
+      'were a ', 'were an ', 'were the ',    // ★ FIX: Added "were" for past plural
+      'works as ', 'employed as ', 'works for ',
+      'worked as ', 'work as ',              // ★ FIX: Added past and base forms
+      'my ', 'your ', 'their ', 'her ', 'his ',
+      'be a ', 'become a ', 'hired as ',
+      "i'm a ", "i'm an ",                   // ★ FIX: Added "i'm an" variant
+      "you're a ", "you're an ",             // ★ FIX: Added "you're an" variant
+      "they're a ", "they're an ",           // ★ FIX: Added "they're an" variant
+      "he's a ", "she's a ", "she's an "     // ★ FIX: Added he/she contractions
+    ];
+    
+    return jobTriggers.some(trigger => before.includes(trigger));
+  }
+
+  /**
+   * Check if span appears in organization context
+   * Looks for org trigger phrases before/after the span
+   * @private
+   */
+  function checkOrgContext(text, actualSpan) {
+    const index = text.toLowerCase().indexOf(actualSpan.toLowerCase());
+    if (index === -1) return false;
+    
+    // Extended context windows: look further back to cross sentence boundaries
+    const before = text.slice(Math.max(0, index - 100), index).toLowerCase();
+    const after = text.slice(index + actualSpan.length, Math.min(text.length, index + actualSpan.length + 50)).toLowerCase();
+    
+    const orgTriggers = [
+      'at ', 'in ', 'works at ', 'works in ',
+      'employed at ', 'hired by ', 'from ', 'department of ',
+      'head of ', 'director of ', 'working at ', 'company ', 'organization ',
+      'firm ', 'business ', 'corporation ', 'enterprise '
+    ];
+    
+    const orgMarkers = [
+      ' inc', ' inc.', ' corp', ' corp.', ' ltd', ' ltd.', ' co,', ' co.', ' co', 
+      ' university', ' college', ' department', ' dept',
+      ' ministry', ' ministry.', ' agency', ' agency.', ' bank', ' bank.', ' hospital',
+      ' hospital.', ' school', ' school.', ' institute', ' institute.',
+      ' company', ' company.', ' business', ' business.', ' firm', ' firm.'
+    ];
+    
+    const hasOrgTrigger = orgTriggers.some(trigger => before.includes(trigger));
+    const hasOrgMarker = orgMarkers.some(marker => 
+      after.includes(marker) || actualSpan.toLowerCase().includes(marker)
+    );
+    
+    // If it's a known high-profile company, be more lenient
+    const knownCompanies = new Set([
+      'accenture', 'google', 'microsoft', 'amazon', 'apple', 'facebook', 'meta',
+      'netflix', 'uber', 'airbnb', 'slack', 'zoom', 'adobe', 'intel', 'nvidia',
+      'salesforce', 'oracle', 'ibm', 'cisco', 'vmware', 'dell', 'hp', 'lenovo'
+    ]);
+    
+    if (knownCompanies.has(actualSpan.toLowerCase())) {
+      // For known companies, just check it appears in text (lower validation bar)
+      console.debug(`[PATH_C/VAL_ORG] Known company "${actualSpan}" - accepting with lenient validation`);
+      return true;
+    }
+    
+    console.debug(`[PATH_C/VAL_ORG] Context check for "${actualSpan}": trigger=${hasOrgTrigger}, marker=${hasOrgMarker}`);
+    return hasOrgTrigger || hasOrgMarker || before.includes('at the ');
+  }
+
+  /**
+   * Check for bad POS patterns that indicate false positives
+   * Rejects if: mostly verbs/adjectives, single letters, etc.
+   * @private
+   */
+  function checkBadPOS(doc) {
+    if (!doc || !doc.sentences || doc.sentences().length === 0) {
+      return false;  // Can't validate, assume OK
+    }
+    
+    try {
+      const tokens = doc.sentences().first().tokens();
+      
+      if (!tokens || tokens.length === 0) return false;
+      
+      let nounCount = 0;
+      let verbCount = 0;
+      let adjCount = 0;
+      
+      for (const token of tokens) {
+        const tag = token.tag ? token.tag() : '';
+        if (tag && tag.startsWith('NN')) nounCount++;
+        if (tag && tag.startsWith('VB')) verbCount++;
+        if (tag && tag.startsWith('JJ')) adjCount++;
+      }
+      
+      // If mostly verbs or adjectives, reject
+      const totalNonNoun = verbCount + adjCount;
+      if (nounCount > 0 && totalNonNoun > nounCount) {
+        return true;  // BAD pattern
+      }
+      
+      // Check for single letter tokens (filtering artifacts)
+      if (tokens.some(t => t.text && t.text().length === 1 && /^[a-z]$/i.test(t.text()))) {
+        return true;  // BAD pattern
+      }
+    } catch (error) {
+      console.debug('[TrustLinguisticDetector] POS check failed:', error.message);
+    }
+    
+    return false;  // No bad patterns detected
+  }
+
+  /**
+   * Check if organization is in governance database
+   * Performs exact and case-insensitive matching
+   * @param {string} orgName - Organization name to validate
+   * @returns {boolean} true if organization is known/governed
+   * @private
+   */
+  function isGovernedOrganization(orgName) {
+    if (!orgName || orgName.length < 2) return false;
+    
+    // Exact match first (case-sensitive)
+    if (GOVERNANCE_ORGANIZATIONS.has(orgName)) return true;
+    
+    // Case-insensitive match via lowercase index
+    const lower = orgName.toLowerCase();
+    return GOVERNANCE_ORGANIZATIONS_LOWER.has(lower);
+  }
+
+  /**
+   * Get canonical organization name from governance database
+   * Useful for normalizing org names detected by NLP
+   * @param {string} orgName - Organization name to look up
+   * @returns {string|null} canonical name from DB or null if not found
+   * @private
+   */
+  function getCanonicalOrganizationName(orgName) {
+    if (!orgName) return null;
+    
+    // Try exact match
+    if (GOVERNANCE_ORGANIZATIONS.has(orgName)) return orgName;
+    
+    // Try case-insensitive lookup
+    const lower = orgName.toLowerCase();
+    return GOVERNANCE_ORGANIZATIONS_LOWER.get(lower) || null;
+  }
 
   // Honorifics: Mr, Ms, Mrs, Sir, Dr, Prof, Professor, etc.
   // These indicate that a proper noun following them is likely a person name
@@ -102,9 +571,27 @@ const TrustLinguisticDetector = (() => {
     // Does NOT require "is a/an/the" trigger (unlike extractSubjectPositionNames)
     const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi;
     
+    // ★ FIX: Possessive pronouns that should NEVER start a person name
+    // These are always descriptors, not names (e.g., "My Birthday", "Your Address")
+    const possessivePronouns = new Set(['my', 'your', 'his', 'her', 'its', 'our', 'their']);
+    
     let match;
     while ((match = standaloneNamePattern.exec(text)) !== null) {
       const potentialName = match[1].trim();
+      const words = potentialName.split(/\s+/);
+      
+      // ★ FIX: CRITICAL — Reject if first word is a possessive pronoun
+      // This filters "My Birthday", "Your Address", "His Workplace", etc.
+      if (possessivePronouns.has(words[0].toLowerCase())) {
+        continue;
+      }
+      
+      // Heuristic 0: Filter non-name words (adjectives, descriptors, etc.)
+      // Check if ANY word in the phrase is a known non-name word
+      const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
+      if (hasNonNameWord) {
+        continue;  // Skip any phrase containing non-name words like "Heavy"
+      }
       
       // Heuristic 1: Name must be 3+ characters (lowered from 4 to catch more names)
       if (potentialName.length < 3) continue;
@@ -197,6 +684,9 @@ const TrustLinguisticDetector = (() => {
    * Check if a job title is a common generic title that should be filtered.
    * Uses linguistic heuristics instead of relying solely on dictionary.
    * 
+   * ★ FIX: Now checks EXTENSIVE_JOB_TITLES from occupations.csv for positive validation
+   * If a title is in the CSV database, it's ALWAYS kept (never filtered).
+   * 
    * @param {string} title - The job title to check
    * @param {object} options - Optional flags for context
    * @param {boolean} options.isFromPredicate - true if extracted from "is a/an [title]"
@@ -206,6 +696,15 @@ const TrustLinguisticDetector = (() => {
   function shouldFilterCommonJobTitle(title, options = {}) {
     if (!title || title.length === 0) return true;
     const lower = title.toLowerCase().trim();
+    
+    // ★ FIX #1: POSITIVE VALIDATION AGAINST CSV DATABASE
+    // If the title is in EXTENSIVE_JOB_TITLES (loaded from occupations.csv), KEEP IT
+    if (EXTENSIVE_JOB_TITLES.size > 0) {
+      if (EXTENSIVE_JOB_TITLES.has(lower)) {
+        console.debug(`[TrustPrompt/linguistic-detector] Job title "${title}" validated against CSV database`);
+        return false;  // Don't filter - it's a valid job title from CSV
+      }
+    }
     
     // If from predicate position ("is a/an X"), be more lenient with filtering
     // Reason: predicate position + article indicates occupational context
@@ -286,6 +785,64 @@ const TrustLinguisticDetector = (() => {
     }
 
     return false;
+  }
+
+  // ── Helper: Find organization in CSV database (reverse lookup) ──────────────
+
+  /**
+   * ★ FIX #2: Reverse lookup for organizations in GOVERNANCE_ORGANIZATIONS CSV database.
+   * 
+   * Search for mentions of known organizations within the text.
+   * This catches organizations like "University of Santo Tomas" that might be missed
+   * by regex extraction patterns.
+   * 
+   * Strategy:
+   * 1. Exact substring match (case-insensitive) — ONLY method used to prevent false positives
+   * 2. Return canonical organization name if found
+   * 
+   * NOTE: Fuzzy matching removed due to false positives (e.g., "university of santo" matching "University of Santo Tomas")
+   * Fuzzy matching is too aggressive and requires too many heuristics to disambiguate.
+   * 
+   * @param {string} text - The text to search
+   * @returns {Array} array of found organizations with metadata
+   * @private
+   */
+  function findOrganizationsInCSV(text) {
+    const found = [];
+    
+    if (!text || text.length === 0 || GOVERNANCE_ORGANIZATIONS.size === 0) {
+      return found;
+    }
+    
+    const textLower = text.toLowerCase();
+    
+    for (const org of GOVERNANCE_ORGANIZATIONS) {
+      const orgLower = org.toLowerCase();
+      
+      // ★ EXACT SUBSTRING MATCH ONLY: Check if organization appears in text
+      // This is the most reliable method — only detect if full org name appears
+      // 
+      // Examples of what this catches:
+      // - "I work at University of Santo Tomas" → matches "university of santo tomas"
+      // - "She is a librarian at Accenture Inc" → matches "accenture inc"
+      // 
+      // Examples of what this doesn't catch (correctly filtered):
+      // - "she is a librarian in university of santo" → does NOT match (incomplete)
+      // - "university of santo tomas" in CSV but text only has "university of santo" → no match
+      if (textLower.includes(orgLower)) {
+        // Avoid duplicates
+        if (!found.some(f => f.name.toLowerCase() === org.toLowerCase())) {
+          found.push({
+            name: org,
+            source: 'csv_exact_match',
+            confidence: 'high'
+          });
+        }
+        continue;  
+      }
+    }
+    
+    return found;
   }
 
   // ── Helper: Detect if text is a code pattern ───────────────────────────────
@@ -423,6 +980,7 @@ const TrustLinguisticDetector = (() => {
    * 
    * CLEAN EXTRACTION: Capture ONLY the job title, not context.
    * (Fix: Don't capture "librarian at" or "librarian in the" — just "librarian")
+   * (Fix: Don't capture single letters like "i" in "librarian i")
    *
    * Key insight: In English, occupations follow copular verbs with articles:
    * - "[Name] is a [JOB PHRASE]"
@@ -434,11 +992,13 @@ const TrustLinguisticDetector = (() => {
    * 1. Match pattern "[Name or Pronoun] is a/an/the [PHRASE]" 
    * 2. Extract phrase up to natural boundaries (prepositions with space after, punctuation)
    * 3. Stop at: " at ", " in ", " for ", " of " (prepositions with spaces)
-   * 4. Return ONLY the job title without context
+   * 4. Reject any title containing single letters (e.g., "librarian i" → invalid)
+   * 5. Return ONLY the job title without context
    *
    * Examples:
    * - "Maria is a human resource manager" → "human resource manager"
    * - "she is a librarian at university" → "librarian" (stops at " at ")
+   * - "she is a librarian in university of santo" → "librarian" (stops at " in ")
    * - "John is the head of IT" → "head" (stops at " of ")
    * - "Sarah is an administrative assistant" → "administrative assistant"
    * - "Michael is a senior software engineer at Google" → "senior software engineer"
@@ -451,9 +1011,16 @@ const TrustLinguisticDetector = (() => {
   function extractPredicateJobTitles(text) {
     const titles = [];
     
+    // Helper: Validate that a title doesn't contain isolated single letters (like "i")
+    function hasValidWords(title) {
+      // Split by spaces and check each word is 2+ characters
+      const words = title.split(/\s+/);
+      return words.every(word => word.length >= 2);
+    }
+    
+    // ★ NEW: Case-insensitive pattern to catch "Gynecologist", "GYNECOLOGIST", "gynecologist", etc.
     // Pattern 1: "[Name or Pronoun] is a [job phrase]"
     // Capture until: preposition + space, or punctuation, or end of string
-    // More lenient: allows single words, multi-words, stops cleanly
     const predicatePatternA = /\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|[a-z]+)\s+is\s+a\s+([a-z]+(?:\s+[a-z]+)*)(?=\s+(?:at|in|for|of|by|and|or)|[.,;!?]|$)/gi;
     
     let match;
@@ -466,10 +1033,13 @@ const TrustLinguisticDetector = (() => {
       // Heuristic 1: Must be 2+ characters
       if (title.length < 2) continue;
       
-      // Heuristic 2: Filter obvious non-titles
+      // Heuristic 2: Reject titles with single-letter words (e.g., "librarian i")
+      if (!hasValidWords(title)) continue;
+      
+      // Heuristic 3: Filter obvious non-titles
       if (shouldFilterCommonJobTitle(title, { isFromPredicate: true })) continue;
       
-      // Heuristic 3: Avoid duplicates
+      // Heuristic 4: Avoid duplicates
       if (titles.some(t => t.toLowerCase() === title.toLowerCase())) continue;
       
       titles.push(title);
@@ -483,6 +1053,7 @@ const TrustLinguisticDetector = (() => {
       title = title.replace(/\s+(?:at|for|in|of|by|and|or)\s*$/i, '').trim();
       
       if (title.length < 2) continue;
+      if (!hasValidWords(title)) continue;
       if (shouldFilterCommonJobTitle(title, { isFromPredicate: true })) continue;
       if (titles.some(t => t.toLowerCase() === title.toLowerCase())) continue;
       
@@ -497,10 +1068,33 @@ const TrustLinguisticDetector = (() => {
       title = title.replace(/\s+(?:at|for|in|of|by|and|or)\s*$/i, '').trim();
       
       if (title.length < 2) continue;
+      if (!hasValidWords(title)) continue;
       if (shouldFilterCommonJobTitle(title, { isFromPredicate: true })) continue;
       if (titles.some(t => t.toLowerCase() === title.toLowerCase())) continue;
       
       titles.push(title);
+    }
+    
+    // ★ ENHANCED: Pattern for mixed case like "Gynecologist" at start of sentence
+    // Pattern 3b: "Capitalized word" or "Capitalized Multi-Word" standing alone as job predicate
+    // This catches cases where NLP might not match the copular pattern perfectly
+    // Examples: "Gynecologist." at end of sentence, "Gynecologist," in lists
+    const predicateCapitalizedPattern = /(?:^|\s+|\(|\[)([A-Z][a-z]+(?:\s+[a-z]+){0,2})(?=[\.,;!?\)]|$|\n)/gi;
+    while ((match = predicateCapitalizedPattern.exec(text)) !== null) {
+      let title = match[1].trim();
+      
+      // Only process if it looks like a job title (in appropriate context)
+      // Must be 3+ characters to avoid single words
+      if (title.length < 3) continue;
+      
+      // Check against CSV database FIRST
+      const titleLower = title.toLowerCase();
+      if (EXTENSIVE_JOB_TITLES.size > 0 && EXTENSIVE_JOB_TITLES.has(titleLower)) {
+        if (!titles.some(t => t.toLowerCase() === titleLower)) {
+          console.debug(`[TrustPrompt/linguistic-detector] Enhanced pattern found job title: ${title}`);
+          titles.push(title);
+        }
+      }
     }
     
     // Pattern 4: Extract individual job-indicator words from predicate context
@@ -509,7 +1103,10 @@ const TrustLinguisticDetector = (() => {
       'analyst', 'assistant', 'designer', 'developer', 'officer', 'representative',
       'advocate', 'architect', 'administrator', 'supervisor', 'lead', 'head',
       'chief', 'coordinator', 'handler', 'officer', 'executive', 'strategist',
-      'planner', 'auditor', 'inspector', 'supervisor', 'correspondent'
+      'planner', 'auditor', 'inspector', 'supervisor', 'correspondent',
+      'physician', 'doctor', 'nurse', 'therapist', 'teacher', 'professor',
+      'lawyer', 'attorney', 'accountant', 'pharmacist', 'technician',
+      'gynecologist', 'cardiologist', 'dentist', 'surgeon'  // ★ Added medical specialties
     ];
     
     for (const indicator of jobIndicators) {
@@ -535,58 +1132,154 @@ const TrustLinguisticDetector = (() => {
     
     return titles;
   }
+
+  /**
+   * ★ MISSING FUNCTION: Extract organizations from contextual patterns
+   * 
+   * Detects organizations in patterns like:
+   * - "is the head of [ORG]"
+   * - "is part of [ORG]"  
+   * - "works at [ORG]"
+   * - "works for [ORG]"
+   * - Standalone acronyms like "OICT", "Google"
+   *
+   * This function was being called but was never defined, causing organizations
+   * to be extracted incorrectly or not at all.
+   *
+   * @param {string} text - The text to search
+   * @returns {Array} array of extracted organization names
+   * @private
+   */
+  function extractOrganizationContexts(text) {
+    const orgs = [];
+
+    // Pattern 1: "in the [ORG]" where ORG is complete words until sentence end
+    // CRITICAL: Match complete words from "the" onwards, capturing until:
+    // - End of sentence (. , ; or $)
+    // - NOT at word boundary inside organization name like "santo" before "tomas"
+    // Use word-based matching: each word is [a-z]+ separated by \s+
+    const headOfPattern = /\bin\s+the\s+([a-z]+(?:\s+[a-z]+)*?)(?=\s*(?:\.|\,|;|$))/gi;
+    let match;
+    while ((match = headOfPattern.exec(text)) !== null) {
+      let org = match[1].trim();
+      // Remove trailing prepositions/conjunctions
+      org = org.replace(/\s+(?:and|or|at)\s*$/i, '').trim();
+
+      if (org.length >= 3 && !['the', 'a', 'an', 'that', 'this', 'who', 'which'].includes(org.toLowerCase())) {
+        if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
+          console.debug(`[extractOrganizationContexts] Pattern 1 (in the): found "${org}"`);
+          orgs.push(org);
+        }
+      }
+    }
+
+    // Pattern 1b: "is the head/director of [ORG]"
+    const headOfPattern2 = /\bis\s+(?:the\s+)?(?:head|chief|director|coordinator|manager)\s+of\s+([a-z]+(?:\s+[a-z]+)*?)(?=\s*(?:\.|\,|;|$))/gi;
+    while ((match = headOfPattern2.exec(text)) !== null) {
+      let org = match[1].trim();
+      org = org.replace(/\s+(?:and|or|at)\s*$/i, '').trim();
+
+      if (org.length >= 3 && !['the', 'a', 'an', 'that', 'this', 'who', 'which'].includes(org.toLowerCase())) {
+        if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
+          console.debug(`[extractOrganizationContexts] Pattern 1b (is head of): found "${org}"`);
+          orgs.push(org);
+        }
+      }
+    }
+
+    // Pattern 2: "works at/for [ORG]" or "employed at [ORG]"
+    // Match complete words until sentence boundary
+    const worksAtPattern = /\b(?:works?|employed?|working)\s+(?:at|by|for|with)\s+(?:the\s+)?([a-z]+(?:\s+[a-z]+)*?)(?=\s*(?:\.|\,|;|$))/gi;
+    while ((match = worksAtPattern.exec(text)) !== null) {
+      let org = match[1].trim();
+      org = org.replace(/\s+(?:and|or|which|where)\s*$/i, '').trim();
+
+      if (org.length >= 3 && !['the', 'a', 'an', 'that', 'this', 'there'].includes(org.toLowerCase())) {
+        if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
+          console.debug(`[extractOrganizationContexts] Pattern 2 (works at): found "${org}"`);
+          orgs.push(org);
+        }
+      }
+    }
+
+    // Pattern 3: Standalone acronyms like "OICT", "Google", "IBM"
+    // Match either uppercase acronyms or capitalized words
+    const acronymPattern = /\b([A-Z]{2,5}|[A-Z][a-z]+)\b(?!\w)/gi;
+    const blacklist = new Set(['THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'KYL', 'NIC']);
+
+    while ((match = acronymPattern.exec(text)) !== null) {
+      const org = match[1].trim();
+
+      if (org.length >= 2 && !blacklist.has(org.toUpperCase())) {
+        if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
+          console.debug(`[extractOrganizationContexts] Pattern 3 (acronym): found "${org}"`);
+          orgs.push(org);
+        }
+      }
+    }
+
+    return orgs;
+  }
+
   function extractFromAppositives(text) {
     const roles = [];
     const organizations = [];
     
-    // Pattern 1: "is the head of [X]" where X is typically a department/org
-    let match = /\bis\s+(?:the\s+)?head\s+(?:of|for)\s+(?:the\s+)?([A-Za-z0-9&\s]+?)(?:\s+who|\.|,|;|$)/gi.exec(text);
+    // ★ CRITICAL FIX: These patterns should ONLY extract roles, NOT organizations
+    // Organizations are extracted via extractOrganizationContexts() which handles CSV validation
+    // This function is for extracting role titles from copular constructions like:
+    // - "She is the head of X" → extract role "head"
+    // - "He is responsible for X" → extract role "responsible for"
+    
+    // Pattern 1: "is the head of [ROLE/ORG]" 
+    // Extract ONLY the role word (head), NOT what follows (the org)
+    let match = /\bis\s+(?:the\s+)?(head|director|chair|leader|coordinator|manager|officer|specialist)\s+(?:of|for|in)\s+/gi.exec(text);
     if (match) {
-      const extracted = match[1].trim();
-      if (extracted.length >= 2 && extracted.length <= 50) {
-        organizations.push(extracted);
+      const role = match[1].trim();
+      if (role.length >= 2 && !shouldFilterCommonJobTitle(role)) {
+        roles.push(role);
       }
     }
     
-    // Pattern 2: "is part of [X]" or "is also part of [X]" where X is typically an org
-    match = /\bis\s+(?:also\s+)?part\s+of\s+(?:the\s+)?([A-Za-z0-9&\s]+?)(?:\s+at|\.|,|;|$|and)/gi.exec(text);
+    // Pattern 2: "is part of [ORG]" - SKIP, don't extract
+    // This was causing "university of santo" → incomplete extraction
+    // Let extractOrganizationContexts() handle organization extraction instead
+    
+    // Pattern 3: "is the [role] of [something]" - extract only the role
+    match = /\bis\s+(?:the\s+)?([a-z]+?)\s+(?:of|for|in)\s+(?:the\s+)?(?:department|division|team|group|network|security|infrastructure)/gi.exec(text);
     if (match) {
-      const extracted = match[1].trim();
-      if (extracted.length >= 2 && extracted.length <= 50) {
-        organizations.push(extracted);
+      const role = match[1].trim();
+      if (role.length >= 2 && role.length <= 20 && !shouldFilterCommonJobTitle(role)) {
+        roles.push(role);
       }
     }
     
-    // Pattern 3: "is the head of [network/security/infrastructure/track]" - these are roles/domains
-    match = /\bis\s+(?:the\s+)?head\s+(?:of|for)\s+(?:the\s+)?([a-z\s]+?(?:network|security|infrastructure|track|it|engineering|department)[\w\s]*?)(?:\s+and|\.|,|;|$)/gi.exec(text);
+    // Pattern 4: "responsible for [ROLE/RESPONSIBILITY]" 
+    // Extract ONLY role indicators, not the full phrase
+    match = /\bresponsible\s+for\s+(?:the\s+)?([a-z]+(?:\s+[a-z]+){0,2})(?:\.|,|;|and|or|$)/gi.exec(text);
     if (match) {
-      const extracted = match[1].trim();
-      if (extracted.length >= 2 && extracted.length <= 50 && !extracted.toLowerCase().includes('infrastructure of')) {
-        roles.push(extracted);
+      const phrase = match[1].trim();
+      // Only keep if it looks like a role (short phrase, no "university", etc.)
+      if (phrase.length >= 2 && phrase.length <= 30 && 
+          !phrase.toLowerCase().includes('university') &&
+          !phrase.toLowerCase().includes('department of') &&
+          !shouldFilterCommonJobTitle(phrase)) {
+        roles.push(phrase);
       }
     }
     
-    // Pattern 4: "responsible for [X]"
-    match = /\bresponsible\s+for\s+(?:the\s+)?([A-Za-z0-9&\s]+?)(?:\.|,|;|$)/gi.exec(text);
+    // Pattern 5: "serves as [ROLE]" - extract the role only
+    match = /\bserves\s+as\s+(?:the\s+)?(head|director|chair|lead|manager|officer|coordinator)\b/gi.exec(text);
     if (match) {
-      const extracted = match[1].trim();
-      if (extracted.length >= 2 && extracted.length <= 50) {
-        roles.push(extracted);
-      }
-    }
-    
-    // Pattern 5: "serves as [Role]"
-    match = /\bserves\s+as\s+(?:the\s+)?(?:head|director|chair|lead)\s+(?:of|for)\s+([A-Za-z0-9&\s]+?)(?:\.|,|;|$)/gi.exec(text);
-    if (match) {
-      const extracted = match[1].trim();
-      if (extracted.length >= 2 && extracted.length <= 50) {
-        roles.push(extracted);
+      const role = match[1].trim();
+      if (role.length >= 2 && !shouldFilterCommonJobTitle(role)) {
+        roles.push(role);
       }
     }
     
     return { 
       roles: [...new Set(roles)],  // Deduplicate
-      organizations: [...new Set(organizations)]
+      organizations: []  // ★ CRITICAL: Return EMPTY array - don't extract orgs here!
     };
   }
 
@@ -754,101 +1447,409 @@ const TrustLinguisticDetector = (() => {
   }
 
   /**
-   * ORGANIZATION EXTRACTION - CONTEXT ONLY
+   * ★ CSV-FIRST APPROACH: Find organizations in text using CSV dictionaries
    * 
-   * CRITICAL FIX: Don't extract from "is a" sentences at all!
-   * "She is a librarian in..." is about a PERSON'S JOB, not an organization.
+   * PASS 1: Exact substring match (case-insensitive, word boundaries)
+   * PASS 2: Fuzzy match (tolerates 1-2 character differences / typos)
+   * PASS 3: Keyword component matching (extract keywords and match against CSV)
    * 
-   * ONLY extract from EXPLICIT WORKPLACE CONTEXT:
-   * - "works at/in/for/by [ORG]"
-   * - "[NAME] Inc/Corp/Ltd/University"
-   * - Known acronyms after prepositions
-   *
    * @param {string} text - The text to search
-   * @returns {Array} array of extracted organization names ONLY
+   * @returns {Array} array of organization findings
    * @private
    */
-  function extractOrganizationContexts(text) {
-    const orgs = [];
+  function findOrganizationsCSVFirst(text) {
+    const found = [];
+    const seen = new Set();
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // PATTERN 1: EXPLICIT ORG TYPE MARKERS ONLY
-    // "[NAME] Inc|Corp|Ltd|LLC|University|College|School|Institute|etc"
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const orgTypes = 'Inc|Corp|Ltd|LLC|Company|University|College|School|Institute|Foundation|Department|Agency|Bank|Hospital|Organization|Network|Service';
-    const pattern1 = new RegExp(`\\b([A-Z][A-Za-z\\s&.'-]*?)\\s+(${orgTypes})\\b`, 'gi');
+    console.debug(`[PATH_C/CSV_ORG] findOrganizationsCSVFirst called`);
+    console.debug(`[PATH_C/CSV_ORG] Input text: "${text.substring(0, 50)}..."`);
+    console.debug(`[PATH_C/CSV_ORG] EXTENSIVE_ORGANIZATIONS_ARRAY.length: ${EXTENSIVE_ORGANIZATIONS_ARRAY.length}`);
+    console.debug(`[PATH_C/CSV_ORG] EXTENSIVE_ORGANIZATIONS.size: ${EXTENSIVE_ORGANIZATIONS.size}`);
     
-    let match;
-    while ((match = pattern1.exec(text)) !== null) {
-      const name = match[1].trim();
-      const type = match[2].trim();
+    if (!text || text.length === 0 || EXTENSIVE_ORGANIZATIONS_ARRAY.length === 0) {
+      console.warn(`[PATH_C/CSV_ORG] ⚠️ Early return - CSV not loaded or text empty`);
+      return found;
+    }
+    
+    const textLower = text.toLowerCase();
+    
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 1: Exact substring match (case-insensitive, word boundaries)
+    // ────────────────────────────────────────────────────────────────────────
+    console.debug(`[PATH_C/CSV_ORG] PASS 1: Testing ${EXTENSIVE_ORGANIZATIONS_ARRAY.length} organizations for exact match`);
+    for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
+      const orgLower = org.toLowerCase();
+      const escaped = escapeRegex(orgLower);
+      const pattern = new RegExp(`\\b${escaped}\\b`, 'gi');
       
-      if (name.length < 2) continue;
-      if (['the', 'a', 'an', 'is', 'are'].includes(name.toLowerCase())) continue;
-      
-      const fullName = name + ' ' + type;
-      if (!orgs.some(o => o.toLowerCase() === fullName.toLowerCase())) {
-        orgs.push(fullName);
+      if (pattern.test(text)) {
+        const normalized = orgLower;
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
+          found.push({
+            name: org,
+            rawMatch: org,
+            confidence: 'high',
+            source: 'csv_exact_match',
+            csvValidated: true
+          });
+          console.debug(`[PATH_C/CSV_ORG] Pass 1 (exact): ✅ found "${org}"`);
+        }
       }
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // PATTERN 2: WORKPLACE VERBS - "works/employed at/in/for [ORG]"
-    // KEY: Match from "works" word, not from "is a" position
-    // Extract: Everything after preposition until natural boundary
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // STRICT: Start with "works/employed", then preposition, then capture
-    const pattern2 = /\b(?:works?|employed?|working)\s+(?:at|in|for|by)\s+(?:the\s+)?([A-Z][A-Za-z0-9\s&.'-]*?)(?=\s+[a-z]|\s*[.,;!?\n]|$)/gi;
+    console.debug(`[PATH_C/CSV_ORG] PASS 1 complete: ${found.length} matches found`);
     
-    while ((match = pattern2.exec(text)) !== null) {
-      let org = match[1].trim();
-      
-      // Clean: Remove trailing articles/prepositions
-      org = org.replace(/[\s,;.!?\)]+$/g, '')
-               .replace(/\s+(?:the|a|an|and|or|is|are|at|in|for|of)\s*$/i, '')
-               .trim();
-      
-      if (org.length < 2) continue;
-      
-      // Reject job titles (these belong in job extraction, not org)
-      const jobTitles = ['librarian', 'manager', 'engineer', 'director', 'coordinator', 
-                         'analyst', 'specialist', 'consultant', 'officer', 'employee', 
-                         'head', 'chief', 'leader'];
-      if (jobTitles.includes(org.toLowerCase())) continue;
-      
-      // CRITICAL: Reject if it contains "is" (indicates it's from a copular sentence)
-      if (org.toLowerCase().includes(' is ')) continue;
-      
-      if (!orgs.some(o => o.toLowerCase() === org.toLowerCase())) {
-        orgs.push(org);
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 2: Fuzzy match (1-2 character differences, handles typos)
+    // ────────────────────────────────────────────────────────────────────────
+    // ★ CRITICAL FIX: Prevent short words like "with" and "what" (4 chars)
+    // from fuzzy-matching to organizations. Only match if:
+    //   1. The organization name is > 5 chars (substantial name)
+    //   2. The matched text is also > 5 chars (not a common short word)
+    //   3. Length ratio is >= 0.70 (matched text is at least 70% of org name length)
+    //
+    // Examples of what this blocks:
+    //   "with" (4) → "wish" (4) — BLOCKED: match length = 4, too short
+    //   "what" (4) → "wist" (4) — BLOCKED: match length = 4, too short
+    //   "trust" (5) → "trusts" (6) — ALLOWED: match length = 5, ratio = 0.83
+    for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
+      if (org.length > 5) {  // Only fuzzy match longer orgs (avoid noise)
+        const fuzzyMatches = fuzzyFind(text, org, 2);
+        
+        for (const match of fuzzyMatches) {
+          // ★ NEW: Reject if matched text is suspiciously short
+          // Short words like "with", "what", "that" should not match organizations
+          if (match.length <= 5) {
+            console.debug(`[PATH_C/CSV_ORG] Pass 2 (fuzzy): SKIP - matched text too short: "${match}" (${match.length} chars) → org: "${org}"`);
+            continue;  // Skip matches where the found text is too short
+          }
+          
+          // ★ NEW: Ensure length ratio between matched text and org is reasonable
+          // Prevents fuzzy matching of very short partial matches
+          const lengthRatio = match.length / org.length;
+          if (lengthRatio < 0.70) {
+            console.debug(`[PATH_C/CSV_ORG] Pass 2 (fuzzy): SKIP - length ratio too small: "${match}" (${match.length}) vs "${org}" (${org.length}), ratio=${(lengthRatio * 100).toFixed(0)}%`);
+            continue;  // Skip if matched text is less than 70% of org name
+          }
+          
+          const normalized = match.toLowerCase();
+          if (!seen.has(normalized)) {
+            seen.add(normalized);
+            found.push({
+              name: org,  // Canonical name from CSV
+              rawMatch: match,  // What was found in text
+              confidence: 'medium',
+              source: 'csv_fuzzy_match',
+              csvValidated: true
+            });
+            console.debug(`[PATH_C/CSV_ORG] Pass 2 (fuzzy): found "${match}" → canonical: "${org}"`);
+          }
+        }
       }
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // PATTERN 3: KNOWN ACRONYMS ONLY (WHITELIST)
-    // After prepositions: "at OICT", "in IBM", "of UNESCO"
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const knownOrgAcronyms = new Set([
-      'OICT', 'IBM', 'DOE', 'HSA', 'BIR', 'NBI', 'PNP', 'AFP', 'OFW',
-      'BDO', 'BPI', 'RCBC', 'PNB', 'AXA', 'MANULIFE',
-      'UNESCO', 'UNICEF', 'WHO', 'WWF', 'ASEAN', 'ADB', 'IMF', 'ILO',
-      'FBI', 'CIA', 'NSA', 'NASA', 'DOJ'
-    ]);
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 3: Keyword component matching
+    // ────────────────────────────────────────────────────────────────────────
+    // Example: "Santo Tomas University" (reverse order) → extract keywords
+    const textWords = textLower.split(/\s+/).filter(w => w.length > 3);
     
-    const pattern3 = /\b(?:at|in|of|for|by)\s+([A-Z]{2,5})(?=[\s,;.!?]|$)/gi;
-    
-    while ((match = pattern3.exec(text)) !== null) {
-      const acronym = match[1].trim();
-      if (!knownOrgAcronyms.has(acronym)) continue;
+    for (const word of textWords) {
+      // Remove punctuation from word
+      const cleanWord = word.replace(/[.,;!?'"\-()]/g, '');
       
-      if (!orgs.some(o => o.toLowerCase() === acronym.toLowerCase())) {
-        orgs.push(acronym);
+      if (ORG_KEYWORDS_INDEX.has(cleanWord)) {
+        const potentialOrgs = ORG_KEYWORDS_INDEX.get(cleanWord);
+        
+        for (const potentialOrg of potentialOrgs) {
+          // Verify multiple keywords from same org appear in text proximity
+          const orgKeywords = potentialOrg.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+          const textWindowWords = textLower.split(/\s+/).slice(
+            Math.max(0, textWords.indexOf(cleanWord) - 5),
+            textWords.indexOf(cleanWord) + 6
+          );
+          
+          const keywordMatches = orgKeywords.filter(keyword =>
+            textWindowWords.some(tw => tw.includes(keyword))
+          ).length;
+          
+          // If at least 60% of org keywords appear in proximity, flag it
+          if (keywordMatches >= Math.ceil(orgKeywords.length * 0.6)) {
+            const normalized = potentialOrg.toLowerCase();
+            if (!seen.has(normalized)) {
+              seen.add(normalized);
+              found.push({
+                name: potentialOrg,
+                confidence: 'medium',
+                source: 'csv_keyword_component',
+                csvValidated: true
+              });
+              console.debug(`[PATH_C/CSV_ORG] Pass 3 (component): found via keywords: "${potentialOrg}"`);
+              break;
+            }
+          }
+        }
       }
     }
     
-    return orgs;
+    return found;
+  }
+
+  /**
+   * ★ CSV-FIRST APPROACH: Find job titles in text using CSV dictionaries
+   * 
+   * PASS 1: Exact substring match (case-insensitive, word boundaries)
+   * PASS 2: Multi-word phrase matching (last 2-3 words must be in CSV)
+   * PASS 3: Fuzzy match (tolerates 1 character difference)
+   * 
+   * @param {string} text - The text to search
+   * @returns {Array} array of job title findings
+   * @private
+   */
+  function findJobTitlesCSVFirst(text) {
+    const found = [];
+    const seen = new Set();
+    
+    console.debug(`[PATH_C/CSV_JOB] findJobTitlesCSVFirst called`);
+    console.debug(`[PATH_C/CSV_JOB] Input text: "${text.substring(0, 50)}..."`);
+    console.debug(`[PATH_C/CSV_JOB] EXTENSIVE_JOB_TITLES_ARRAY.length: ${EXTENSIVE_JOB_TITLES_ARRAY.length}`);
+    console.debug(`[PATH_C/CSV_JOB] EXTENSIVE_JOB_TITLES.size: ${EXTENSIVE_JOB_TITLES.size}`);
+    
+    if (!text || text.length === 0 || EXTENSIVE_JOB_TITLES_ARRAY.length === 0) {
+      console.warn(`[PATH_C/CSV_JOB] ⚠️ Early return - CSV not loaded or text empty`);
+      return found;
+    }
+    
+    const textLower = text.toLowerCase();
+    
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 1: Exact substring match (case-insensitive, word boundaries)
+    // ────────────────────────────────────────────────────────────────────────
+    for (const title of EXTENSIVE_JOB_TITLES_ARRAY) {
+      const escaped = escapeRegex(title);
+      const pattern = new RegExp(`\\b${escaped}\\b`, 'gi');
+      
+      if (pattern.test(text)) {
+        if (!seen.has(title)) {
+          seen.add(title);
+          found.push({
+            name: title,
+            rawMatch: title,
+            confidence: 'high',
+            source: 'csv_exact_match',
+            csvValidated: true
+          });
+          console.debug(`[PATH_C/CSV_JOB] Pass 1 (exact): found "${title}"`);
+        }
+      }
+    }
+    
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 2: Multi-word phrase matching
+    // ────────────────────────────────────────────────────────────────────────
+    // Extract 2-3 word windows and check against CSV
+    const textWords = textLower.split(/\s+/).filter(w => w.length > 0);
+    
+    for (let i = 1; i < textWords.length; i++) {
+      // Clean punctuation from words
+      const w1 = textWords[i - 1].replace(/[.,;!?'"\-()]/g, '');
+      const w2 = textWords[i].replace(/[.,;!?'"\-()]/g, '');
+      const w0 = (i >= 2) ? textWords[i - 2].replace(/[.,;!?'"\-()]/g, '') : null;
+      
+      // Check 2-word phrases
+      const twoWordPhrase = [w1, w2].filter(w => w.length > 0).join(' ');
+      if (twoWordPhrase && EXTENSIVE_JOB_TITLES.has(twoWordPhrase)) {
+        if (!seen.has(twoWordPhrase)) {
+          seen.add(twoWordPhrase);
+          found.push({
+            name: twoWordPhrase,
+            rawMatch: twoWordPhrase,
+            confidence: 'high',
+            source: 'csv_phrase_match',
+            csvValidated: true
+          });
+          console.debug(`[PATH_C/CSV_JOB] Pass 2 (phrase 2-word): found "${twoWordPhrase}"`);
+        }
+      }
+      
+      // Check 3-word phrases
+      if (w0) {
+        const threeWordPhrase = [w0, w1, w2].filter(w => w.length > 0).join(' ');
+        if (threeWordPhrase && EXTENSIVE_JOB_TITLES.has(threeWordPhrase)) {
+          if (!seen.has(threeWordPhrase)) {
+            seen.add(threeWordPhrase);
+            found.push({
+              name: threeWordPhrase,
+              rawMatch: threeWordPhrase,
+              confidence: 'high',
+              source: 'csv_phrase_match',
+              csvValidated: true
+            });
+            console.debug(`[PATH_C/CSV_JOB] Pass 2 (phrase 3-word): found "${threeWordPhrase}"`);
+          }
+        }
+      }
+    }
+    
+    // ────────────────────────────────────────────────────────────────────────
+    // PASS 3: Fuzzy match (1 character difference, handles typos)
+    // ────────────────────────────────────────────────────────────────────────
+    // ★ CRITICAL FIX: Prevent short words from fuzzy-matching to job titles
+    // Only match if matched text is > 5 chars and reasonably sized relative to title
+    for (const title of EXTENSIVE_JOB_TITLES_ARRAY) {
+      if (title.length > 5) {  // Only fuzzy match longer titles
+        const fuzzyMatches = fuzzyFind(text, title, 1);
+        
+        for (const match of fuzzyMatches) {
+          // ★ NEW: Reject if matched text is too short
+          if (match.length <= 5) {
+            console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - matched text too short: "${match}" (${match.length} chars) → title: "${title}"`);
+            continue;  // Skip matches where the found text is too short
+          }
+          
+          // ★ NEW: Ensure length ratio is reasonable
+          const lengthRatio = match.length / title.length;
+          if (lengthRatio < 0.70) {
+            console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - length ratio too small: "${match}" vs "${title}", ratio=${(lengthRatio * 100).toFixed(0)}%`);
+            continue;  // Skip if matched text is less than 70% of title
+          }
+          
+          if (!seen.has(match.toLowerCase())) {
+            seen.add(match.toLowerCase());
+            found.push({
+              name: title,  // Canonical name from CSV
+              rawMatch: match,  // What was found in text
+              confidence: 'medium',
+              source: 'csv_fuzzy_match',
+              csvValidated: true
+            });
+
+            console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): found "${match}" → canonical: "${title}"`);
+          }
+        }
+      }
+    }
+    
+    return found;
+  }
+
+  /**
+   * ★ COMPROMISE.JS VALIDATION: Filter CSV findings using NLP
+   * 
+   * Validates job titles by checking:
+   *   - Context (preceded by job triggers: "is a", "works as", etc)
+   *   - POS patterns (must be mostly nouns, not verbs/adjectives)
+   * 
+   * @param {Array} csvFindings - Findings from CSV scan
+   * @param {string} text - Original text for context checking
+   * @param {object} doc - compromise.js document (optional)
+   * @returns {Array} filtered/validated findings
+   * @private
+   */
+  function validateJobTitlesWithCompromise(csvFindings, text, doc) {
+    if (!COMPROMISE_AVAILABLE || csvFindings.length === 0) {
+      // If no compromise or no findings, return all CSV findings
+      return csvFindings;
+    }
+    
+    const validated = [];
+    
+    for (const finding of csvFindings) {
+      const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
+      
+      try {
+        // High-confidence CSV matches (exact) bypass most validation
+        if (finding.source === 'csv_exact_match' && finding.confidence === 'high') {
+          // Still check context - must appear in job-related context
+          if (checkJobContext(text, actualSpan)) {
+            validated.push(finding);
+            console.debug(`[PATH_C/VAL_JOB] PASS (high-conf + context): "${finding.name}"`);
+          } else {
+            // Even exact matches should have job context to be flagged
+            console.debug(`[PATH_C/VAL_JOB] FILTER (no context): "${finding.name}"`);
+          }
+          continue;
+        }
+        
+        // Lower-confidence findings must pass both context and POS checks
+        const hasJobContext = checkJobContext(text, actualSpan);
+        
+        // POS validation with compromise
+        const nlpSpan = window.nlp ? window.nlp(actualSpan) : null;
+        const hasBadPOS = nlpSpan ? checkBadPOS(nlpSpan) : false;
+        
+        if (hasJobContext && !hasBadPOS) {
+          validated.push(finding);
+          console.debug(`[PATH_C/VAL_JOB] PASS (context + POS): "${finding.name}"`);
+        } else {
+          console.debug(`[PATH_C/VAL_JOB] FILTER (context: ${hasJobContext}, badPOS: ${hasBadPOS}): "${finding.name}"`);
+        }
+      } catch (error) {
+        console.debug(`[PATH_C/VAL_JOB] Validation error: ${error.message}, keeping finding`);
+        validated.push(finding);
+      }
+    }
+    
+    return validated;
+  }
+
+  /**
+   * ★ COMPROMISE.JS VALIDATION: Filter CSV findings for organizations
+   * 
+   * Validates organizations by checking:
+   *   - Context (preceded by org triggers: "at", "in", "works at", etc)
+   *   - POS patterns (proper noun + noun patterns)
+   *   - Length (3+ words typical for orgs)
+   * 
+   * @param {Array} csvFindings - Findings from CSV scan
+   * @param {string} text - Original text for context checking
+   * @param {object} doc - compromise.js document (optional)
+   * @returns {Array} filtered/validated findings
+   * @private
+   */
+  function validateOrganizationsWithCompromise(csvFindings, text, doc) {
+    if (!COMPROMISE_AVAILABLE || csvFindings.length === 0) {
+      // If no compromise or no findings, return all CSV findings
+      return csvFindings;
+    }
+    
+    const validated = [];
+    
+    for (const finding of csvFindings) {
+      const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
+      
+      try {
+        // High-confidence CSV exact matches bypass validation
+        if (finding.source === 'csv_exact_match' && finding.confidence === 'high') {
+          validated.push(finding);
+          console.debug(`[PATH_C/VAL_ORG] PASS (high-conf exact): "${finding.name}"`);
+          continue;
+        }
+        
+        // Medium-confidence findings must pass context check
+        const hasOrgContext = checkOrgContext(text, actualSpan);
+        
+        // POS validation
+        const nlpSpan = window.nlp ? window.nlp(actualSpan) : null;
+        const hasBadPOS = nlpSpan ? checkBadPOS(nlpSpan) : false;
+        
+        if (hasOrgContext && !hasBadPOS) {
+          validated.push(finding);
+          console.debug(`[PATH_C/VAL_ORG] PASS (context + POS): "${finding.name}"`);
+        } else {
+          console.debug(`[PATH_C/VAL_ORG] FILTER (context: ${hasOrgContext}, badPOS: ${hasBadPOS}): "${finding.name}"`);
+        }
+      } catch (error) {
+        console.debug(`[PATH_C/VAL_ORG] Validation error: ${error.message}, keeping finding`);
+        validated.push(finding);
+      }
+    }
+    
+    return validated;
   }
     
+  // ── Helper: Link entities across sentences ────────────────────────────────────
   // ── Helper: Link entities across sentences ────────────────────────────────────
 
   /**
@@ -955,6 +1956,113 @@ const TrustLinguisticDetector = (() => {
     return result;
   }
 
+  // ── Helper: Merge consecutive detected names ──────────────────────────────
+
+  /**
+   * ★ NEW FEATURE: Merge first and last names when detected consecutively.
+   * 
+   * Problem: "Maricel Balais" → detected as two separate names: ["Maricel", "Balais"]
+   * Solution: Merge them into a single full name when they appear consecutively
+   * 
+   * Algorithm:
+   * 1. Sort findings by their position in the original text
+   * 2. For each pair of consecutive names, check if they're adjacent in text
+   * 3. If adjacent (within 1 space), merge them as "FirstName LastName"
+   * 4. Replace individual name findings with merged version
+   * 
+   * Examples:
+   * - Text: "Maricel Balais is the head"
+   *   - Before merge: ["Maricel", "Balais"]
+   *   - After merge: ["Maricel Balais"]
+   * - Text: "Maria works here. Santos is the director"
+   *   - Before merge: ["Maria", "Santos"]
+   *   - After merge: ["Maria", "Santos"] (NOT merged - not consecutive in text)
+   * - Text: "John Smith and Jane Doe"
+   *   - Before merge: ["John", "Smith", "Jane", "Doe"]
+   *   - After merge: ["John Smith", "Jane Doe"]
+   *
+   * @param {Array} personFindings - Person name findings array
+   * @param {string} originalText - Original text for position checking
+   * @returns {Array} merged findings
+   * @private
+   */
+  function mergeConsecutiveNames(personFindings, originalText) {
+    if (!personFindings || personFindings.length < 2 || !originalText) {
+      return personFindings;
+    }
+    
+    const text = originalText.toLowerCase();
+    const merged = [];
+    const merged_set = new Set();
+    
+    let i = 0;
+    while (i < personFindings.length) {
+      const current = personFindings[i];
+      const next = personFindings[i + 1];
+      
+      // Check if current and next names are consecutive in the text
+      if (next && current && current.rawMatch && next.rawMatch) {
+        const currentLower = current.rawMatch.toLowerCase();
+        const nextLower = next.rawMatch.toLowerCase();
+        
+        // Find positions in text
+        const currentPos = text.indexOf(currentLower);
+        const nextPos = text.indexOf(nextLower, currentPos + currentLower.length);
+        
+        // Check if they're adjacent:
+        // - currentPos is valid
+        // - nextPos immediately follows current (with 0-1 space between)
+        // - The gap is exactly one space or word separator
+        if (currentPos >= 0 && nextPos > 0) {
+          const gap = nextPos - (currentPos + currentLower.length);
+          
+          // Adjacent if gap is 0-2 characters (one space or newline/tab)
+          if (gap >= 0 && gap <= 2) {
+            const gapContent = originalText.substring(
+              currentPos + currentLower.length,
+              nextPos
+            ).trim();
+            
+            // If gap is just whitespace, these are consecutive names
+            if (gapContent === '') {
+              const mergedName = current.rawMatch + ' ' + next.rawMatch;
+              
+              // Check for duplicates (don't merge if already merged)
+              if (!merged_set.has(mergedName.toLowerCase())) {
+                merged_set.add(mergedName.toLowerCase());
+                merged.push({
+                  patternId: current.patternId,
+                  label: 'Person Name (NLP - Merged)',
+                  risk: current.risk,
+                  rawMatch: mergedName,
+                  safeVersion: current.safeVersion.replace(/REDACTED/, 'MERGED NAME REDACTED'),
+                  source: current.source,
+                  validated: false
+                });
+                
+                // ★ CRITICAL FIX: When we merge names, skip the next finding
+                // Otherwise we'd add both the individual name and the merged version
+                i += 2;
+                continue;
+              }
+            }
+          }
+        }
+      }
+      
+      // If not merged, add the current finding as-is
+      const currentLower = current.rawMatch.toLowerCase();
+      if (!merged_set.has(currentLower)) {
+        merged_set.add(currentLower);
+        merged.push(current);
+      }
+      
+      i++;
+    }
+    
+    return merged;
+  }
+
   // ── Entity extraction: Person names ────────────────────────────────────────
 
   /**
@@ -966,6 +2074,10 @@ const TrustLinguisticDetector = (() => {
    * - Method 2: Extract names with honorifics (Mr, Ms, Dr, Prof, etc.)
    * - Method 3: Extract from appositive phrases and multi-sentence context
    * - Method 4: Fallback to trigger phrases for explicit declarations ("my name is", etc.)
+   * 
+   * ★ NEW: Merging logic (FIX #1)
+   * - After all extraction methods, merge consecutive first and last names
+   * - Example: "Maricel" + "Balais" → "Maricel Balais"
    * 
    * @param {object} doc - compromise.js document object
    * @returns {Array} array of person name findings
@@ -1119,7 +2231,10 @@ const TrustLinguisticDetector = (() => {
       console.debug('[TrustPrompt/PATH_C] NER people extraction failed:', error.message);
     }
 
-    return findings;
+    // ★ FIX #1: Merge consecutive first and last names
+    // Example: "Maricel" + "Balais" detected separately → merge to "Maricel Balais"
+    const mergedFindings = mergeConsecutiveNames(findings, doc ? doc.out('text') : '');
+    return mergedFindings;
   }
 
   // ── Entity extraction: Job titles ──────────────────────────────────────────
@@ -1315,15 +2430,25 @@ const TrustLinguisticDetector = (() => {
       // WITHOUT requiring a hardcoded org dictionary
       const contextOrgs = extractOrganizationContexts(text);
       for (const org of contextOrgs) {
-        if (org.length >= 3 && !shouldFilterCommonOrganization(org) && !isCodePattern(text, org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+        // org is now an object with {name, governed, source, confidence}
+        const orgName = typeof org === 'string' ? org : org.name;
+        const isGoverned = typeof org === 'object' ? org.governed : false;
+        const orgSource = typeof org === 'object' ? org.source : 'unknown';
+        const confidence = typeof org === 'object' ? org.confidence : 'medium';
+        
+        if (orgName.length >= 3 && !shouldFilterCommonOrganization(orgName) && !isCodePattern(text, orgName) && !findings.some(f => f.rawMatch.toLowerCase() === orgName.toLowerCase())) {
           findings.push({
             patternId: 'nlp_organization',
-            label: 'Organization (NLP - Contextual)',
+            label: `Organization (NLP - ${orgSource})`,
             risk: 'low',
-            rawMatch: org,
+            rawMatch: orgName,
             safeVersion: '[ORGANIZATION REDACTED]',
             source: 'C_linguistic',
-            validated: false
+            validated: false,
+            // ★ GOVERNANCE METADATA
+            governed: isGoverned,
+            governanceConfidence: confidence,
+            governanceSource: orgSource
           });
         }
       }
@@ -1333,14 +2458,23 @@ const TrustLinguisticDetector = (() => {
       const { organizations } = extractFromAppositives(text);
       for (const org of organizations) {
         if (org.length >= 3 && !shouldFilterCommonOrganization(org) && !isCodePattern(text, org) && !findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+          // ★ HYBRID: Check governance database for appositive-extracted orgs
+          const canonical = getCanonicalOrganizationName(org);
+          const finalOrgName = canonical || org;
+          const isGoverned = !!canonical;
+          
           findings.push({
             patternId: 'nlp_organization',
             label: 'Organization (NLP - Appositive)',
             risk: 'low',
-            rawMatch: org,
+            rawMatch: finalOrgName,
             safeVersion: '[ORGANIZATION REDACTED]',
             source: 'C_linguistic',
-            validated: false
+            validated: false,
+            // ★ GOVERNANCE METADATA
+            governed: isGoverned,
+            governanceConfidence: isGoverned ? 'high' : 'low',
+            governanceSource: 'appositive_validation'
           });
         }
       }
@@ -1399,6 +2533,35 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // METHOD 5 (NEW): REVERSE CSV LOOKUP FOR ORGANIZATIONS
+      // ★ FIX #2: Search organizations.csv for mentions in text
+      // 
+      // Catches organizations like "University of Santo Tomas" that regex might miss
+      // Uses exact match and fuzzy word-level matching (70%+ overlap)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const csvOrganizations = findOrganizationsInCSV(text);
+      for (const csvOrg of csvOrganizations) {
+        const orgName = csvOrg.name;
+        
+        // Check if not already added from previous methods
+        if (!findings.some(f => f.rawMatch.toLowerCase() === orgName.toLowerCase())) {
+          findings.push({
+            patternId: 'nlp_organization',
+            label: `Organization (NLP - CSV ${csvOrg.source})`,
+            risk: 'low',
+            rawMatch: orgName,
+            safeVersion: '[ORGANIZATION REDACTED]',
+            source: 'C_linguistic',
+            validated: true,
+            // ★ GOVERNANCE METADATA
+            governed: true,
+            governanceConfidence: csvOrg.confidence,
+            governanceSource: csvOrg.source
+          });
+        }
+      }
+      
     } catch (error) {
       console.debug('[TrustPrompt/PATH_C] NER organization extraction failed:', error.message);
     }
@@ -1439,6 +2602,357 @@ const TrustLinguisticDetector = (() => {
   function scan(textNLP) {
     // Validate input
     if (!textNLP || typeof textNLP !== 'string' || textNLP.trim().length === 0) {
+      console.debug('[TrustPrompt/PATH_C] Empty input');
+      return [];
+    }
+
+    console.log('[TrustPrompt/PATH_C] ★★★ SCAN FUNCTION CALLED ★★★');
+    console.log('[TrustPrompt/PATH_C] Input text FULL:', textNLP);
+    console.log('[TrustPrompt/PATH_C] Input text length:', textNLP.length);
+    console.log('[TrustPrompt/PATH_C] First 100 chars:', textNLP.substring(0, 100));
+
+    const findings = [];
+
+    try {
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 1: PERSON NAME DETECTION (Original Methods - No CSV)
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      console.debug('[TrustPrompt/PATH_C] STAGE 1: Person Name Detection');
+      let nameCount = 0;
+      
+      // METHOD 1: Names with honorifics - "Ms Padua", "Dr. Smith"
+      const honorificNames = extractNamesWithHonorific(textNLP);
+      for (const name of honorificNames) {
+        if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+          nameCount++;
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (Honorific)',
+            risk: 'low',
+            rawMatch: name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            extractionMethod: 'honorific'
+          });
+          console.debug(`[PATH_C/NAMES] Found via honorific: "${name}"`);
+        }
+      }
+      
+      // METHOD 2: Names from trigger phrases - "my name is", "i am", "call me"
+      const nameTriggerPatterns = [
+        /\bmy\s+name\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        /\b(?:i\s+)?(?:am|'m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        /\bcall\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        /\bi['']m\s+called\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+      ];
+      
+      for (const pattern of nameTriggerPatterns) {
+        let match;
+        while ((match = pattern.exec(textNLP)) !== null) {
+          const name = match[1].trim();
+          
+          // ★ FIX: Filter out non-name words (adjectives, verbs, descriptors, etc.)
+          // Check if ANY word in the phrase is a known non-name word
+          const words = name.split(/\s+/);
+          const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
+          if (hasNonNameWord) {
+            console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
+            continue;  // Skip phrases containing non-name words like "experiencing" or "heavy"
+          }
+          
+          if (name.length >= 2 && !shouldFilterCommonName(name)) {
+            if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
+              nameCount++;
+              findings.push({
+                patternId: 'nlp_person_name',
+                label: 'Person Name (Trigger)',
+                risk: 'low',
+                rawMatch: name,
+                safeVersion: '[NAME REDACTED]',
+                source: 'C_linguistic',
+                extractionMethod: 'trigger_phrase'
+              });
+              console.debug(`[PATH_C/NAMES] Found via trigger: "${name}"`);
+            }
+          }
+        }
+      }
+      
+      // METHOD 3: Extract names from subject position patterns
+      // Simple: Look for capitalized words that appear before verbs/states
+      console.log(`[PATH_C/NAMES] METHOD 3: Subject position names`);
+      
+      // Pattern: [Capitalized Words] + [Verb/State]
+      // Captures: "Maricel Balais is experiencing", "John is working", "Maria said", etc.
+      // MUST capture multi-word names as a unit, not individual words
+      const subjectNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|are|was|were|said|told|asked|explained|works|worked|goes|went|comes|came|living|lived|named|called)\b/g;
+      
+      let match;
+      while ((match = subjectNamePattern.exec(textNLP)) !== null) {
+        const candidateName = match[1].trim();
+        console.log(`[PATH_C/NAMES] METHOD 3: Found: "${candidateName}"`);
+        
+        // Basic filters
+        const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them']);
+        if (pronouns.has(candidateName.toLowerCase())) {
+          console.log(`[PATH_C/NAMES] METHOD 3: Skip "${candidateName}" - pronoun`);
+          continue;
+        }
+        
+        if (candidateName.length < 2) {
+          console.log(`[PATH_C/NAMES] METHOD 3: Skip "${candidateName}" - too short`);
+          continue;
+        }
+        
+        // ★ FIX: Filter out non-name words (adjectives, verbs, descriptors, etc.)
+        // Check if ANY word in the phrase is a known non-name word
+        const words = candidateName.split(/\s+/);
+        const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
+        if (hasNonNameWord) {
+          console.log(`[PATH_C/NAMES] METHOD 3: Skip "${candidateName}" - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
+          continue;  // Skip phrases containing non-name words
+        }
+        
+        // Check for duplicates
+        if (findings.some(f => f.rawMatch.toLowerCase() === candidateName.toLowerCase())) {
+          console.log(`[PATH_C/NAMES] METHOD 3: Skip "${candidateName}" - duplicate`);
+          continue;
+        }
+        
+        nameCount++;
+        findings.push({
+          patternId: 'nlp_person_name',
+          label: 'Person Name (Subject Position)',
+          risk: 'low',
+          rawMatch: candidateName,
+          safeVersion: '[NAME REDACTED]',
+          source: 'C_linguistic',
+          extractionMethod: 'subject_position'
+        });
+        console.log(`[PATH_C/NAMES] METHOD 3: ✅ ADDED: "${candidateName}"`);
+      }
+      
+      // METHOD 4: Standalone capitalized multi-word phrases (names without explicit triggers)
+      // Examples: "Maricel Balais said...", "John Smith works at..."
+      // Look for 2-3 consecutive capitalized words that might be names
+      const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g;
+      let standaloneMatch;
+      const processedStandalone = new Set();
+      
+      console.debug(`[PATH_C/NAMES] METHOD 4: Testing standalone capitalized multi-word pattern on text`);
+      while ((standaloneMatch = standaloneNamePattern.exec(textNLP)) !== null) {
+        const candidateName = standaloneMatch[1].trim();
+        
+        console.debug(`[PATH_C/NAMES] METHOD 4: Regex matched - candidateName="${candidateName}"`);
+        
+        // Avoid duplicates in this method
+        if (processedStandalone.has(candidateName.toLowerCase())) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - duplicate within METHOD 4`);
+          continue;
+        }
+        processedStandalone.add(candidateName.toLowerCase());
+        
+        // Skip if already found in findings
+        if (findings.some(f => f.rawMatch.toLowerCase() === candidateName.toLowerCase())) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - already found in earlier methods`);
+          continue;
+        }
+        
+        // Filter out pronouns and possessive pronouns
+        const words = candidateName.split(/\s+/);
+        const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them']);
+        const possessivePronouns = new Set(['my', 'your', 'his', 'her', 'its', 'our', 'their']);
+        
+        if (words.some(w => pronouns.has(w.toLowerCase()))) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - contains pronoun`);
+          continue;
+        }
+        
+        // ★ FIX: Reject if first word is a possessive pronoun (e.g., "My birthday", "Your address")
+        if (words.length > 0 && possessivePronouns.has(words[0].toLowerCase())) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - starts with possessive pronoun: "${words[0]}"`);
+          continue;
+        }
+        
+        // Check if it contains non-name words (adjectives, verbs, discourse markers)
+        if (words.some(w => NON_NAME_WORDS.has(w.toLowerCase()))) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
+          continue;
+        }
+        
+        // Must pass common name filter
+        if (!shouldFilterCommonName(candidateName)) {
+          nameCount++;
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (Standalone)',
+            risk: 'low',
+            rawMatch: candidateName,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            extractionMethod: 'standalone_capitalized'
+          });
+          console.debug(`[PATH_C/NAMES] Found standalone: "${candidateName}"`);
+        } else {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - "${candidateName}" is common first name`);
+        }
+      }
+      
+      console.debug(`[TrustPrompt/PATH_C] Names found: ${nameCount}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 2: CSV-FIRST DETECTION (Job Titles + Organizations)
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      console.debug('[TrustPrompt/PATH_C] STAGE 2: CSV-First Detection');
+      
+      let csvJobFindings = findJobTitlesCSVFirst(textNLP);
+      console.debug(`[TrustPrompt/PATH_C] CSV Job Titles found: ${csvJobFindings.length}`);
+      
+      let csvOrgFindings = findOrganizationsCSVFirst(textNLP);
+      console.debug(`[TrustPrompt/PATH_C] CSV Organizations found: ${csvOrgFindings.length}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 3: COMPROMISE.JS VALIDATION GATE
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      console.debug('[TrustPrompt/PATH_C] STAGE 3: Compromise.js Validation');
+      
+      let validatedJobTitles = csvJobFindings;
+      let validatedOrganizations = csvOrgFindings;
+      
+      if (COMPROMISE_AVAILABLE) {
+        validatedJobTitles = validateJobTitlesWithCompromise(csvJobFindings, textNLP);
+        console.debug(`[TrustPrompt/PATH_C] Job Titles after validation: ${validatedJobTitles.length}`);
+        
+        validatedOrganizations = validateOrganizationsWithCompromise(csvOrgFindings, textNLP);
+        console.debug(`[TrustPrompt/PATH_C] Organizations after validation: ${validatedOrganizations.length}`);
+      } else {
+        console.debug('[TrustPrompt/PATH_C] Compromise.js unavailable, skipping validation');
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 4: Add job titles and organizations to findings
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      // Add job titles to findings
+      for (const title of validatedJobTitles) {
+        findings.push({
+          patternId: 'nlp_job_title',
+          label: `Job Title (${title.source})`,
+          risk: 'low',
+          rawMatch: title.rawMatch || title.name,
+          safeVersion: '[JOB TITLE REDACTED]',
+          source: 'C_linguistic',
+          confidence: title.confidence,
+          csvValidated: true
+        });
+      }
+      
+      // Add organizations to findings
+      for (const org of validatedOrganizations) {
+        findings.push({
+          patternId: 'nlp_organization',
+          label: `Organization (${org.source})`,
+          risk: 'low',
+          rawMatch: org.rawMatch || org.name,
+          safeVersion: '[ORGANIZATION REDACTED]',
+          source: 'C_linguistic',
+          confidence: org.confidence,
+          csvValidated: true
+        });
+      }
+      
+      console.debug(`[TrustPrompt/PATH_C] Total findings: ${findings.length} (names: ${nameCount}, jobs: ${validatedJobTitles.length}, orgs: ${validatedOrganizations.length})`);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 5: METHOD 4.5 - Names in directive contexts (object position)
+      // ═══════════════════════════════════════════════════════════════════════
+      // Catches single-word names following action verbs and prepositions
+      // Examples: "generate an email for Kyleen", "send message to John"
+      console.debug('[TrustPrompt/PATH_C] METHOD 4.5: Extracting names from directive contexts...');
+      let method45Count = 0;
+      
+      // Filter: Non-name words that shouldn't be detected as person names
+      const nonNameWordsDirective = new Set([
+        'heavy', 'light', 'small', 'large', 'big', 'little', 'new', 'old', 'young', 'ancient',
+        'fast', 'slow', 'quick', 'rapid', 'bright', 'dark', 'long', 'short', 'tall', 'wide',
+        'hot', 'cold', 'warm', 'cool', 'thick', 'thin', 'strong', 'weak', 'tight', 'loose',
+        'good', 'bad', 'better', 'worse', 'best', 'worst', 'nice', 'ugly', 'pretty', 'beautiful',
+        'smart', 'dumb', 'clever', 'silly', 'funny', 'serious', 'happy', 'sad', 'angry', 'calm',
+        'experiencing', 'reporting', 'stating', 'saying', 'telling', 'asking', 'calling'
+      ]);
+      
+      const directiveContextPatterns = [
+        // Prepositions: "for [Name]", "to [Name]", "with [Name]"
+        // Captures the capitalized name directly after these prepositions
+        { pattern: /\b(?:for|to|with)\s+([A-Z][a-z]+)\b/g, name: 'preposition' },
+        // Action verbs with direct object names (direct capture only, no intermediate prepositions)
+        // Matches: "contact Kyleen", "call John", "invite Sarah"
+        // Does NOT match: "email for Kyleen" (has preposition in between)
+        { pattern: /\b(?:contact|call|invite|notify)\s+([A-Z][a-z]+)\b/g, name: 'action_verb' },
+        // "from [Name]" context - captures name after "from"
+        { pattern: /\bfrom\s+([A-Z][a-z]+)\b/g, name: 'from_context' }
+      ];
+      
+      for (const patternObj of directiveContextPatterns) {
+        const pattern = patternObj.pattern;
+        let match;
+        while ((match = pattern.exec(textNLP)) !== null) {
+          const name = match[1].trim();
+          
+          // Filter: Name must be 2+ characters
+          if (name.length < 2) continue;
+          
+          // Filter: Reject common non-names and placeholder words
+          if (shouldFilterCommonName(name)) continue;
+          
+          // Filter: Reject if it's a known non-name word (adjectives, verbs, discourse markers)
+          if (nonNameWordsDirective.has(name.toLowerCase())) continue;
+          
+          // Filter: Reject known organizations and AI models
+          const knownOrganizations = new Set(['azure', 'google', 'amazon', 'microsoft', 'apple', 'claude', 'gpt', 'gemini', 'bard']);
+          if (knownOrganizations.has(name.toLowerCase())) continue;
+          
+          // Filter: Avoid duplicates
+          if (findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) continue;
+          
+          method45Count++;
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (Directive Context)',
+            risk: 'low',
+            rawMatch: name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            extractionMethod: 'directive_context',
+            validatedMethod: patternObj.name,
+            validated: false
+          });
+          console.debug(`[TrustPrompt/PATH_C] METHOD 4.5 found via ${patternObj.name}: "${name}"`);
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 4.5 found:', method45Count);
+      
+    } catch (error) {
+      console.error('[TrustPrompt/PATH_C] Scan error:', error);
+    }
+
+    console.log('[TrustPrompt/PATH_C] ★★★ SCAN FUNCTION RETURNING ★★★');
+    console.log('[TrustPrompt/PATH_C] Total findings from scan():', findings.length);
+    findings.forEach((f, i) => console.log(`  [${i}] ${f.patternId}: ${f.rawMatch}`));
+    
+    return findings;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // LEGACY SCAN METHODS (kept for backward compatibility if needed)
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  function scanLegacy(textNLP) {
+    // Validate input
+    if (!textNLP || typeof textNLP !== 'string' || textNLP.trim().length === 0) {
       console.debug('[TrustPrompt/PATH_C] SIMPLIFIED scan() - Empty input');
       return [];
     }
@@ -1449,7 +2963,7 @@ const TrustLinguisticDetector = (() => {
 
     try {
       // ═══════════════════════════════════════════════════════════════════════
-      // SIMPLIFIED SCAN: 3 CORE DETECTION METHODS ONLY
+      // LEGACY: 3 CORE DETECTION METHODS ONLY
       // ═══════════════════════════════════════════════════════════════════════
       
       let method1Count = 0;  // Honorifics
@@ -1588,6 +3102,52 @@ const TrustLinguisticDetector = (() => {
       console.debug('[TrustPrompt/PATH_C] METHOD 3 found:', method3Count);
 
       // ─────────────────────────────────────────────────────────────────────
+      // METHOD 3.5: SURNAME-ONLY EXTRACTION - "Balais", last names after verbs
+      // Patterns: "[Name] is", "[Name] said", "[Name] told", "[Name] asked"
+      // These typically indicate surnames used alone in professional/formal context
+      // ★ DISABLED: This is causing "Balais" to be detected instead of "Maricel Balais"
+      // The parent METHOD 3 already handles this case
+      // ─────────────────────────────────────────────────────────────────────
+      console.debug('[TrustPrompt/PATH_C] METHOD 3.5: DISABLED - skipping surname-only patterns');
+      
+      /*
+      const surnameContextPatterns = [
+        /\b([A-Z][a-z]+)\s+(?:is\s+(?:a|an|the|my|your|his|her|our|their)|said|told|asked|explained|mentioned|noted|indicated|suggested|proposed|added|answered|remarked|observed|stated|declared|communicated|reported|revealed|announced|expressed|emphasized|revealed|outlined|described)(?:\s|$)/gi,
+        // "the [Surname]" + work context (e.g., "the Balais mentioned librarian")
+        /\bthe\s+([A-Z][a-z]+)\s+(?:mentioned|noted|said|explained|who|that|of|in|at)/gi,
+      ];
+      
+      for (const pattern of surnameContextPatterns) {
+        while ((match = pattern.exec(textNLP)) !== null) {
+          const possibleSurname = match[1].trim();
+          
+          // Filters for surname-only detection
+          const isNotCommon = !shouldFilterCommonName(possibleSurname);
+          const isNotPronoun = !['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them'].includes(possibleSurname.toLowerCase());
+          const isProperLength = possibleSurname.length >= 2;
+          const isCapitalized = /^[A-Z]/.test(possibleSurname);
+          
+          if (isNotCommon && isNotPronoun && isProperLength && isCapitalized) {
+            const nameLower = possibleSurname.toLowerCase();
+            if (!findings.some(f => f.rawMatch.toLowerCase() === nameLower)) {
+              method3Count++;
+              findings.push({
+                patternId: 'nlp_person_name',
+                label: 'Person Name (NLP - Surname Context)',
+                risk: 'low',
+                rawMatch: possibleSurname,
+                safeVersion: '[NAME REDACTED]',
+                source: 'C_linguistic',
+                validated: false
+              });
+            }
+          }
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 3.5 found:', method3Count);
+      */
+
+      // ─────────────────────────────────────────────────────────────────────
       // METHOD 4: Standalone person names - Single capitalized words like "Kyleen"
       // ─────────────────────────────────────────────────────────────────────
       console.debug('[TrustPrompt/PATH_C] METHOD 4: Extracting standalone names...');
@@ -1625,7 +3185,23 @@ const TrustLinguisticDetector = (() => {
         const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them', 'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose', 'my', 'your', 'his', 'its', 'our', 'their']);
         const commonWords = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'of', 'to', 'in', 'at', 'by', 'for', 'on', 'with', 'from', 'up', 'about', 'into', 'through', 'during', 'and', 'or', 'but', 'not', 'please', 'thanks', 'thank', 'sorry', 'excuse', 'hi', 'hello', 'hey', 'ok', 'okay', 'yes', 'no', 'maybe', 'sure', 'right', 'wrong', 'true', 'false', 'good', 'bad', 'well', 'just', 'only', 'even', 'such', 'back', 'also', 'too', 'more', 'most', 'very', 'so', 'as', 'if', 'then', 'else', 'because', 'since', 'after', 'before', 'while', 'when', 'where', 'why', 'how', 'what', 'which', 'who', 'whom', 'whose']);
         
+        // ★ FIX: Personal attribute words - NOT person names (e.g., "My birthday", "Your address")
+        const personalAttributeWords = new Set(['name', 'birthday', 'age', 'email', 'phone', 'address', 'job', 'title', 'company', 'department', 'ssn', 'password', 'pin', 'account', 'number', 'id', 'license', 'gender', 'sex', 'height', 'weight', 'color', 'eyes', 'hair', 'health', 'condition', 'salary', 'income', 'location', 'country', 'city', 'state', 'zip', 'religion', 'belief', 'nationality', 'status', 'relationship', 'spouse', 'parent', 'child', 'sibling', 'emergency', 'contact', 'reference', 'description', 'notes', 'comments', 'details', 'information']);
+        
         const lowerName = name.toLowerCase();
+        
+        // ★ FIX: Check if name starts with possessive pronoun (e.g., "My birthday", "Your address")
+        // These are personal attributes, NOT person names
+        const possessivePronounWords = ['my', 'your', 'his', 'her', 'its', 'our', 'their'];
+        const nameWords = lowerName.split(/\s+/);
+        if (nameWords.length >= 1 && possessivePronounWords.includes(nameWords[0])) {
+          continue;  // Skip phrases starting with possessive pronouns
+        }
+        
+        // ★ FIX: Check if name contains personal attribute words (e.g., "My birthday", "Your email")
+        if (nameWords.some(word => personalAttributeWords.has(word))) {
+          continue;  // Skip if any word is a personal attribute descriptor
+        }
         
         // Skip if it's a known organization or AI model name - don't detect as person name
         const knownOrganizations = new Set([
@@ -1676,6 +3252,68 @@ const TrustLinguisticDetector = (() => {
       console.debug('[TrustPrompt/PATH_C] METHOD 4 found:', method4Count);
       
       // ─────────────────────────────────────────────────────────────────────
+      // METHOD 4.5: Names in directive contexts (e.g., "for Jerralyn", "to John")
+      // ─────────────────────────────────────────────────────────────────────
+      // Catches single-word names following action verbs and prepositions
+      // Examples: "generate an email for Jerralyn", "send message to John", "contact Sarah"
+      console.debug('[TrustPrompt/PATH_C] METHOD 4.5: Extracting names from directive contexts...');
+      let method45Count = 0;
+      
+      // Filter: Non-name words that shouldn't be detected as person names
+      const nonNameWords = new Set([
+        'heavy', 'light', 'small', 'large', 'big', 'little', 'new', 'old', 'young', 'ancient',
+        'fast', 'slow', 'quick', 'rapid', 'bright', 'dark', 'long', 'short', 'tall', 'wide',
+        'hot', 'cold', 'warm', 'cool', 'thick', 'thin', 'strong', 'weak', 'tight', 'loose',
+        'good', 'bad', 'better', 'worse', 'best', 'worst', 'nice', 'ugly', 'pretty', 'beautiful',
+        'smart', 'dumb', 'clever', 'silly', 'funny', 'serious', 'happy', 'sad', 'angry', 'calm',
+        'experiencing', 'reporting', 'stating', 'saying', 'telling', 'asking', 'calling'
+      ]);
+      
+      const directiveContextPatterns = [
+        // Prepositions: "for [Name]", "to [Name]", "with [Name]"
+        /\b(?:for|to|with)\s+([A-Z][a-z]+)\b/gi,
+        // Action verbs with direct object: "contact [Name]", "email [Name]", "call [Name]", "invite [Name]"
+        /\b(?:contact|email|call|message|invite|notify|reach\s+out\s+to|send\s+to)\s+([A-Z][a-z]+)\b/gi,
+        // "from [Name]" context
+        /\bfrom\s+([A-Z][a-z]+)\b/gi
+      ];
+      
+      for (const pattern of directiveContextPatterns) {
+        let match;
+        while ((match = pattern.exec(textNLP)) !== null) {
+          const name = match[1].trim();
+          
+          // Filter: Name must be 2+ characters
+          if (name.length < 2) continue;
+          
+          // Filter: Reject common non-names and placeholder words
+          if (shouldFilterCommonName(name)) continue;
+          
+          // Filter: Reject if it's a known non-name word (adjectives, verbs, discourse markers)
+          if (nonNameWords.has(name.toLowerCase())) continue;
+          
+          // Filter: Reject known organizations and AI models
+          const knownOrganizations = new Set(['azure', 'google', 'amazon', 'microsoft', 'apple', 'claude', 'gpt', 'gemini', 'bard']);
+          if (knownOrganizations.has(name.toLowerCase())) continue;
+          
+          // Filter: Avoid duplicates
+          if (findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) continue;
+          
+          method45Count++;
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (Directive Context)',
+            risk: 'low',
+            rawMatch: name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            validated: false
+          });
+        }
+      }
+      console.debug('[TrustPrompt/PATH_C] METHOD 4.5 found:', method45Count);
+      
+      // ─────────────────────────────────────────────────────────────────────
       // METHOD 5: Organization extraction (CRITICAL - was missing!)
       // ─────────────────────────────────────────────────────────────────────
       console.debug('[TrustPrompt/PATH_C] METHOD 5: Extracting organizations...');
@@ -1684,14 +3322,15 @@ const TrustLinguisticDetector = (() => {
       // Extract organizations from contextual patterns
       const contextOrgs = extractOrganizationContexts(textNLP);
       for (const org of contextOrgs) {
-        if (org.length >= 2 && !shouldFilterCommonOrganization(org) && !isCodePattern(textNLP, org)) {
-          if (!findings.some(f => f.rawMatch.toLowerCase() === org.toLowerCase())) {
+        const orgName = typeof org === 'string' ? org : org.name;
+        if (orgName && orgName.length >= 2 && !shouldFilterCommonOrganization(orgName) && !isCodePattern(textNLP, orgName)) {
+          if (!findings.some(f => f.rawMatch.toLowerCase() === orgName.toLowerCase())) {
             method5Count++;
             findings.push({
               patternId: 'nlp_organization',
               label: 'Organization (NLP)',
               risk: 'low',
-              rawMatch: org,
+              rawMatch: orgName,
               safeVersion: '[ORGANIZATION REDACTED]',
               source: 'C_linguistic',
               validated: false
@@ -1725,14 +3364,40 @@ const TrustLinguisticDetector = (() => {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  return { scan };
+  // Initialize extensive data sources from JS-based term data
+  // Runs synchronously since terms-occupations.js and terms-organizations.js are already loaded
+  console.log('[TrustLinguisticDetector] Starting JS initialization...');
+  
+  // Initialize the JS-based term data synchronously
+  initializeExtensiveJobTitles();
+  initializeExtensiveOrganizations();
+  
+  console.log('[TrustLinguisticDetector] ✅ JS initialization complete (synchronous)');
+  console.log(`[TrustLinguisticDetector] Loaded ${EXTENSIVE_JOB_TITLES.size} job titles and ${EXTENSIVE_ORGANIZATIONS.size} organizations`);
+  console.log(`[TrustLinguisticDetector] Contains 'gynecologist': ${EXTENSIVE_JOB_TITLES.has('gynecologist')}`);
+  console.log(`[TrustLinguisticDetector] Contains 'accenture': ${EXTENSIVE_ORGANIZATIONS.has('accenture')}`);
+  console.log(`[TrustLinguisticDetector] EXTENSIVE_ORGANIZATIONS_ARRAY first 10: ${EXTENSIVE_ORGANIZATIONS_ARRAY.slice(0, 10).join(', ')}`);
+
+  // Expose a wait function that returns immediately (for backwards compatibility)
+  const waitForCSVInit = () => Promise.resolve(true);
+
+  return { scan, waitForCSVInit };
 
 })();
 
-// ── QUICK TEST (for browser console) ──────────────────────────────────────────
-// Silent initialization - test function available but not auto-invoked
+// ── IMMEDIATE EXPORT (before any async initialization) ──────────────────────────
+// Export the detector immediately so it's available to scanner.js
+// The CSV loading is asynchronous but the scan() function works without CSV data
+
 if (typeof window !== 'undefined') {
   window.TrustLinguisticDetector = TrustLinguisticDetector;
+  console.log('[STARTUP] TrustLinguisticDetector assigned to window immediately');
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.TrustLinguisticDetector = TrustLinguisticDetector;
+  console.log('[STARTUP] TrustLinguisticDetector assigned to globalThis immediately');
+}
   
   window.testLinguisticDetector = function() {
     const testText = 'i am kyleen. professor';
@@ -1755,11 +3420,8 @@ if (typeof window !== 'undefined') {
   
   // Silent debug logging - only visible if DevTools shows debug level
   console.debug('[STARTUP] TrustLinguisticDetector initialized (test available as testLinguisticDetector())');
-}
-
-
 
 // Also export to globalThis for scanner.js compatibility
-if (typeof globalThis !== 'undefined') {
-  globalThis.TrustLinguisticDetector = TrustLinguisticDetector;
-}
+// Async CSV initialization - runs after detector is exported
+// Graceful degradation: detector works without CSV data using pattern matching only
+console.log('[STARTUP] linguistic-detector.js loaded and exported');

@@ -23,6 +23,10 @@ const TP_CHATGPT = (() => {
   let pendingScanPromise = null;
   let lastResult         = null;
 
+  // ── Scan token system (for interruption handling) ──────────────────────────
+  let scanToken = 0;
+  let activeScanToken = null;
+
   // Track which elements already have listeners so we never double-attach
   const listenedElements = new WeakSet();
 
@@ -135,7 +139,12 @@ const TP_CHATGPT = (() => {
   let allowSubmit = false; // Flag to control whether submission is allowed
 
   function triggerScan(rawText) {
-    console.log("[TP/chatgpt] triggerScan called with:", rawText.substring(0, 50));
+    // Increment scan token and mark as active
+    scanToken++;
+    activeScanToken = scanToken;
+    const currentToken = scanToken;  // Capture in closure
+    
+    console.log("[TP/chatgpt] triggerScan called with:", rawText.substring(0, 50), "token:", currentToken);
     scanState          = STATE.SCANNING;
     lastScannedText    = rawText;
     allowSubmit        = false; // Block submission while scanning
@@ -154,6 +163,12 @@ const TP_CHATGPT = (() => {
       console.log("[TP/chatgpt] Calling TrustWorkerBridge.scan()");
       pendingScanPromise = TrustWorkerBridge.scan(rawText)
         .then(result => {
+          // Only apply result if this scan is still the active one
+          if (currentToken !== activeScanToken) {
+            console.log("[TP/chatgpt] Scan interrupted, discarding stale results (token mismatch)");
+            return result;  // Don't apply
+          }
+          
           console.log("[TP/chatgpt] Scan promise resolved");
           scanState  = STATE.DONE;
           lastResult = result;
@@ -164,6 +179,13 @@ const TP_CHATGPT = (() => {
         })
         .catch(err => {
           console.error("[TP/chatgpt] scan promise rejected:", err);
+          
+          // Don't apply fallback if this scan was interrupted
+          if (currentToken !== activeScanToken) {
+            console.log("[TP/chatgpt] Scan interrupted before completion, ignoring error");
+            return;
+          }
+          
           const fallback = { findings: [], riskLevel: "none", score: 0 };
           scanState  = STATE.DONE;
           lastResult = fallback;
@@ -228,6 +250,61 @@ const TP_CHATGPT = (() => {
 
   // Legacy alias used in init/observer
   function getComposerWrapper() { return getComposerCard(); }
+
+  // ── SCAN INTERRUPTION ─────────────────────────────────────────────────────
+  // Interrupt the current scan when user types (except Enter/Shift+Enter)
+  // This allows users to continue typing while analysis is in progress
+  
+  function interruptScan() {
+    if (scanState !== STATE.SCANNING) return;
+    
+    console.log("[TP/chatgpt] Scan interrupted by keystroke");
+    
+    // Mark current scan as stale (results will be discarded when they arrive)
+    activeScanToken = null;
+    
+    // Reset state to PENDING (debounce will handle next scan)
+    scanState = STATE.PENDING;
+    
+    // Clear any existing debounce timer
+    clearTimeout(debounceTimer);
+    
+    // Re-enable promptBox for typing immediately
+    // For ChatGPT, we don't have the lock/unlock functions, so just focus
+    if (promptBox) {
+      promptBox.focus();
+    }
+    updateSendButtonState();
+    
+    // Show user feedback
+    showToast("Keystroke detected — restarting analysis");
+    
+    // Restart 400ms debounce timer for new scan
+    debounceTimer = setTimeout(() => {
+      if (!promptBox) return;
+      const rawText = extractText(promptBox);
+      console.log("[TP/chatgpt] Debounce (after interrupt) fired, text:", rawText.substring(0, 50));
+      
+      if (!rawText.trim()) {
+        scanState = STATE.IDLE;
+        TrustUI.reset(promptBox);
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        lastScannedText = ""; 
+        return;
+      }
+      
+      if (rawText === lastScannedText) {
+        console.log("[TP/chatgpt] Text unchanged after interrupt, scan still DONE");
+        scanState = STATE.DONE;
+        return;
+      }
+      
+      console.log("[TP/chatgpt] Debounce triggered after interrupt - starting new scan");
+      scanState = STATE.SCANNING;
+      allowSubmit = false;
+      triggerScan(rawText);
+    }, DEBOUNCE_MS);
+  }
 
   // ── 4. SUBMIT BLOCKING ────────────────────────────────────────────────────
   //
@@ -400,6 +477,49 @@ const TP_CHATGPT = (() => {
     
     // Attach Enter key handler with proper blocking
     el.addEventListener("keydown", (e) => {
+      // ── INTERRUPTION: Any key EXCEPT Enter/Shift+Enter during SCANNING ─────
+      // Detect printable keys and editing keys (Backspace, Delete) that should
+      // interrupt the current scan and allow the user to continue typing
+      if (scanState === STATE.SCANNING) {
+        // Enter and Shift+Enter: NEVER interrupt, always block
+        if (e.key === "Enter") {
+          console.log("[TP/chatgpt] Enter pressed during SCANNING — blocking (no interrupt)");
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return false;
+        }
+        
+        // Any other key: interrupt the scan
+        if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+          console.log("[TP/chatgpt] Interruption key pressed during SCANNING:", e.key);
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          // Interrupt the scan and let the keystroke through
+          interruptScan();
+          
+          // Re-enable the promptBox and allow the character to be typed
+          setTimeout(() => {
+            if (promptBox && promptBox.contentEditable === "true") {
+              // Manually insert the character for contentEditable elements
+              // (since we prevented default, the character won't appear automatically)
+              if (e.key.length === 1) {
+                document.execCommand("insertText", false, e.key);
+              } else if (e.key === "Backspace") {
+                document.execCommand("delete", false);
+              } else if (e.key === "Delete") {
+                document.execCommand("forwardDelete", false);
+              }
+            }
+          }, 0);
+          
+          return false;
+        }
+      }
+      
+      // ── NORMAL ENTER KEY HANDLING ─────────────────────────────────────────
       if (e.key !== "Enter" || e.shiftKey) return;
       
       console.log("[TP/chatgpt] Enter pressed — allowSubmit:", allowSubmit, "scanState:", scanState);

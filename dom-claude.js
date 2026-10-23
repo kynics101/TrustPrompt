@@ -23,6 +23,10 @@ const TP_CLAUDE = (() => {
   let pendingScanPromise = null;
   let lastResult         = null;
 
+  // ── Scan token system (for interruption handling) ──────────────────────────
+  let scanToken = 0;
+  let activeScanToken = null;
+
   // Track which elements already have listeners so we never double-attach
   const listenedElements = new WeakSet();
 
@@ -149,14 +153,25 @@ const TP_CLAUDE = (() => {
   let allowSubmit = false; // Flag to control whether submission is allowed
 
   function triggerScan(rawText) {
+    // Increment scan token and mark as active
+    scanToken++;
+    activeScanToken = scanToken;
+    const currentToken = scanToken;  // Capture in closure
+    
     scanState          = STATE.SCANNING;
     lastScannedText    = rawText;
     allowSubmit        = false;
-    console.log("[TP/claude] triggerScan starting — state:", STATE.SCANNING);
+    console.log("[TP/claude] triggerScan starting — state:", STATE.SCANNING, "token:", currentToken);
     makePromptBoxReadOnly(); // Make promptBox non-editable during scan
     updateSendButtonState();
     pendingScanPromise = TrustWorkerBridge.scan(rawText)
       .then(result => {
+        // Only apply result if this scan is still the active one
+        if (currentToken !== activeScanToken) {
+          console.log("[TP/claude] Scan interrupted, discarding stale results (token mismatch)");
+          return result;  // Don't apply
+        }
+        
         console.log("[TP/claude] triggerScan complete — riskLevel:", result.riskLevel);
         scanState  = STATE.DONE;
         lastResult = result;
@@ -168,6 +183,13 @@ const TP_CLAUDE = (() => {
       })
       .catch(err => {
         console.error("[TP/claude] scan failed:", err);
+        
+        // Don't apply fallback if this scan was interrupted
+        if (currentToken !== activeScanToken) {
+          console.log("[TP/claude] Scan interrupted before completion, ignoring error");
+          return;
+        }
+        
         const fallback = { findings: [], riskLevel: "none", score: 0 };
         scanState  = STATE.DONE;
         lastResult = fallback;
@@ -250,6 +272,59 @@ const TP_CLAUDE = (() => {
         console.log("[TP/claude] promptBox refocused");
       }
     }, 100);
+  }
+
+  // ── SCAN INTERRUPTION ─────────────────────────────────────────────────────
+  // Interrupt the current scan when user types (except Enter/Shift+Enter)
+  // This allows users to continue typing while analysis is in progress
+  
+  function interruptScan() {
+    if (scanState !== STATE.SCANNING) return;
+    
+    console.log("[TP/claude] Scan interrupted by keystroke");
+    
+    // Mark current scan as stale (results will be discarded when they arrive)
+    activeScanToken = null;
+    
+    // Reset state to PENDING (debounce will handle next scan)
+    scanState = STATE.PENDING;
+    
+    // Clear any existing debounce timer
+    clearTimeout(debounceTimer);
+    
+    // Re-enable promptBox for typing immediately
+    makePromptBoxEditable();
+    updateSendButtonState();
+    
+    // Show user feedback
+    showToast("Keystroke detected — restarting analysis");
+    
+    // Restart 400ms debounce timer for new scan
+    debounceTimer = setTimeout(() => {
+      if (!promptBox) return;
+      const rawText = extractText(promptBox);
+      console.log("[TP/claude] Debounce (after interrupt) fired, text:", rawText.substring(0, 50));
+      
+      if (!rawText.trim()) {
+        scanState = STATE.IDLE;
+        TrustUI.reset(getComposerWrapper());
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        lastScannedText = ""; 
+        return;
+      }
+      
+      if (rawText === lastScannedText) {
+        console.log("[TP/claude] Text unchanged after interrupt, scan still DONE");
+        scanState = STATE.DONE;
+        return;
+      }
+      
+      console.log("[TP/claude] Debounce triggered after interrupt - starting new scan");
+      scanState = STATE.SCANNING;
+      allowSubmit = false;
+      makePromptBoxReadOnly();
+      triggerScan(rawText);
+    }, DEBOUNCE_MS);
   }
 
   // ── AGGRESSIVE SEND BUTTON CONTROL ─────────────────────────────────────
@@ -449,6 +524,49 @@ const TP_CLAUDE = (() => {
   // ── Enter key intercept on the promptBox element itself ───────────────────
   // Attached here so it captures before ProseMirror's own keydown handlers.
   function onPromptBoxKeydown(e) {
+    // ── INTERRUPTION: Any key EXCEPT Enter/Shift+Enter during SCANNING ─────
+    // Detect printable keys and editing keys (Backspace, Delete) that should
+    // interrupt the current scan and allow the user to continue typing
+    if (scanState === STATE.SCANNING) {
+      // Enter and Shift+Enter: NEVER interrupt, always block
+      if (e.key === "Enter") {
+        console.log("[TP/claude] Enter pressed during SCANNING — blocking (no interrupt)");
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+      }
+      
+      // Any other key: interrupt the scan
+      if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+        console.log("[TP/claude] Interruption key pressed during SCANNING:", e.key);
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        // Interrupt the scan and let the keystroke through
+        interruptScan();
+        
+        // Re-enable the promptBox and allow the character to be typed
+        setTimeout(() => {
+          if (promptBox && promptBox.contentEditable === "true") {
+            // Manually insert the character for contentEditable elements
+            // (since we prevented default, the character won't appear automatically)
+            if (e.key.length === 1) {
+              document.execCommand("insertText", false, e.key);
+            } else if (e.key === "Backspace") {
+              document.execCommand("delete", false);
+            } else if (e.key === "Delete") {
+              document.execCommand("forwardDelete", false);
+            }
+          }
+        }, 0);
+        
+        return false;
+      }
+    }
+    
+    // ── NORMAL ENTER KEY HANDLING ─────────────────────────────────────────
     if (e.key !== "Enter" || e.shiftKey) return;
     
     console.log("[TP/claude] Enter pressed — scanState:", scanState, "allowSubmit:", allowSubmit);

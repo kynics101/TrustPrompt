@@ -522,6 +522,7 @@ const TrustGazetteer = (() => {
     "the", "a", "an", "this", "that", "these", "those",
     "to", "of", "in", "on", "at", "by", "with", "from",
     "please", "can", "need", "want", "help", "tell", "give",
+    "what", "why", "how", "when", "where", "which",       // Question words (not names)
     "ako", "ka", "siya", "kami", "tayo", "kayo", "sila",  // Filipino pronouns
     "ang", "ng", "sa", "na", "at", "ay", "mga"             // Filipino particles
   ]);
@@ -1047,6 +1048,20 @@ const TrustGazetteer = (() => {
     // 5. Unit conversion or mathematical context
     if (/\b(gram|ton|unit|measure|convert|calculation)\b/.test(contextAfterLower)) {
       return false;  // Safe: Unit conversion or measurement context
+    }
+
+    // 6. ORGANIZATIONS: Require employment/affiliation context
+    //    Generic mentions of organization names in code, documentation, etc. are safe
+    //    Only flag if clear employment disclosure pattern
+    if (category === "organizations") {
+      // Only risky if combined with employment verbs/nouns and first-person context
+      const hasEmploymentKeyword = /\b(work|employed|employ|hire|job|position|staff|manager|director|ceo|founder|owner|employer|company|workplace|office)\b/.test(contextLower) || /\b(work|employed|employ|hire|job|position|staff)\b/.test(contextAfterLower);
+      const hasPersonalContext = /\b(i|i'm|i am|my|me|we|our)\b/.test(contextLower);
+      
+      if (!hasEmploymentKeyword || !hasPersonalContext) {
+        // Generic mention without employment context — it's safe
+        return false;  // Safe: Not a personal employment disclosure
+      }
     }
 
     // ── DEFAULT: ALLOW unless explicitly risky ───────────────────────────────

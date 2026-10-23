@@ -810,13 +810,13 @@ const TrustLinguisticDetector = (() => {
   function findOrganizationsInCSV(text) {
     const found = [];
     
-    if (!text || text.length === 0 || GOVERNANCE_ORGANIZATIONS.size === 0) {
+    if (!text || text.length === 0 || EXTENSIVE_ORGANIZATIONS.size === 0) {
       return found;
     }
     
     const textLower = text.toLowerCase();
     
-    for (const org of GOVERNANCE_ORGANIZATIONS) {
+    for (const org of EXTENSIVE_ORGANIZATIONS) {
       const orgLower = org.toLowerCase();
       
       // ★ EXACT SUBSTRING MATCH ONLY: Check if organization appears in text
@@ -830,6 +830,12 @@ const TrustLinguisticDetector = (() => {
       // - "she is a librarian in university of santo" → does NOT match (incomplete)
       // - "university of santo tomas" in CSV but text only has "university of santo" → no match
       if (textLower.includes(orgLower)) {
+        // ★ NEW: Filter out code patterns (prevent "script" in "terms-organizations.js" from being flagged)
+        if (isCodePattern(text, org)) {
+          console.debug(`[PATH_C/findOrganizationsInCSV] Filtered code pattern: "${org}" (appears as code element)`);
+          continue;  // Skip code patterns
+        }
+        
         // Avoid duplicates
         if (!found.some(f => f.name.toLowerCase() === org.toLowerCase())) {
           found.push({
@@ -910,6 +916,29 @@ const TrustLinguisticDetector = (() => {
     const standalonKeywords = /^(const|let|var|function|class|return|if|else|for|while|do|switch|case|default|break|continue|new|this|import|export|from|as)$/i;
     if (standalonKeywords.test(candidate)) {
       return true;
+    }
+
+    // ★ PATTERN 5: Generic programming terms in code contexts (NEW)
+    // "script", "file", "code", "config", "data", etc. in file paths or code references
+    // These should NOT be flagged as organizations even if they appear in the text
+    const genericCodeTerms = new Set([
+      'script', 'scripts', 'code', 'file', 'files', 'config', 'configs', 'data', 
+      'class', 'function', 'method', 'module', 'component', 'page', 'route', 'view',
+      'model', 'schema', 'template', 'service', 'handler', 'util', 'helper', 'hook',
+      'test', 'tests', 'spec', 'specs', 'build', 'dist', 'src', 'lib', 'utils'
+    ]);
+    
+    const candidateLower = candidate.toLowerCase();
+    if (genericCodeTerms.has(candidateLower)) {
+      // Check if this appears in a code-like context (has file extensions, paths, etc)
+      const hasCodeContext = /\.(js|ts|jsx|tsx|py|java|cs|rb|go|rs|php|html|css|json|yaml|xml|sql)\b/i.test(text) ||
+                            /(?:terms-|_\.js|-file|-script|-config|\.js|\.ts)/.test(text) ||
+                            /\b(?:api_?key|error|returning|keeps?|config|const|let|var|function|class|import|require|export)\b/i.test(text) ||
+                            /\b(?:file|path|directory|folder|import|require|export|function|class|const|let|var|json|xml|html)\b/i.test(contextWindow);
+      
+      if (hasCodeContext) {
+        return true;  // It's a generic programming term in code context
+      }
     }
 
     return false;

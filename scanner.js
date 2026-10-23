@@ -1230,36 +1230,45 @@ const TrustScanner = (() => {
 
     // ── SAFE CONTEXT MARKERS ──────────────────────────────────────────────────
     
+    // Critical sensitive data that should NEVER be filtered by context markers
+    const criticalPatterns = ['credit_card', 'api_key', 'jwt'];
+    
     // 1. Educational/How-To contexts
+    // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by educational context
+    // because real sensitive data in educational discussions still poses a risk
     const educationalMarkers = [
       /\b(how to|how do|how can|guide|tutorial|lesson|learn|study|teach|instruction)\b/,
       /\b(explain|describe|show|demonstrate|example|sample|documentation)\b/,
     ];
     
-    if (educationalMarkers.some(m => m.test(fullContext))) {
+    if (!criticalPatterns.includes(patternId) && educationalMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: educational context`);
       return true;
     }
 
     // 2. Example/Demo/Test/Sample contexts
+    // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by example context
+    // because even in examples, these are critical sensitive data that shouldn't be shared
     const exampleMarkers = [
       /\b(example|demo|demonstration|test case|sample|mock|dummy|fake|test data)\b/,
       /\b(format example|template|structure|layout|pattern)\b/,
     ];
     
-    if (exampleMarkers.some(m => m.test(fullContext))) {
+    if (!criticalPatterns.includes(patternId) && exampleMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: example/demo context`);
       return true;
     }
 
     // 3. Validation/Format/Verification contexts
+    // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by validation context
+    // because real sensitive data often appears in discussions about validation/verification
     const validationMarkers = [
       /\b(validate|check|verify|parse|format|validation|valid|is this|is that)\b/,
       /\b(invalid|correct|valid format|proper format|pattern match)\b/,
       /\b(test format|check format|verify format)\b/,
     ];
     
-    if (validationMarkers.some(m => m.test(fullContext))) {
+    if (!criticalPatterns.includes(patternId) && validationMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: validation context`);
       return true;
     }
@@ -1270,30 +1279,35 @@ const TrustScanner = (() => {
       /\b(json|yaml|config|configuration|api|endpoint)\b/,
     ];
     
+    // IMPORTANT: api_key, credit_card, jwt must NOT be filtered by code context
+    // because real API keys and credentials often appear in code/config contexts
     // Don't filter source_code itself just because context mentions code keywords
-    if (patternId !== 'source_code' && codeMarkers.some(m => m.test(beforeText))) {
+    if (patternId !== 'source_code' && !criticalPatterns.includes(patternId) && codeMarkers.some(m => m.test(beforeText))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: code context`);
       return true;
     }
 
     // 5. Reference/Documentation contexts
+    // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by reference context
     const referenceMarkers = [
       /\b(reference|specification|api doc|readme|wiki|documentation)\b/,
       /\b(specification|standard|format|rfc)\b/,
     ];
     
-    if (referenceMarkers.some(m => m.test(fullContext))) {
+    if (!criticalPatterns.includes(patternId) && referenceMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: reference context`);
       return true;
     }
 
     // 6. Unit conversion/Measurement contexts (for numeric patterns)
+    // NOTE: credit_card, api_key, jwt are NOT filtered by measurement context
+    // because they are critical sensitive data regardless of surrounding text
     const measurementMarkers = [
       /\b(convert|turn|transform|into|to|from)\b/,
       /\b(gram|kg|meter|second|bit|byte|mb|gb|celsius|fahrenheit)\b/,
     ];
     
-    if (['ipv4', 'ipv6', 'mac_address', 'credit_card', 'phone_intl', 'ph_mobile'].includes(patternId)) {
+    if (['ipv4', 'ipv6', 'mac_address', 'phone_intl', 'ph_mobile'].includes(patternId)) {
       if (measurementMarkers.some(m => m.test(fullContext))) {
         console.log(`[TrustPrompt/context] filtered ${patternId}: measurement context`);
         return true;

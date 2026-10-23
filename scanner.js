@@ -1460,10 +1460,10 @@ const TrustScanner = (() => {
   const CODE_KEYWORD_REGEX = new RegExp(
     '\\b(?:' +
     'if|else|elseif|elif|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|when|match|' +
-    'function|def|async|await|const|let|var|class|struct|interface|enum|type|typedef|namespace|' +
+    'function|def|async|await|const|let|var|class|struct|interface|enum|typedef|namespace|' +
     'int|string|bool|boolean|float|double|char|long|short|byte|void|null|undefined|true|false|' +
-    'import|export|require|from|as|use|include|package|using|' +
-    'this|self|super|new|delete|instanceof|typeof' +
+    'import|export|require|from|as|include|package|using|' +
+    'self|super|new|delete|instanceof|typeof' +
     ')\\b',
     'gi'
   );
@@ -1476,6 +1476,13 @@ const TrustScanner = (() => {
     const matches = text.match(CODE_KEYWORD_REGEX) || [];
     const count = matches.length;
     const score = count >= 1 ? 3 : 0;
+    
+    // TASK 17.6: Debug logging for keyword detection
+    if (count > 0 && text.includes('generate')) {
+      console.log('[TrustPrompt/DEBUG] detectCodeKeywords found matches in "' + text.substring(0, 50) + '"');
+      console.log('  Matches:', matches);
+    }
+    
     return {
       score,
       count,
@@ -1579,6 +1586,13 @@ const TrustScanner = (() => {
     } else if (count === 1) {
       score = 1; // weak evidence
     }
+    
+    // TASK 17.6: Debug logging for function call detection
+    if (count > 0 && text.includes('generate')) {
+      console.log('[TrustPrompt/DEBUG] detectFunctionCalls found matches in "' + text.substring(0, 50) + '"');
+      console.log('  Matches:', matches);
+    }
+    
     return {
       score,
       count,
@@ -1605,14 +1619,20 @@ const TrustScanner = (() => {
   // Scans for arithmetic, comparison, logical, assignment, bitwise operators.
   // 1+ matches → 1 point (weak evidence), else 0.
   // Detects: ++ -- ** && || << >> === !== <=> compound assignment (+=, -=, etc.) and single operators
+  // TASK 17.3: Excludes --> (documentation arrow notation, not code) to prevent false positives
   const OPERATORS_REGEX = /(\+\+|--|\*\*|&&|\|\||<<|>>|===|!==|<=>|[+\-*\/%&|^!=<>]=|[+\-*\/%&|^<>!~=])/g;
 
   function detectOperators(text) {
     if (!text || typeof text !== 'string') {
       return { score: 0, operatorCount: 0 };
     }
+    
+    // Pre-process: Remove --> patterns to avoid false positives from documentation notation
+    // Example: "edge cases --> i need" should not count --> as operators
+    const cleanedText = text.replace(/-->/g, '   '); // Replace with spaces to preserve positions
+    
     OPERATORS_REGEX.lastIndex = 0;
-    const matches = text.match(OPERATORS_REGEX) || [];
+    const matches = cleanedText.match(OPERATORS_REGEX) || [];
     const count = matches.length;
     return {
       score: count >= 1 ? 1 : 0,
@@ -1708,12 +1728,30 @@ const TrustScanner = (() => {
     }
     const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
     
-    // Single line: Check if it has reasonable length for code (> 5 chars)
+    // TASK 17.5: Smart single-line detection
+    // Single-line prose like "generate at least 6 of possible" shouldn't score.
+    // But single-line code like "const myValue = 5;" SHOULD score.
+    // 
+    // Strategy: For single lines, check if OTHER strong code features are present.
+    // - If the line has keywords, braces, or semicolons → it's likely code → score 1
+    // - If it's just prose → score 0
     if (lines.length === 1) {
-      const isReasonableLength = lines[0].trim().length > 5;
+      const line = lines[0].trim();
+      
+      // Check for strong code indicators in single line
+      const hasCodeKeywords = /\b(?:if|else|for|while|function|const|let|var|class|return|import|export|async|await)\b/i.test(line);
+      const hasBraces = /[{}[\]()]/.test(line);
+      const hasSemicolon = line.includes(';');
+      const hasOperatorPattern = /[=+\-*/%]/.test(line);
+      
+      // Single line is code-like if it has ANY strong code signal + proper structure
+      // Examples: "const x = 5;" (keyword + =), "return arr[0];" (keyword + brackets)
+      const isLikelyCode = (hasCodeKeywords || hasBraces || hasSemicolon) && 
+                           (hasCodeKeywords || hasBraces || hasOperatorPattern);
+      
       return {
-        score: isReasonableLength ? 1 : 0,
-        avgCharsPerLine: lines[0].length,
+        score: isLikelyCode ? 1 : 0,
+        avgCharsPerLine: line.length,
         lineCount: 1
       };
     }
@@ -1968,7 +2006,23 @@ const TrustScanner = (() => {
       const hasFnCalls = detectFunctionCalls(trimmed).count > 0;
       const hasSemi = trimmed.endsWith(';');
 
-      const isCodeLikeLine = trimmed.length > 0 && (isIndented || hasKeywords || hasImports || hasBraces || hasFnCalls || hasSemi);
+      // TASK 17.4: Stricter code-like line detection
+      // Only group lines that show STRONG code characteristics, not weak ones.
+      // This prevents prose with casual numbers/operators from being grouped into blocks.
+      // A line is code-like if:
+      //   (1) It has code keywords OR
+      //   (2) It has function calls OR  
+      //   (3) It has imports OR
+      //   (4) It has braces OR
+      //   (5) It's indented AND has semicolon (not just indented)
+      // Numbers alone (e.g., "6 of possible") or operators alone don't trigger grouping.
+      const isCodeLikeLine = trimmed.length > 0 && (
+        hasKeywords || 
+        hasFnCalls || 
+        hasImports || 
+        hasBraces || 
+        (isIndented && hasSemi)
+      );
 
       if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS && isCodeLikeLine) {
         console.log('[TrustPrompt/CODE] Code-like line detected:', {

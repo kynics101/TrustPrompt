@@ -30,6 +30,34 @@ const TP_CHATGPT = (() => {
   // Track which elements already have listeners so we never double-attach
   const listenedElements = new WeakSet();
 
+  // ── Performance tracking ──────────────────────────────────────────────────
+  let performanceMarkers = {};
+
+  function markStart(label) {
+    performance.mark(`${label}-start`);
+    performanceMarkers[label] = performance.now();
+  }
+
+  function markEnd(label) {
+    performance.mark(`${label}-end`);
+    const duration = performance.now() - performanceMarkers[label];
+    console.log(`[TrustPrompt/Performance] ${label}: ${duration.toFixed(2)}ms`);
+    performanceMarkers[`${label}-duration`] = duration;
+    return duration;
+  }
+
+  function reportScanTiming() {
+    const total = performanceMarkers['scan-total-duration'] || 0;
+    const workerCall = performanceMarkers['scan-worker-call-duration'] || 0;
+    const resultApply = performanceMarkers['scan-result-apply-duration'] || 0;
+    
+    console.group("[TrustPrompt/Performance] Scan Timeline Summary");
+    console.log(`Total scan time: ${total.toFixed(2)}ms`);
+    console.log(`  ├─ Worker call (async): ${workerCall.toFixed(2)}ms`);
+    console.log(`  └─ Result rendering: ${resultApply.toFixed(2)}ms`);
+    console.groupEnd();
+  }
+
   // ── 1. CASCADING SELECTOR ─────────────────────────────────────────────────
 
   function findPromptBox() {
@@ -139,6 +167,9 @@ const TP_CHATGPT = (() => {
   let allowSubmit = false; // Flag to control whether submission is allowed
 
   function triggerScan(rawText) {
+    // Performance tracking START
+    markStart('scan-total');
+    
     // Increment scan token and mark as active
     scanToken++;
     activeScanToken = scanToken;
@@ -156,13 +187,18 @@ const TP_CHATGPT = (() => {
       console.error("[TP/chatgpt] TrustWorkerBridge is not defined!");
       const fallback = { findings: [], riskLevel: "none", score: 0 };
       applyResult(fallback, rawText);
+      markEnd('scan-total');
+      reportScanTiming();
       return Promise.resolve(fallback);
     }
     
     try {
       console.log("[TP/chatgpt] Calling TrustWorkerBridge.scan()");
+      markStart('scan-worker-call');
       pendingScanPromise = TrustWorkerBridge.scan(rawText)
         .then(result => {
+          markEnd('scan-worker-call');
+          
           // Only apply result if this scan is still the active one
           if (currentToken !== activeScanToken) {
             console.log("[TP/chatgpt] Scan interrupted, discarding stale results (token mismatch)");
@@ -170,15 +206,23 @@ const TP_CHATGPT = (() => {
           }
           
           console.log("[TP/chatgpt] Scan promise resolved");
+          
+          markStart('scan-result-apply');
           scanState  = STATE.DONE;
           lastResult = result;
           allowSubmit = true; // Allow submission after scan completes
           applyResult(result, rawText);
           updateSendButtonState();
+          markEnd('scan-result-apply');
+          
+          markEnd('scan-total');
+          reportScanTiming();  // Report the timing summary
+          
           return result;
         })
         .catch(err => {
           console.error("[TP/chatgpt] scan promise rejected:", err);
+          markEnd('scan-worker-call');
           
           // Don't apply fallback if this scan was interrupted
           if (currentToken !== activeScanToken) {
@@ -187,11 +231,18 @@ const TP_CHATGPT = (() => {
           }
           
           const fallback = { findings: [], riskLevel: "none", score: 0 };
+          
+          markStart('scan-result-apply');
           scanState  = STATE.DONE;
           lastResult = fallback;
           allowSubmit = true; // Allow submission after scan completes
           applyResult(fallback, rawText);
           updateSendButtonState();
+          markEnd('scan-result-apply');
+          
+          markEnd('scan-total');
+          reportScanTiming();  // Report the timing summary
+          
           return fallback;
         });
     } catch (syncError) {
@@ -201,6 +252,8 @@ const TP_CHATGPT = (() => {
       lastResult = fallback;
       allowSubmit = true; // Allow submission after scan completes
       applyResult(fallback, rawText);
+      markEnd('scan-total');
+      reportScanTiming();
       return Promise.resolve(fallback);
     }
     
@@ -477,16 +530,30 @@ const TP_CHATGPT = (() => {
     
     // Attach Enter key handler with proper blocking
     el.addEventListener("keydown", (e) => {
-      // ── INTERRUPTION: Any key EXCEPT Enter/Shift+Enter during SCANNING ─────
-      // Detect printable keys and editing keys (Backspace, Delete) that should
-      // interrupt the current scan and allow the user to continue typing
+      // ── INTERRUPTION: Shift+Enter during SCANNING interrupts scan ──────────
+      // Plain Enter during SCANNING still blocks (prevents submission)
       if (scanState === STATE.SCANNING) {
-        // Enter and Shift+Enter: NEVER interrupt, always block
         if (e.key === "Enter") {
-          console.log("[TP/chatgpt] Enter pressed during SCANNING — blocking (no interrupt)");
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
+          
+          // Shift+Enter: interrupt scan and insert line break
+          if (e.shiftKey) {
+            console.log("[TP/chatgpt] Shift+Enter during SCANNING — interrupting for line break");
+            interruptScan();
+            
+            // Manually insert line break
+            setTimeout(() => {
+              if (promptBox && promptBox.contentEditable === "true") {
+                document.execCommand("insertText", false, "\n");
+              }
+            }, 0);
+            return false;
+          }
+          
+          // Plain Enter: block it (prevent submission without scan)
+          console.log("[TP/chatgpt] Enter pressed during SCANNING — blocking (no submit without scan)");
           return false;
         }
         

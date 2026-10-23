@@ -52,6 +52,38 @@ let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
 let lastScanResult  = null;
 let pendingSubmitResolver = null;
 let allowNextSubmit  = false; // Flag to allow submit after scan completes
+let performanceMarkers = {}; // Track timing of scan pipeline
+
+// ── PERFORMANCE TRACKING HELPERS ──────────────────────────────────────────────
+
+function markStart(label) {
+  performance.mark(`${label}-start`);
+  performanceMarkers[label] = performance.now();
+}
+
+function markEnd(label) {
+  performance.mark(`${label}-end`);
+  const duration = performance.now() - performanceMarkers[label];
+  console.log(`[TrustPrompt/Performance] ${label}: ${duration.toFixed(2)}ms`);
+  performanceMarkers[`${label}-duration`] = duration;
+  return duration;
+}
+
+function reportScanTiming() {
+  const total = performanceMarkers['scan-total-duration'] || 0;
+  const patternMatch = performanceMarkers['scan-pattern-match-duration'] || 0;
+  const scoring = performanceMarkers['scan-scoring-duration'] || 0;
+  const badgeUpdate = performanceMarkers['scan-badge-update-duration'] || 0;
+  const backgroundMsg = performanceMarkers['scan-background-msg-duration'] || 0;
+  
+  console.group("[TrustPrompt/Performance] Scan Timeline Summary");
+  console.log(`Total scan time: ${total.toFixed(2)}ms`);
+  console.log(`  ├─ Pattern matching: ${patternMatch.toFixed(2)}ms`);
+  console.log(`  ├─ Risk scoring: ${scoring.toFixed(2)}ms`);
+  console.log(`  ├─ Badge/UI update: ${badgeUpdate.toFixed(2)}ms`);
+  console.log(`  └─ Background message: ${backgroundMsg.toFixed(2)}ms`);
+  console.groupEnd();
+}
 
 // ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
@@ -440,6 +472,8 @@ function sendToBackground(message) {
 // ── 7. MAIN SCAN PIPELINE ────────────────────────────────────────────────────
 
 function runScan() {
+  markStart('scan-total');
+  
   if (!promptBox || !isVisible(promptBox)) {
     promptBox = findPromptBox();
     if (!promptBox) return;
@@ -454,6 +488,7 @@ function runScan() {
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
     scanState = "IDLE";
+    markEnd('scan-total');
     return;
   }
 
@@ -469,30 +504,42 @@ function runScan() {
         resolve(lastScanResult);
       }
     }
+    markEnd('scan-total');
     return;
   }
 
   lastScannedText = rawText;
   scanState = "SCANNING";
 
+  markStart('scan-pattern-match');
   const findings  = scanText(rawText);
+  markEnd('scan-pattern-match');
+
+  markStart('scan-scoring');
   const riskLevel = scoreRisk(findings);
+  markEnd('scan-scoring');
 
   console.log("[TrustPrompt/Claude] scan — risk:", riskLevel, "| findings:", findings.length);
 
   lastScanResult = { findings, riskLevel };
   
+  markStart('scan-badge-update');
   updateFloatingBadge(riskLevel);
   showInlineAlert(riskLevel, findings.length);
+  markEnd('scan-badge-update');
 
+  markStart('scan-background-msg');
   sendToBackground({
     type:      "SCAN_RESULT",
     riskLevel: riskLevel,
     findings:  findings,
     rawText:   rawText
   });
+  markEnd('scan-background-msg');
   
   scanState = "DONE";
+  markEnd('scan-total');
+  reportScanTiming();
   
   // If submit was blocked waiting for scan, notify it immediately
   if (pendingSubmitResolver) {

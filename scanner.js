@@ -882,6 +882,7 @@ const TrustScanner = (() => {
     id_label:         10,
 
     // ── Philippine Government IDs — all score 10 (Table 10) ──────────────
+    // NOTE: pattern IDs below must match the `id` fields defined in patterns.js.
     ph_id_philid:              10,  // PhilID (PSA National ID)
     ph_id_drivers_license:     10,  // Driver's License (LTO)
     ph_id_passport:            10,  // Passport (BI)
@@ -889,13 +890,11 @@ const TrustScanner = (() => {
     ph_id_sss:                 10,  // SSS (Social Security System)
     ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
     ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
-    ph_id_tin:                 10,  // TIN (Taxpayer Identification Number)
     ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
-    ph_id_nbi_clearance:       10,  // NBI Clearance
-    ph_id_police_clearance:    10,  // Police Clearance (PNP)
-    ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
-    ph_id_barangay_clearance:  10,  // Barangay Clearance
-    ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
+    ph_id_postal:              10,  // Postal ID (PHLPost)
+    ph_id_pwd:                 10,  // PWD ID (Persons with Disability)
+    ph_id_senior_citizen:      10,  // Digital National Senior Citizen ID
+    ph_id_voters:              10,  // COMELEC Voter's ID
 
     // ── Moderate (Significant) — score 5 (Table 10) ──────────────────────
     email:       5,
@@ -945,13 +944,11 @@ const TrustScanner = (() => {
     ph_id_sss:                 "critical",
     ph_id_gsis:                "critical",
     ph_id_prc:                 "critical",
-    ph_id_tin:                 "critical",
     ph_id_philhealth:          "critical",
-    ph_id_nbi_clearance:       "critical",
-    ph_id_police_clearance:    "critical",
-    ph_id_psa_certificate:     "critical",
-    ph_id_barangay_clearance:  "critical",
-    ph_id_comelec_voter_id:    "critical",
+    ph_id_postal:              "critical",
+    ph_id_pwd:                 "critical",
+    ph_id_senior_citizen:      "critical",
+    ph_id_voters:              "critical",
 
     // ── Significant (score 5) ─────────────────────────────────────────────
     email:       "significant",

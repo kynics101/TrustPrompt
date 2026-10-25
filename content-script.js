@@ -52,6 +52,7 @@ let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
 let lastScanResult  = null;
 let pendingSubmitResolver = null;
 let allowNextSubmit  = false; // Flag to allow submit after scan completes
+let submitBlocked    = false; // True when submit is blocked waiting for user to press Enter again
 let performanceMarkers = {}; // Track timing of scan pipeline
 
 // ── PERFORMANCE TRACKING HELPERS ──────────────────────────────────────────────
@@ -667,6 +668,22 @@ function handleSubmitAttempt(e) {
     return; // allow empty submissions
   }
 
+  // CASE 1: Submit is blocked waiting for user to press Enter again
+  // User is pressing Enter the second time — allow the send
+  if (submitBlocked) {
+    console.log("[TrustPrompt/Claude] submit was blocked, user pressed Enter again — releasing submit");
+    submitBlocked = false; // Reset the flag
+    if (e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+    releaseSubmit();
+    return;
+  }
+
+  // CASE 2: Submit is NOT blocked — first Enter press after paste
+  // Block it and start the scan
+  
   // Always prevent the event from propagating initially
   if (e) {
     e.preventDefault();
@@ -691,12 +708,14 @@ function handleSubmitAttempt(e) {
   console.log("[TrustPrompt/Claude] awaiting scan...");
   awaitScan().then(result => {
     console.log("[TrustPrompt/Claude] scan complete:", result);
+    console.log("[TrustPrompt/Claude] setting submitBlocked flag — user must press Enter again to send");
     
-    // Badge now shows the risk level — user can see and decide
-    // Allow submission for ANY risk level (none/low/moderate/high)
-    console.log("[TrustPrompt/Claude] scan complete, badge updated with riskLevel:", result?.riskLevel);
-    console.log("[TrustPrompt/Claude] releasing submit — user has autonomy to proceed");
-    releaseSubmit();
+    // Use requestAnimationFrame to ensure badge is painted before blocking
+    requestAnimationFrame(() => {
+      submitBlocked = true;
+      showToast("✓ Scan complete. Press Enter again to send, or edit your message.", 5000);
+      console.log("[TrustPrompt/Claude] badge painted, submitBlocked = true");
+    });
   });
 }
 
@@ -704,6 +723,16 @@ function handleSubmitAttempt(e) {
 function onPromptBoxKeydown(e) {
   console.log("[TrustPrompt/Claude] onPromptBoxKeydown fired - key:", e.key, "shiftKey:", e.shiftKey);
   if (e.key !== "Enter" || e.shiftKey) return;
+  
+  // If submit was blocked, we need to intercept again to allow the second Enter
+  if (submitBlocked) {
+    console.log("[TrustPrompt/Claude] onPromptBoxKeydown - submitBlocked is true, user pressing Enter to send");
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    handleSubmitAttempt(e);
+    return;
+  }
+  
   if (e._tpRelease) {
     console.log("[TrustPrompt/Claude] onPromptBoxKeydown - release flag set, allowing through");
     return;
@@ -719,15 +748,35 @@ function onPromptBoxKeydown(e) {
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
+  
+  const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
+  if (!label.includes("send")) return;
+  if (!promptBox || !isVisible(promptBox)) return;
+  
+  // If submit is blocked, allow the click only if user pressed Enter (handled by keydown)
+  // For button clicks while blocked, we need to treat it as if user pressed Enter again
+  if (submitBlocked) {
+    console.log("[TrustPrompt/Claude] send button clicked while submitBlocked — user requesting send");
+    if (btn._tpRelease) { 
+      console.log("[TrustPrompt/Claude] send button clicked with _tpRelease flag, allowing through");
+      btn._tpRelease = false; 
+      return; 
+    }
+    // Allow the send
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    submitBlocked = false;
+    releaseSubmit();
+    return;
+  }
+  
   if (btn._tpRelease) { 
     console.log("[TrustPrompt/Claude] send button clicked with _tpRelease flag, allowing through");
     btn._tpRelease = false; 
     return; 
   }
-  const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
-  if (!label.includes("send")) return;
-  if (!promptBox || !isVisible(promptBox)) return;
-  console.log("[TrustPrompt/Claude] send button clicked — intercepting");
+  
+  console.log("[TrustPrompt/Claude] send button clicked — intercepting (first click)");
   handleSubmitAttempt(e);
 }, true);
 
@@ -744,6 +793,17 @@ document.addEventListener("keydown", (e) => {
     console.log("[TrustPrompt/Claude] document keydown - event from inside promptBox, skipping (will be handled by onPromptBoxKeydown)");
     return;
   }
+  
+  // If submit is blocked, allow the second Enter
+  if (submitBlocked) {
+    console.log("[TrustPrompt/Claude] document keydown - submitBlocked is true, allowing second Enter");
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    submitBlocked = false;
+    releaseSubmit();
+    return;
+  }
+  
   console.log("[TrustPrompt/Claude] document keydown - calling handleSubmitAttempt (fallback)");
   handleSubmitAttempt(e);
 }, true);
@@ -756,6 +816,7 @@ chrome.runtime.onMessage.addListener((message) => {
     removeInlineAlert();
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
+    submitBlocked = false; // Also reset the block flag
   }
 });
 

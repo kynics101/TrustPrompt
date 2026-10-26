@@ -1194,24 +1194,27 @@ const TrustScanner = (() => {
 
   function shouldFilterByContext(patternId, rawMatch, fullText, matchIndex) {
     // Patterns that benefit from context analysis
+    // NOTE: ph_mobile and ipv4 are REMOVED from this list because they are PII
+    // that should ALWAYS be detected and flagged, regardless of context.
+    // Even in educational discussion ("how many grams in 09172345678?"),
+    // a real phone number or IP address has been shared and must be flagged.
+    // Context affects RISK LEVEL (educational=LOW, intentional=MODERATE), not detection.
     const contextAwarePatterns = [
-      'phone_intl', 'ph_mobile',      // Measurement contexts
+      'phone_intl',                    // International phone (can appear in measurement contexts)
       'email',                         // Example/demo contexts
-      'ipv4', 'ipv6', 'mac_address',  // Educational contexts
       'credit_card',                   // Format documentation
       'api_key', 'jwt',                // Code/documentation blocks
-      // 'source_code' removed - shouldn't be filtered by code context markers
-      'ph_id_philid', 'ph_id_umid', 'ph_id_passport', 'ph_id_prc',
-      'ph_id_postal', 'ph_id_pwd', 'ph_id_senior_citizen',
-      'ph_id_gsis', 'ph_id_sss', 'ph_id_philhealth',
-      'ph_id_drivers_license', 'ph_id_voters',
-      'ph_id_pagibig', 'ph_id_police_clearance', 'ph_id_nbi'
+      // REMOVED: 'ph_mobile' - PII that must ALWAYS be flagged
+      // REMOVED: 'ipv4', 'ipv6', 'mac_address' - Network PII that must ALWAYS be flagged
+      // NOTE: ALL Philippine ID patterns are NOT in this list
+      //       All PH government IDs are sensitive credentials that should ALWAYS be detected
+      //       regardless of context (educational, validation, format discussion, etc.)
       // NOTE: height_mention and weight_mention are EXCLUDED from context filtering
-      // because they are ALWAYS relevant even in measurement contexts (e.g., "70 kg" is weight, not a phone number)
+      //       because they are ALWAYS relevant even in measurement contexts
     ];
 
     // Only apply context filtering to patterns that need it
-    // Height and weight patterns ALWAYS pass through (never filtered by context)
+    // Phone/IP/MAC addresses ALWAYS pass through (never filtered by context)
     if (!contextAwarePatterns.includes(patternId)) {
       return false;
     }
@@ -1469,8 +1472,30 @@ const TrustScanner = (() => {
     if (!text || typeof text !== 'string') {
       return { score: 0, count: 0, keywordMatches: [] };
     }
+    
+    // ── SOLUTION A1: Prose Phrase Exclusion for "as" Keyword ──────────────────
+    // Exclude "as" keyword when preceded by common verbs in credential/ID context.
+    // This prevents prose like "Use UMID ... as my valid ID" from triggering code detection.
+    // Pattern: [verb] + [noun/identifier] + "as" + [article/pronoun] + [noun]
+    // Examples to exclude:
+    //   - "Use UMID CRN 0111-3044737-0 as my valid ID"
+    //   - "Refer to my SSS as my employee identifier"
+    //   - "Serve this number as your backup ID"
+    //   - "Know my GSIS as my government ID"
+    const proseAsPattern = /\b(?:use|refer|know|serve|work|treat|shown?|given?|provide|call|name)\s+[A-Za-z0-9\s\-\.]*\s+as\s+(?:my|our|their|a|an|the)\b/gi;
+    const hasProseAsContext = proseAsPattern.test(text);
+    
     CODE_KEYWORD_REGEX.lastIndex = 0;
-    const matches = text.match(CODE_KEYWORD_REGEX) || [];
+    const allMatches = text.match(CODE_KEYWORD_REGEX) || [];
+    
+    // Filter out "as" keyword if in prose context
+    const matches = allMatches.filter(match => {
+      if (match.toLowerCase() === 'as' && hasProseAsContext) {
+        return false;  // Exclude this "as" keyword
+      }
+      return true;  // Keep all other keywords
+    });
+    
     const count = matches.length;
     const score = count >= 1 ? 3 : 0;
     
@@ -1478,6 +1503,11 @@ const TrustScanner = (() => {
     if (count > 0 && text.includes('generate')) {
       console.log('[TrustPrompt/DEBUG] detectCodeKeywords found matches in "' + text.substring(0, 50) + '"');
       console.log('  Matches:', matches);
+    }
+    
+    // Log when prose context is detected
+    if (hasProseAsContext && allMatches.some(m => m.toLowerCase() === 'as')) {
+      console.log('[TrustPrompt/CodeDetection] Prose context detected for "as" keyword - excluded from scoring');
     }
     
     return {
@@ -1734,6 +1764,31 @@ const TrustScanner = (() => {
     // - If it's just prose → score 0
     if (lines.length === 1) {
       const line = lines[0].trim();
+      
+      // ── SOLUTION B2: ID-Pattern Bypass ──────────────────────────────────────
+      // Skip aggressive single-line code detection when line is primarily about
+      // discussing/mentioning a credential ID number.
+      // This prevents phrases like "Use UMID CRN 0111-3044737-0 as my valid ID."
+      // from being flagged as code due to ID format matching.
+      const idPatterns = [
+        /\d{4}-\d{7}-\d/,           // UMID (4-7-1 format)
+        /\d{2}-\d{7}-\d/,           // SSS (2-7-1 format)
+        /\d{4}-\d{4}-\d{4}-\d{4}/,  // PhilID (16 digits in 4-4-4-4)
+        /\d{3}-\d{4}-\d{3}-\d{5}/,  // PWD ID
+      ];
+      
+      const looksLikeIdMention = /(?:id|number|identifier|umid|sss|gsis|crn|number|employee|govt?|government)/i.test(line);
+      const hasIdPattern = idPatterns.some(pattern => pattern.test(line));
+      
+      if (looksLikeIdMention && hasIdPattern) {
+        console.log('[TrustPrompt/CodeDetection] ID-pattern detected in single-line: treating as prose');
+        return {
+          score: 0,
+          avgCharsPerLine: line.length,
+          lineCount: 1,
+          reason: 'ID-like pattern detected; treating as prose'
+        };
+      }
       
       // Check for strong code indicators in single line
       const hasCodeKeywords = /\b(?:if|else|for|while|function|const|let|var|class|return|import|export|async|await)\b/i.test(line);
@@ -2374,6 +2429,72 @@ const TrustScanner = (() => {
   // Source code detection runs independently on normalisedText, parallel with all paths.
   // Returns findings array with source_code pattern and proper risk escalation.
 
+  function enhanceFindingsWithCodeContext(findings) {
+    // Check if source_code is present
+    const hasSourceCode = findings.some(f => f.patternId === 'source_code');
+    if (!hasSourceCode) {
+      // No code context, return findings as-is
+      return findings;
+    }
+
+    // Map of ID pattern IDs that should be marked as "[Source Code]" when code is present
+    const idPatternsInCode = {
+      'ph_id_umid': 'UMID (Unified Multi-Purpose ID)',
+      'ph_id_sss': 'SSS (Social Security System)',
+      'ph_id_gsis': 'GSIS (Government Service Insurance)',
+      'ph_id_umid_variable_assignment': 'UMID in Code Variable Assignment',
+      'ph_id_sss_variable_assignment': 'SSS in Code Variable Assignment',
+      'ph_id_gsis_variable_assignment': 'GSIS in Code Variable Assignment',
+      'ph_id_object_literal': 'Government ID in Object Literal',
+      'ph_id_function_argument': 'Government ID in Function Argument',
+      'ph_id_passport': 'Philippine Passport',
+      'ph_id_prc': 'PRC (Professional Regulation Commission)',
+      'ph_id_tin': 'TIN (Tax Identification Number)',
+      'ph_id_drivers_license': "Driver's License (LTO)",
+      'ph_id_voters': "Voter's ID (COMELEC)",
+      'ph_id_philhealth': 'PhilHealth (Health Insurance)',
+      'ph_id_pagibig': 'PagIBIG (Home Savings Bank)',
+      'ph_id_psa_certificate': 'PSA Birth Certificate',
+      'ph_id_police_clearance': 'Police Clearance',
+      'ph_id_barangay_clearance': 'Barangay Clearance'
+    };
+
+    // Enhance findings: for standalone ID patterns found alongside source_code,
+    // prepend "[Source Code] " to indicate they were found in code context
+    return findings.map(f => {
+      // Check if this is a standalone ID pattern (not already marked as code-specific)
+      const isStandaloneIDPattern = 
+        (f.patternId === 'ph_id_umid' || 
+         f.patternId === 'ph_id_sss' || 
+         f.patternId === 'ph_id_gsis' ||
+         f.patternId === 'ph_id_passport' ||
+         f.patternId === 'ph_id_prc' ||
+         f.patternId === 'ph_id_tin' ||
+         f.patternId === 'ph_id_drivers_license' ||
+         f.patternId === 'ph_id_voters' ||
+         f.patternId === 'ph_id_philhealth' ||
+         f.patternId === 'ph_id_pagibig' ||
+         f.patternId === 'ph_id_psa_certificate' ||
+         f.patternId === 'ph_id_police_clearance' ||
+         f.patternId === 'ph_id_barangay_clearance');
+
+      // If this is a standalone ID found alongside code, mark it as "[Source Code]"
+      if (isStandaloneIDPattern) {
+        return {
+          ...f,
+          label: `[Source Code] ${f.label}`,
+          reason: f.reason + ' (Found within source code context.)'
+        };
+      }
+
+      return f;
+    });
+  }
+
+  // ── TASK 12.3: Extract and run source code detection in parallel ─────────────────
+  // Source code detection runs independently on normalisedText, parallel with all paths.
+  // Returns findings array with source_code pattern and proper risk escalation.
+
   function runSourceCodeDetection(normalisedText) {
     // Safety check: CODE_DETECTION_CONFIG might not be defined in worker context
     try {
@@ -2604,7 +2725,13 @@ const TrustScanner = (() => {
         console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch}`).join(", "));
       }
 
-      return { findings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted: false };
+      // ── TASK 12.4: Label Enhancement for Code+ID Context ────────────────────
+      // When source_code and government ID patterns are detected together,
+      // update the ID pattern labels to explicitly show "[Source Code]" context
+      // This helps users understand their ID was found within code, not just prose.
+      const enhancedFindings = enhanceFindingsWithCodeContext(findings);
+
+      return { findings: enhancedFindings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted: false };
     } catch (scanError) {
       console.error("[TrustPrompt/scanner] FATAL SCAN ERROR:", scanError.message, scanError.stack);
       // Return safe default on any error

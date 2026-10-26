@@ -567,34 +567,32 @@ function structuralValidatePHID_Passport(raw) {
     return false;
   }
 
-  // Normalize by removing the optional "P" or "PH" prefix and separators
-  // stripChars parameter removes "P", "PH", hyphens, spaces, dots
-  let normalized = normalizePHID(raw, "P-");
-  
-  // If normalizePHID removed "P" prefix but left a "H", remove it too
-  // This handles "PH" prefix: P is stripped by stripChars, then we need to remove H
-  if (normalized.length > 0 && normalized[0].toUpperCase() === "H") {
-    normalized = normalized.slice(1);
+  // Extract all letters and digits from the raw input
+  const letters = raw.replace(/[^A-Za-z]/g, "").toUpperCase();
+  const digits = raw.replace(/[^0-9]/g, "");
+
+  // Validate Format 1: 1 letter + 7 digits + 1 letter (e.g., P1261878A)
+  // Format: [A-Z]\d{7}[A-Z]
+  if (letters.length === 2 && digits.length === 7) {
+    // Both formats match this pattern:
+    // - Format 1a: 1 prefix letter + 1 suffix letter (e.g., P7409785C → letters="PC", digits="7409785")
+    // - Format 2: 2 prefix letters (e.g., PA7203775 → letters="PA", digits="7203775")
+    // Both are valid. Just need to verify digit count.
+    return true;
   }
 
-  // Validate digit count: must be 7 or 8 digits
-  if (normalized.length !== 7 && normalized.length !== 8) {
-    return false;
+  // Validate Format 2b: 2 letters + 7 digits with "P" or "PH" prefix stripped
+  // After normalizePHID removes "P"/"PH", we might have 1-2 letters + 7-8 digits
+  // e.g., "PH12345678" → normalized "12345678" (8 digits, 0 letters)
+  if (digits.length === 7 || digits.length === 8) {
+    if (letters.length === 0 || letters.length === 1) {
+      // Pure digits or 1 letter + digits (after prefix removal)
+      return true;
+    }
   }
 
-  // Validate all characters are digits
-  if (!/^\d{7,8}$/.test(normalized)) {
-    return false;
-  }
-
-  // First digit can be any digit (0-9)
-  // No specific validation needed for the first digit
-
-  // Remaining digits (2-9 or 2-8) are just verified to be numeric (already checked above)
-  // No specific ranges required for the sequence portion
-
-  // All validations passed
-  return true;
+  // If none of the above patterns match, it's invalid
+  return false;
 }
 
 // ── PERSONAL HEALTH METRICS PATTERNS ────────────────────────────────────────────
@@ -1572,7 +1570,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "credit_card",
     label: "Credit / Debit Card Number",
     reason: "Card numbers give direct access to your financial accounts. Sharing one with an AI model means it is transmitted to and stored by a third-party server.",
-    regex: /\b(?:\d[\s\-]?){13,19}\b/g,
+    regex: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
     risk: "high",
     validate: "isCreditCard",
     sanitize: (m) => m.replace(/\d(?=\d{4})/g, "*")
@@ -1688,10 +1686,14 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_mobile",
     label: "Philippine Mobile Number",
     reason: "Philippine mobile numbers (09XX or +639XX format) are directly tied to a person's identity through SIM registration (RA 11934). Exposing a mobile number enables unsolicited contact, SIM-swap fraud, and social engineering attacks.",
-    regex: /(?<![a-zA-Z0-9])(?:\+63|0)[\s\-\uE002\uE003]?9[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d[\s\-\uE002\uE003]?\d(?![a-zA-Z0-9])/gi,
+    regex: /(\+639|09)[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d/gi,
     risk: "moderate",
     validate: "isMobilePhone_PH",
-    sanitize: (m) => m.slice(0, -6) + "xxxxxx"
+    sanitize: (m) => {
+      // Remove spacing/dashes and show only first 3 and last 2 digits
+      const cleaned = m.replace(/[\s\-]/g, '');
+      return cleaned.slice(0, 3) + '****' + cleaned.slice(-2);
+    }
   },
 
   {
@@ -1876,7 +1878,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_passport",
     label: "Philippine Passport",
     reason: "Passport issued by the Bureau of Immigration (BI) is an international travel credential and critical identifier under RA 10173 and UNCHR standards. Philippine passports are recognized globally for travel and identity verification purposes.",
-    regex: /(?:passport\s+(?:number|no\.?|no|id|#)?:?\s*)?(?:^|[\s])[A-Z]{2}\d{7}(?:\s|$|[^\w])|passport\s+(?:number|no\.?|no|id|#)?:?\s*[A-Z]{2}\d{7}/gim,
+    regex: /(?:passport\s+(?:number|no\.?|no|id|#)?:?\s*)?(?:^|[\s])(?:[A-Z]\d{7}[A-Z]|[A-Z]{2}\d{7})(?:\s|$|[^\w])|passport\s+(?:number|no\.?|no|id|#)?:?\s*(?:[A-Z]\d{7}[A-Z]|[A-Z]{2}\d{7})/gim,
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_Passport,
@@ -2081,8 +2083,166 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "low",
     validate: null,
     sanitize: (_m) => "[WEIGHT REDACTED]"
-  }
+  },
 
+  // ── ID-IN-CODE PATTERNS (TASK: Detect Government IDs in Code Contexts) ─────
+  // These patterns detect when government IDs (UMID, SSS, GSIS) appear in code
+  // variable assignments, object literals, and function arguments.
+  // This helps users understand they're sharing code with embedded credentials.
+
+  // UMID in variable assignment
+  // Example: const UMID = "0111-3044737-0";
+  // Example: let employeeId = "4567-8901234-5";
+  {
+    id: "ph_id_umid_variable_assignment",
+    label: "UMID in Code Variable Assignment",
+    reason: "UMID credential embedded in code variable assignment. Code containing government IDs may be logged by AI platforms, exposing your identity verification data.",
+    regex: /(?:const|let|var)\s+(\w*(?:umid|employee_?id|emp_?id|user_?id)\w*)\s*=\s*["']?(\d{4}-\d{7}-\d)["']?/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: (raw) => {
+      const digits = raw.match(/\d{4}-\d{7}-\d/)?.[0];
+      return digits ? structuralValidatePHID_UMID(digits) : false;
+    },
+    sanitize: (m) => {
+      const varMatch = m.match(/(?:const|let|var)\s+(\w+)/);
+      const idMatch = m.match(/\d{4}-\d{7}-\d/);
+      const varName = varMatch ? varMatch[1] : "ID";
+      const idDigits = idMatch ? idMatch[0] : "";
+      if (idDigits) {
+        return `${varName}=${idDigits.slice(0, 4)}-${"*".repeat(7)}-${idDigits.slice(-1)}`;
+      }
+      return "[REDACTED-UMID-ASSIGNMENT]";
+    }
+  },
+
+  // SSS in variable assignment
+  // Example: const sss = "12-3456789-0";
+  // Example: let socialSecurityNumber = "01-2345678-9";
+  {
+    id: "ph_id_sss_variable_assignment",
+    label: "SSS in Code Variable Assignment",
+    reason: "SSS credential embedded in code variable assignment. Code containing employment identifiers may be logged by AI platforms, exposing employment records access.",
+    regex: /(?:const|let|var)\s+(\w*(?:sss|social_?security|ss_?number|social_?sec)\w*)\s*=\s*["']?(\d{2}-\d{7}-\d)["']?/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: (raw) => {
+      const digits = raw.match(/\d{2}-\d{7}-\d/)?.[0];
+      return digits ? structuralValidatePHID_SSS(digits) : false;
+    },
+    sanitize: (m) => {
+      const varMatch = m.match(/(?:const|let|var)\s+(\w+)/);
+      const idMatch = m.match(/\d{2}-\d{7}-\d/);
+      const varName = varMatch ? varMatch[1] : "ID";
+      const idDigits = idMatch ? idMatch[0] : "";
+      if (idDigits) {
+        return `${varName}=${idDigits.slice(0, 2)}-${"*".repeat(7)}-${idDigits.slice(-1)}`;
+      }
+      return "[REDACTED-SSS-ASSIGNMENT]";
+    }
+  },
+
+  // GSIS in variable assignment
+  // Example: const gsis = "1234-5678901-0";
+  {
+    id: "ph_id_gsis_variable_assignment",
+    label: "GSIS in Code Variable Assignment",
+    reason: "GSIS credential embedded in code variable assignment. Code containing government employee identifiers may be logged by AI platforms.",
+    regex: /(?:const|let|var)\s+(\w*(?:gsis|govt?_?employee|govt?_?id|civil_?service)\w*)\s*=\s*["']?(\d{4}-\d{7}-\d)["']?/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: (raw) => {
+      const digits = raw.match(/\d{4}-\d{7}-\d/)?.[0];
+      return digits ? structuralValidatePHID_GSIS(digits) : false;
+    },
+    sanitize: (m) => {
+      const varMatch = m.match(/(?:const|let|var)\s+(\w+)/);
+      const idMatch = m.match(/\d{4}-\d{7}-\d/);
+      const varName = varMatch ? varMatch[1] : "ID";
+      const idDigits = idMatch ? idMatch[0] : "";
+      if (idDigits) {
+        return `${varName}=${idDigits.slice(0, 4)}-${"*".repeat(5)}-${idDigits.slice(-1)}`;
+      }
+      return "[REDACTED-GSIS-ASSIGNMENT]";
+    }
+  },
+
+  // ID in object literal
+  // Example: {umid: "0111-3044737-0", name: "John"}
+  // Example: {sss: "12-3456789-0", employeeInfo: {...}}
+  // Example: {id: "1234-5678901", department: "HR"}
+  {
+    id: "ph_id_object_literal",
+    label: "Government ID in Object Literal",
+    reason: "Government ID embedded in code object literal. This is a code pattern that will be visible to AI platforms, exposing your credential data structure.",
+    regex: /[{,]\s*(?:umid|sss|gsis|employee_?id|user_?id|emp_?id|govt?_?id|social_?security|identity_?number)\s*:\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d|\d{4}-\d{4}-\d{4}-\d{4})["']?/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: (raw) => {
+      const umidMatch = raw.match(/\d{4}-\d{7}-\d/);
+      const sssMatch = raw.match(/\d{2}-\d{7}-\d/);
+      const philidMatch = raw.match(/\d{4}-\d{4}-\d{4}-\d{4}/);
+      
+      if (umidMatch) return structuralValidatePHID_UMID(umidMatch[0]);
+      if (sssMatch) return structuralValidatePHID_SSS(sssMatch[0]);
+      if (philidMatch) return true; // PhilID format is structurally valid
+      return false;
+    },
+    sanitize: (m) => {
+      const keyMatch = m.match(/(?:umid|sss|gsis|employee_?id|user_?id|emp_?id|id)\s*:\s*/i);
+      const idMatch = m.match(/(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d|\d{4}-\d{4}-\d{4}-\d{4})/);
+      
+      if (keyMatch && idMatch) {
+        const key = keyMatch[0].trim();
+        const idDigits = idMatch[0];
+        
+        if (/\d{4}-\d{7}-\d/.test(idDigits)) {
+          return `${key}"${idDigits.slice(0, 4)}-${"*".repeat(7)}-${idDigits.slice(-1)}"`;
+        } else if (/\d{2}-\d{7}-\d/.test(idDigits)) {
+          return `${key}"${idDigits.slice(0, 2)}-${"*".repeat(7)}-${idDigits.slice(-1)}"`;
+        } else if (/\d{4}-\d{4}-\d{4}-\d{4}/.test(idDigits)) {
+          return `${key}"${idDigits.slice(0, 4)}-****-****-${idDigits.slice(-4)}"`;
+        }
+      }
+      return "[REDACTED-ID-LITERAL]";
+    }
+  },
+
+  // ID in function argument / fetch call
+  // Example: fetch(api, {id: "0111-3044737-0"})
+  // Example: sendRequest({umid: "0111-3044737-0", data: {...}})
+  // Example: updateUser("0111-3044737-0")
+  {
+    id: "ph_id_function_argument",
+    label: "Government ID in Function Argument",
+    reason: "Government ID passed as function argument in code. Function calls with credential data are logged by AI platforms, exposing your usage patterns.",
+    regex: /\w+\s*\(\s*[{,]?\s*(?:umid|sss|gsis|employee_?id|user_?id|id)\s*[:=]\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d)["']?/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: (raw) => {
+      const umidMatch = raw.match(/\d{4}-\d{7}-\d/);
+      const sssMatch = raw.match(/\d{2}-\d{7}-\d/);
+      
+      if (umidMatch) return structuralValidatePHID_UMID(umidMatch[0]);
+      if (sssMatch) return structuralValidatePHID_SSS(sssMatch[0]);
+      return false;
+    },
+    sanitize: (m) => {
+      const funcMatch = m.match(/^(\w+)\s*\(/);
+      const funcName = funcMatch ? funcMatch[1] : "function";
+      const idMatch = m.match(/(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d)/);
+      
+      if (idMatch) {
+        const idDigits = idMatch[0];
+        if (/\d{4}-\d{7}-\d/.test(idDigits)) {
+          return `${funcName}({id: "${idDigits.slice(0, 4)}-${"*".repeat(7)}-${idDigits.slice(-1)}"...})`;
+        } else if (/\d{2}-\d{7}-\d/.test(idDigits)) {
+          return `${funcName}({sss: "${idDigits.slice(0, 2)}-${"*".repeat(7)}-${idDigits.slice(-1)}"...})`;
+        }
+      }
+      return "[REDACTED-ID-FUNCTION-ARG]";
+    }
+  }
 
 ];
 

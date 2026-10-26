@@ -39,7 +39,7 @@ const TrustValidator = (() => {
    */
   function isCreditCard(raw) {
     const digits = digitsOnly(raw);
-    if (digits.length < 13 || digits.length > 19) return false;
+    if (digits.length !== 16) return false;
     return validator.isCreditCard(digits);
   }
 

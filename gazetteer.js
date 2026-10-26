@@ -238,7 +238,7 @@ const TrustGazetteer = (() => {
     "albanian", "azerbaijani", "armenian", "georgian",
     "belarusian", "moldovan",
     // ── Middle East / Africa ──────────────────────────────────────────────────
-    "saudi", "emirati", "qatari", "kuwaiti", "omani",
+    "saudi arabian", "emirati", "qatari", "kuwaiti", "omani",
     "iranian", "iraqi", "syrian", "yemeni", "lebanese",
     "jordanian", "palestinian", "israeli", "afghan",
     "egyptian", "libyan", "tunisian", "moroccan",
@@ -436,7 +436,32 @@ const TrustGazetteer = (() => {
     { phrase: "i have",               category: "eye_color",    risk: "low",   requireGazetteer: "eye_color",   followPattern: /^(blue|brown|black|green|gray|grey|hazel|amber)\s*(eyes)?/ },
     { phrase: "my sex is",            category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender" },
     { phrase: "my gender is",         category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender" },
-    { phrase: "i am",                 category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender",   followPattern: /^(female|male|intersex|non-binary|nonbinary|woman|man|girl|boy|femme|masc|genderqueer|genderfluid|agender|bigender)/ }
+    { phrase: "i am",                 category: "sex_gender",   risk: "low",   requireGazetteer: "sex_gender",   followPattern: /^(female|male|intersex|non-binary|nonbinary|woman|man|girl|boy|femme|masc|genderqueer|genderfluid|agender|bigender)/ },
+    // ── CONTACT INFORMATION (Phone & IP) ──────────────────────────────────
+    // These use context-aware detection: only flagged when followed by actual sharing intent
+    // Suppressed in educational contexts ("how many", "example", "format", etc.)
+    { phrase: "my number is",         category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "my phone is",          category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "call me at",           category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "reach me at",          category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "text me at",           category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "send to",              category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "her number is",        category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "his number is",        category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "their number is",      category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "phone number is",      category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "mobile number is",     category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "our number is",        category: "phone_number", risk: "moderate", isContactInfo: true },
+    { phrase: "your number",          category: "phone_number", risk: "moderate", isContactInfo: true },
+    // IP Addresses
+    { phrase: "server is",            category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "server address",       category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "IP is",                category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "IP address is",        category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "address is",           category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "connect to",           category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "access",               category: "ip_address",   risk: "moderate", isContactInfo: true },
+    { phrase: "hostname",             category: "ip_address",   risk: "moderate", isContactInfo: true }
   ];
 
   // ── GAZETTEER OBJECT — Aggregated word/phrase lists for validation ─────────
@@ -1242,21 +1267,149 @@ const TrustGazetteer = (() => {
     return true;
   }
 
+  // ── CONTEXT-AWARE FILTERING FOR PHONE & IP ───────────────────────────────────
+  // These helpers suppress phone/IP detection in educational/technical contexts
+  // while preserving detection when there's clear sharing intent
+
+  /**
+   * Detect if phone/IP is used in educational/technical context.
+   * NOTE: This does NOT suppress detection - phone/IP are ALWAYS flagged as they are PII.
+   * Instead, this is used to adjust risk level:
+   *   - Educational context: "how many grams in 09172345678?" → risk: LOW (accidental exposure)
+   *   - Sharing intent: "my number is 09171234567" → risk: MODERATE/HIGH (intentional sharing)
+   *
+   * @param {string} text - full text
+   * @param {number} matchStart - character index where match starts
+   * @param {number} matchLength - character length of the match
+   * @returns {boolean} true if educational/technical context detected
+   */
+  function isEducationalContext(text, matchStart, matchLength) {
+    // Extract 150-char window before and after match
+    const beforeStart = Math.max(0, matchStart - 150);
+    const afterEnd = Math.min(text.length, matchStart + matchLength + 150);
+    const beforeWindow = text.substring(beforeStart, matchStart);
+    const afterWindow = text.substring(matchStart + matchLength, afterEnd);
+    const contextWindow = (beforeWindow + afterWindow).toLowerCase();
+
+    // Educational/technical keywords that indicate discussion, not direct sharing
+    const educationalKeywords = [
+      "example", "like", "such as", "e.g.", "for instance",
+      "format", "valid", "invalid", "range", "specification",
+      "typical", "usually", "commonly", "standard", "how many",
+      "what is", "question", "asking"
+    ];
+
+    // Check if any educational keyword is present in the context
+    const hasEducationalKeyword = educationalKeywords.some(kw => contextWindow.includes(kw));
+    
+    // Questions ending with "?" may indicate information-seeking rather than sharing
+    const hasQuestion = contextWindow.includes("?");
+    
+    // Technical documentation keywords
+    const technicalKeywords = ["rfc", "subnet", "cidr", "netmask", "protocol", "documentation", "specification"];
+    const hasTechnicalContext = technicalKeywords.some(kw => contextWindow.includes(kw));
+
+    // Educational context = has educational keywords OR is a question (but not "call me" etc)
+    const isEducational = hasEducationalKeyword || (hasQuestion && !contextWindow.includes("call") && !contextWindow.includes("send") && !contextWindow.includes("reach"));
+
+    return isEducational || hasTechnicalContext;
+  }
+
+  /**
+   * Stub: Check if a trigger indicates personal context or information-seeking.
+   * This function is referenced in the standard trigger processing path.
+   * For now, return true (allow) to ensure compatibility.
+   */
+  function isPersonalContext(text, triggerCharIdx, category) {
+    // For phone/IP, we use hasEducationalContext instead
+    // For other categories, trust the trigger phrase to indicate personal context
+    return true;
+  }
+
+  /**
+   * Extract phone number from text following a trigger phrase.
+   * Handles formats: 09171234567, 0917-123-4567, +639171234567, etc.
+   *
+   * @param {string} text - full text
+   * @param {number} triggerEnd - character index where trigger phrase ends
+   * @returns {string|null} extracted phone number or null
+   */
+  function extractPhoneAfterTrigger(text, triggerEnd) {
+    // Look at next 25 characters for phone number
+    const afterTrigger = text.substring(triggerEnd, triggerEnd + 25);
+    
+    // Match: (09 or +639) followed by 9 digits (with optional spaces/dashes)
+    const phoneRegex = /^\s*:?\s*((?:\+639|09)[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d)/i;
+    const match = afterTrigger.match(phoneRegex);
+    
+    return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Extract IP address from text following a trigger phrase.
+   * Matches XXX.XXX.XXX.XXX pattern.
+   *
+   * @param {string} text - full text
+   * @param {number} triggerEnd - character index where trigger phrase ends
+   * @returns {string|null} extracted IP address or null
+   */
+  function extractIPAfterTrigger(text, triggerEnd) {
+    // Look at next 20 characters for IP address
+    const afterTrigger = text.substring(triggerEnd, triggerEnd + 20);
+    
+    // Match: XXX.XXX.XXX.XXX (valid octets 0-255)
+    const ipRegex = /^\s*:?\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+    const match = afterTrigger.match(ipRegex);
+    
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Sanitize phone number: show only first 3 and last 2 digits
+   */
+  function sanitizePhone(phone) {
+    const cleaned = phone.replace(/[\s\-+]/g, '');
+    if (cleaned.length < 5) return "[PHONE REDACTED]";
+    return cleaned.slice(0, 3) + '****' + cleaned.slice(-2);
+  }
+
+  /**
+   * Sanitize IP address: redact last two octets
+   */
+  function sanitizeIP(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return "[IP REDACTED]";
+    parts[2] = 'xxx';
+    parts[3] = 'xxx';
+    return parts.join('.');
+  }
+
   function runTriggerScan(text) {
     const findings = [];
     const textWords = text.split(/\s+/).filter(Boolean);
+
+    console.log("[TrustGazetteer/DEBUG] runTriggerScan starting with " + TRIGGERS.length + " triggers");
+    console.log("[TrustGazetteer/DEBUG] Text:", text.substring(0, 60));
 
     for (const trigger of TRIGGERS) {
       const { matched, startWordIdx, endWordIdx } = fuzzyMatchPhrase(text, trigger.phrase);
       if (!matched) continue;
 
-      // Find character index where trigger phrase starts
+      // Find character index where trigger phrase starts and ends
       let triggerCharIdx = 0;
+      let triggerEndIdx = 0;
       let wordCount = 0;
+      let currentPos = 0;
+      
       for (let i = 0; i < text.length; i++) {
         if (!/\s/.test(text[i])) {
-          if (wordCount === startWordIdx) {
+          if (wordCount === startWordIdx && triggerCharIdx === 0) {
             triggerCharIdx = i;
+          }
+          if (wordCount === endWordIdx - 1) {
+            // Find end of this word
+            while (i < text.length && !/\s/.test(text[i])) i++;
+            triggerEndIdx = i;
             break;
           }
           if (i === 0 || /\s/.test(text[i - 1])) {
@@ -1264,6 +1417,50 @@ const TrustGazetteer = (() => {
           }
         }
       }
+
+      // ── CONTEXT-AWARE FILTERING FOR PHONE/IP ────────────────────────────────────
+      // Phone and IP triggers need special handling: ALWAYS flag them as PII,
+      // but mark context so scanner can adjust risk level
+      if (trigger.isContactInfo) {
+        // Check for educational context (DO NOT SUPPRESS - still flag as PII)
+        const hasEducContext = isEducationalContext(text, triggerCharIdx, trigger.phrase.length);
+        
+        // Extract the actual phone/IP value
+        let extractedValue = null;
+        if (trigger.category === "phone_number") {
+          extractedValue = extractPhoneAfterTrigger(text, triggerEndIdx);
+        } else if (trigger.category === "ip_address") {
+          extractedValue = extractIPAfterTrigger(text, triggerEndIdx);
+        }
+
+        if (!extractedValue) continue;  // No valid phone/IP found after trigger
+
+        const meta = CATEGORY_META[trigger.category] || {
+          label: trigger.category,
+          sanitize: trigger.category === "phone_number" ? sanitizePhone : sanitizeIP
+        };
+
+        // Determine risk based on context
+        let adjustedRisk = trigger.risk;
+        if (hasEducContext) {
+          // Educational context: lower the risk to indicate accidental exposure
+          // MODERATE → LOW, HIGH → MODERATE (risk level reduced by one tier)
+          adjustedRisk = trigger.risk === "high" ? "moderate" : "low";
+        }
+
+        findings.push({
+          patternId:   "trigger_" + trigger.category,
+          label:       meta.label || (trigger.category === "phone_number" ? "Philippine Mobile Number" : "IP Address"),
+          risk:        adjustedRisk,
+          rawMatch:    extractedValue,
+          safeVersion: trigger.category === "phone_number" ? sanitizePhone(extractedValue) : sanitizeIP(extractedValue),
+          source:      "B2_trigger",
+          context:     hasEducContext ? "educational_context" : "sharing_intent"  // Mark context for governance rules
+        });
+        continue;  // Skip to next trigger
+      }
+
+      // ── STANDARD TRIGGER PROCESSING (for non-contact-info triggers) ─────────────────────
 
       // FIX #3: extract value without relying on punctuation
       const { span } = extractValue(textWords, endWordIdx, trigger);

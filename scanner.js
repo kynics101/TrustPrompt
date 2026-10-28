@@ -1204,6 +1204,7 @@ const TrustScanner = (() => {
       'email',                         // Example/demo contexts
       'credit_card',                   // Format documentation
       'api_key', 'jwt',                // Code/documentation blocks
+      'birthday_date',                 // Calendar dates (can appear in "today is October 26, 2026" references)
       // REMOVED: 'ph_mobile' - PII that must ALWAYS be flagged
       // REMOVED: 'ipv4', 'ipv6', 'mac_address' - Network PII that must ALWAYS be flagged
       // NOTE: ALL Philippine ID patterns are NOT in this list
@@ -1323,6 +1324,24 @@ const TrustScanner = (() => {
     if (placeholderMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: placeholder context`);
       return true;
+    }
+
+    // 8. Temporal reference contexts (for birthday_date)
+    // Filters dates that are contextualized as "today is", "it is", "the date is", etc.
+    // These indicate the date is being used as a reference point or calendar reference,
+    // not as a personal information disclosure (birthday, DOB, etc.)
+    if (patternId === 'birthday_date') {
+      const temporalMarkers = [
+        /\b(today is|it is|the date is|right now|at this moment|current date)\b/,
+        /\b(today|this (date|moment)|right now)\b/,
+        /\b(as of (today|now)|as of (this|the))\b/,
+        /\b(the (date|time) (is|was))\b/,
+      ];
+      
+      if (temporalMarkers.some(m => m.test(fullContext))) {
+        console.log(`[TrustPrompt/context] filtered ${patternId}: temporal reference context`);
+        return true;
+      }
     }
 
     return false;
@@ -2322,6 +2341,179 @@ const TrustScanner = (() => {
             }
           });
           continue;
+        }
+
+        // CONTEXT-AWARE FILTERING FOR AGE: Distinguish age from duration/time-ago
+        if (pattern.id === "age_value" && raw.match(/\d+/)) {
+          const numberMatch = raw.match(/(\d+)/);
+          if (numberMatch) {
+            const numberStr = numberMatch[0];
+            const numberIndexInText = normalisedText.indexOf(numberStr, matchIndex);
+            
+            // Helper function to determine context - EXPANDED VERSION with more markers
+            function determineYearsContext(text, idx, num) {
+              const contextStart = Math.max(0, idx - 150);
+              const beforeText = text.substring(contextStart, idx).toLowerCase().trim();
+              const afterStart = idx + num.length;
+              const contextEnd = Math.min(text.length, afterStart + 100);
+              const afterText = text.substring(afterStart, contextEnd).toLowerCase();
+              
+              // EXPANDED AGE MARKERS
+              const ageMarkers = [
+                // Personal disclosure - require "my" or first person
+                /\b(i\s+am|i'm|im|age|edad|old|aged|turned|born|will be|just turned|turning)\b/,
+                /\b(my age|my birthday|born|how old|what (age|year)|when (were|was) (i|you|they|he|she))\b/,
+                /\byears?\s+old\b/,
+                /\b(currently|is)\s+\d{1,3}\s+years?\b/,
+                // Age references
+                /\b(senior citizen|retirement age|adult|minor|under 18|over 65|age group|eligible at|over)\b/,
+                /\b(born in|class of|graduating|graduated)\b/,
+                // Relational - require possessive context
+                /\b(my (son|daughter|wife|husband|kid|child|baby|friend|brother|sister))\b/,
+              ];
+              
+              // NON-PII CONTEXTS - calendar dates, holidays, scenarios, historical events, deadlines, etc
+              // If these match, treat as non-age context
+              const nonPIIContextPatterns = [
+                // Calendar/Current Date References
+                /\b(today is|it is|the date is|as of today|right now it's|current date)\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
+                /^on\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
+                
+                // Holidays & Cultural Events
+                /\b(\w+\s+(is\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec))\b/,
+                /\b(christmas|thanksgiving|valentine|easter|independence day|new year|diwali|ramadan|passover|halloween|mother's day|father's day)\b/,
+                
+                // Historical/News Events
+                /\b(moon landing|was assassinated|occurred|happened|took place|war|attack|bombing|event|incident|tragedy)\b/,
+                /\b(9\/11|911|covid|pandemic|depression|revolution|rebellion)\b/,
+                
+                // Deadlines & Project Timelines
+                /\b(deadline|due date|project|launch|release|submit by|scheduled for|completion|due by|expected by)\b/,
+                
+                // Historical Periods & Eras
+                /\b(in \d{4}|during the \d{3}0s|era|period|century|age of|back in|during the|medieval|renaissance|victorian)\b/,
+                /\b(world war|wwi|wwii|ancient|middle ages|industrial|modern era)\b/,
+                
+                // Fictional/Hypothetical Scenarios
+                /\b(year \d{4}|set in|where the year is|imagine|what if|in a world where|fictional|hypothetical)\b/,
+                /\b(story|tale|fiction|novel|character|plot|chapter|narrative|scenario)\b/,
+                
+                // Educational/Academic References
+                /\b(biography|historical|famous|scholar|academic|historical figure|scientist|author)\b/,
+                
+                // Product Release/Version Dates
+                /\b(launched|released|version|patch|update|build|deployment|released on|comes out|came out)\b/,
+                
+                // Seasonal References
+                /\b(summer|spring|fall|autumn|winter|Q[1-4]|fiscal year|season|seasonal)\b/,
+                
+                // Age/Era of Things (NOT People)
+                /\b(manufactured|built in|made in|from \d{4}|dates to|year model|vintage|production date|model year)\b/,
+                
+                // Formal Correspondence Markers
+                /\b(letter|email|memo|wrote|date:|re:|subject:|from:|sent:)\b/,
+                /\b(dated|posted|published|submitted|archived|correspondence)\b/,
+                
+                // Medical/Scientific Data
+                /\b(study|research|trial|data|published|conducted|findings|research from|study from)\b/,
+                /\b(clinical trial|experiment|analysis|investigation)\b/,
+                
+                // Legal/Contract Dates
+                /\b(effective|expires|signed on|valid through|enforcement|contract|agreement|policy)\b/,
+                /\b(law enacted|statute|regulation|ordinance)\b/,
+                
+                // Sports/Competition Dates
+                /\b(olympics|world cup|super bowl|championship|tournament|sports|game|match|season)\b/,
+                
+                // Religious/Astronomical Events
+                /\b(eclipse|equinox|solstice|passover|lunar|solar|astronomical|astronomy|full moon|new moon)\b/,
+                
+                // Time Period Descriptions
+                /\b(from \d{4} to \d{4}|between .* and .*|span of|period of|range|timeframe|era)\b/,
+                /\b(past|history|historically|previously|former|old|vintage)\b/,
+              ];
+              
+              // EXPANDED DURATION MARKERS
+              const durationMarkers = [
+                // Work experience
+                /\b(worked|work|employed|employment|tenure|experience|career)\s+(for|of|spanning)\b/,
+                /\b(years (of|in|at|with)|years experience|worked for|work for|been at|been with)\b/,
+                /\b(more than|over|less than|at least)\s+\d{1,3}\s+years\b/,
+                // Education
+                /\b(studied|school|university|college|graduated|studied for)\b/,
+                /\b(took|spent)\s+\d{1,3}\s+years\b/,
+                // Residence/General duration
+                /\b(lived|lived for|lived in|stayed|residing|residence|been here|based in)\b/,
+                /\b(for|during|throughout|spanning|lasting|period|duration)\b/,
+              ];
+              
+              // EXPANDED TIME-AGO MARKERS
+              const timeAgoMarkers = [
+                /\b(years?\s+ago|years?\s+back|years?\s+prior|years?\s+before|years?\s+earlier)\b/,
+                /\b(ago|back|since|past|previously|formerly|before)\b/,
+                /\b(in the past|over the past|for the past)\b/,
+                /\b(when i was|when we were|back then|those days)\b/,
+              ];
+              
+              // Priority order: non-pii → time-ago → duration → age
+              
+              // CRITICAL: Check for explicit "today is" + date pattern FIRST (highest priority)
+              // This prevents "birthday" keywords elsewhere from triggering false positives
+              const todayPatterns = [
+                /today\s+is/,
+                /the\s+date\s+is/,
+                /it\s+is/,
+                /as\s+of\s+today/,
+                /right\s+now\s+it'?s/,
+                /current\s+date/,
+              ];
+              
+              const hasTodayPattern = todayPatterns.some(p => p.test(beforeText)) || todayPatterns.some(p => p.test(afterText));
+              
+              if (hasTodayPattern) {
+                // Also verify we have a date-like pattern (month names or numeric dates)
+                const datePatterns = [
+                  /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b/,
+                  /\d{1,2},?\s*\d{4}/,
+                ];
+                
+                if (datePatterns.some(p => p.test(beforeText)) || datePatterns.some(p => p.test(afterText))) {
+                  return "non_pii_context";  // Definitely a calendar date, not a birthday
+                }
+              }
+              
+              // Check for time-ago first (most specific, highest priority)
+              if (timeAgoMarkers.some(m => m.test(afterText)) || timeAgoMarkers.some(m => m.test(beforeText))) {
+                return "time_ago";
+              }
+              
+              // Check for duration second (specific work/education/residence keywords)
+              if (durationMarkers.some(m => m.test(beforeText))) {
+                return "duration";
+              }
+              
+              // NEW: Check for non-PII contexts (calendar dates, holidays, scenarios, etc.)
+              // If these match, treat as NOT age-related
+              if (nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText))) {
+                return "non_pii_context";  // Not a personal age disclosure
+              }
+              
+              // Check for age context (default to age if other markers not found)
+              if (ageMarkers.some(m => m.test(beforeText)) || ageMarkers.some(m => m.test(afterText))) {
+                return "age";
+              }
+              
+              return "unknown";
+            }
+            
+            const context = determineYearsContext(normalisedText, numberIndexInText, numberStr);
+            
+            if (context === "duration" || context === "time_ago" || context === "non_pii_context") {
+              // Not age-related PII, skip this finding
+              console.log(`[TrustPrompt/age-context] filtered age pattern as ${context}: ${raw.slice(0, 30)}`);
+              continue;
+            }
+          }
         }
 
         findings.push({

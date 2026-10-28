@@ -1797,6 +1797,12 @@ const TRUSTPROMPT_PATTERNS = [
     id: "age_value",
     label: "Age (Numeric or Text Format)",
     reason: "Age is classified as personal demographic information under RA 10173. When combined with other identifiers like name, location, or birth date, age enables targeted fraud, discrimination, and identity-based attacks. Age can be inferred from birth dates or stated directly in text.",
+    // RESTORED: Pattern includes natural language age detection
+    // "20 years old", "i am 25 years", "aged 30 years" will all match
+    // Context filtering is handled at the scanner level to distinguish:
+    //   - Age contexts: flagged as PII (MODERATE risk)
+    //   - Duration contexts: NOT flagged (e.g., "worked 20 years")
+    //   - Time-ago contexts: NOT flagged (e.g., "20 years ago")
     regex: /(?:age|edad)\s*[:=]\s*(\d{1,3})\s*(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)?|\d{1,3}\s+(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)(?:\s+old)?/gi,
     risk: "low",
     validate: null,

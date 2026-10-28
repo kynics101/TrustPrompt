@@ -388,8 +388,11 @@ const TrustGazetteer = (() => {
     { phrase: "call me",              category: "person_name",  risk: "low"    },
     { phrase: "my nickname is",       category: "person_name",  risk: "low"    },
     // Age / DOB
-    { phrase: "i am",                 category: "age",          risk: "low",   followPattern: /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ },
-    { phrase: "i'm",                  category: "age",          risk: "low",   followPattern: /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ },
+    // FIXED: Made "years old" suffix mandatory to prevent false positives like "worked for 20 years"
+    // Changed followPattern from /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ (optional suffix)
+    // to /^\d{1,3}\s+(years?\s*old|yrs?\s*old|y\/o)/ (required suffix)
+    { phrase: "i am",                 category: "age",          risk: "low",   followPattern: /^\d{1,3}\s+(years?\s*old|yrs?\s*old|y\/o)/ },
+    { phrase: "i'm",                  category: "age",          risk: "low",   followPattern: /^\d{1,3}\s+(years?\s*old|yrs?\s*old|y\/o)/ },
     { phrase: "my age is",            category: "age",          risk: "low"    },
     { phrase: "i was born",           category: "dob",          risk: "low"    },
     { phrase: "my birthday is",       category: "dob",          risk: "low",   followPattern: /^(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2},?\s*\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/i },
@@ -1092,6 +1095,180 @@ const TrustGazetteer = (() => {
     // ── DEFAULT: ALLOW unless explicitly risky ───────────────────────────────
     // This prevents false positives on ambiguous contexts
     return false;
+  }
+
+  // ── CONTEXT ANALYSIS FOR "X YEARS" PATTERNS ─────────────────────────────────
+  // Distinguish between:
+  //   1. AGE: "i am 20 years old", "my age is 25", "turned 30 years"
+  //   2. DURATION: "worked for 20 years", "lived there 15 years", "stayed 10 years"
+  //   3. TIME-AGO: "20 years ago", "happened 25 years back", "left 15 years ago"
+  // Only AGE contexts should be flagged as PII
+  
+  /**
+   * Determine if "X years" is indicating AGE, DURATION, or TIME-AGO context
+   * EXPANDED VERSION with more comprehensive markers based on real user prompts
+   * 
+   * @param {string} fullText - the complete text being analyzed
+   * @param {number} numberIndex - character index where the number starts
+   * @param {string} numberStr - the number string (e.g., "20")
+   * @returns {string} "age" | "duration" | "time_ago" | "unknown"
+   */
+  function determineYearsContext(fullText, numberIndex, numberStr) {
+    // Get context: ~150 chars before, ~100 chars after for better accuracy
+    const contextStart = Math.max(0, numberIndex - 150);
+    const beforeText = fullText.substring(contextStart, numberIndex).toLowerCase().trim();
+    
+    const afterStart = numberIndex + numberStr.length;
+    const contextEnd = Math.min(fullText.length, afterStart + 100);
+    const afterText = fullText.substring(afterStart, contextEnd).toLowerCase();
+    
+    // EXPANDED AGE MARKERS - comprehensive list for age disclosure detection
+    const ageMarkers = [
+      // Personal disclosure - require "my" or first person
+      /\b(i\s+am|i'm|im|age|edad|old|aged|turned|born|will be|just turned|turning)\b/,
+      /\b(my age|my birthday|born|how old|what (age|year)|when (were|was) (i|you|they|he|she))\b/,
+      /\byears?\s+old\b/,
+      /\b(currently|is)\s+\d{1,3}\s+years?\b/,
+      // Age references and qualifiers
+      /\b(senior citizen|retirement age|adult|minor|under 18|over 65|age group|eligible at|over)\b/,
+      /\b(born in|class of|graduating|graduated)\b/,
+      // Relational references - require possessive
+      /\b(my (son|daughter|wife|husband|kid|child|baby|friend|brother|sister))\b/,
+    ];
+    
+    // NON-PII CONTEXTS - calendar dates, holidays, scenarios, historical events, deadlines, etc.
+    // If these match, NOT a personal age disclosure
+    // IMPORTANT: These should only match when NOT preceded by personal markers like "my"
+    const nonPIIContextPatterns = [
+      // Calendar/Current Date References
+      /\b(today is|it is|the date is|as of today|right now it's|current date)\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
+      /^on\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
+      
+      // Holidays & Cultural Events
+      /\b(\w+\s+(is\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec))\b/,
+      /\b(christmas|thanksgiving|valentine|easter|independence day|new year|diwali|ramadan|passover|halloween|mother's day|father's day)\b/,
+      
+      // Historical/News Events
+      /\b(moon landing|was assassinated|occurred|happened|took place|war|attack|bombing|event|incident|tragedy)\b/,
+      /\b(9\/11|911|covid|pandemic|depression|revolution|rebellion)\b/,
+      
+      // Deadlines & Project Timelines
+      /\b(deadline|due date|project|launch|release|submit by|scheduled for|completion|due by|expected by)\b/,
+      
+      // Historical Periods & Eras
+      /\b(in \d{4}|during the \d{3}0s|era|period|century|age of|back in|during the|medieval|renaissance|victorian)\b/,
+      /\b(world war|wwi|wwii|ancient|middle ages|industrial|modern era)\b/,
+      
+      // Fictional/Hypothetical Scenarios
+      /\b(year \d{4}|set in|where the year is|imagine|what if|in a world where|fictional|hypothetical)\b/,
+      /\b(story|tale|fiction|novel|character|plot|chapter|narrative|scenario)\b/,
+      
+      // Educational/Academic References
+      /\b(biography|historical|famous|scholar|academic|historical figure|scientist|author)\b/,
+      
+      // Product Release/Version Dates
+      /\b(launched|released|version|patch|update|build|deployment|released on|comes out|came out)\b/,
+      
+      // Seasonal References
+      /\b(summer|spring|fall|autumn|winter|Q[1-4]|fiscal year|season|seasonal)\b/,
+      
+      // Age/Era of Things (NOT People)
+      /\b(manufactured|built in|made in|from \d{4}|dates to|year model|vintage|production date|model year)\b/,
+      
+      // Formal Correspondence Markers
+      /\b(letter|email|memo|wrote|date:|re:|subject:|from:|sent:)\b/,
+      /\b(dated|posted|published|submitted|archived|correspondence)\b/,
+      
+      // Medical/Scientific Data
+      /\b(study|research|trial|data|published|conducted|findings|research from|study from)\b/,
+      /\b(clinical trial|experiment|analysis|investigation)\b/,
+      
+      // Legal/Contract Dates
+      /\b(effective|expires|signed on|valid through|enforcement|contract|agreement|policy)\b/,
+      /\b(law enacted|statute|regulation|ordinance)\b/,
+      
+      // Sports/Competition Dates
+      /\b(olympics|world cup|super bowl|championship|tournament|sports|game|match|season)\b/,
+      
+      // Religious/Astronomical Events
+      /\b(eclipse|equinox|solstice|passover|lunar|solar|astronomical|astronomy|full moon|new moon)\b/,
+      
+      // Time Period Descriptions
+      /\b(from \d{4} to \d{4}|between .* and .*|span of|period of|range|timeframe|era)\b/,
+      /\b(past|history|historically|previously|former|old|vintage)\b/,
+    ];
+    
+    // EXPANDED DURATION MARKERS - for work, education, residence
+    const durationMarkers = [
+      // Work experience
+      /\b(worked|work|employed|employment|tenure|experience|career)\s+(for|of|spanning)\b/,
+      /\b(years (of|in|at|with)|years experience|worked for|work for|been at|been with)\b/,
+      /\b(more than|over|less than|at least)\s+\d{1,3}\s+years\b/,
+      // Education
+      /\b(studied|school|university|college|graduated|studied for)\b/,
+      /\b(took|spent)\s+\d{1,3}\s+years\b/,
+      // Residence and location duration
+      /\b(lived|lived for|lived in|stayed|residing|residence|been here|based in)\b/,
+      // General time duration
+      /\b(for|during|throughout|spanning|lasting|period|duration)\b/,
+    ];
+    
+    // EXPANDED TIME-AGO MARKERS - for historical references
+    const timeAgoMarkers = [
+      /\b(years?\s+ago|years?\s+back|years?\s+prior|years?\s+before|years?\s+earlier)\b/,
+      /\b(ago|back|since|past|previously|formerly|before)\b/,
+      /\b(in the past|over the past|for the past)\b/,
+      /\b(when i was|when we were|back then|those days)\b/,
+    ];
+    
+    // Priority order: non-pii → time-ago → duration → age
+    
+    // CRITICAL: Check for explicit "today is" + date pattern FIRST (highest priority)
+    // This prevents "birthday" keywords elsewhere from triggering false positives
+    const todayPatterns = [
+      /today\s+is/,
+      /the\s+date\s+is/,
+      /it\s+is/,
+      /as\s+of\s+today/,
+      /right\s+now\s+it'?s/,
+      /current\s+date/,
+    ];
+    
+    const hasTodayPattern = todayPatterns.some(p => p.test(beforeText)) || todayPatterns.some(p => p.test(afterText));
+    
+    if (hasTodayPattern) {
+      // Also verify we have a date-like pattern (month names or numeric dates)
+      const datePatterns = [
+        /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b/,
+        /\d{1,2},?\s*\d{4}/,
+      ];
+      
+      if (datePatterns.some(p => p.test(beforeText)) || datePatterns.some(p => p.test(afterText))) {
+        return "non_pii_context";  // Definitely a calendar date, not a birthday
+      }
+    }
+    
+    // Check for non-PII contexts first (most specific)
+    if (nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText))) {
+      return "non_pii_context";
+    }
+    
+    // Check for time-ago first (most specific, highest priority)
+    if (timeAgoMarkers.some(m => m.test(afterText)) || timeAgoMarkers.some(m => m.test(beforeText))) {
+      return "time_ago";
+    }
+    
+    // Check for duration second (specific work/education/residence keywords)
+    if (durationMarkers.some(m => m.test(beforeText))) {
+      return "duration";
+    }
+    
+    // Check for age context (default to age if other markers not found)
+    if (ageMarkers.some(m => m.test(beforeText)) || ageMarkers.some(m => m.test(afterText))) {
+      return "age";
+    }
+    
+    return "unknown";
   }
 
   // ── B1: GAZETTEER SCAN (INTERNAL HELPER ONLY) ────────────────────────────

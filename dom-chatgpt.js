@@ -282,10 +282,36 @@ const TP_CHATGPT = (() => {
     const { findings, riskLevel } = result;
     const safeText   = buildSafeText(rawText, findings);
     const composerEl = getComposerCard();
-    TrustUI.update(riskLevel, findings, safeText, promptBox, composerEl,
-      () => { TrustUI.reset(promptBox); chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" }); }
-    );
+    TrustUI.update(riskLevel, findings, safeText, promptBox, composerEl, sendAnyway);
     chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
+  }
+
+  // ── SEND ANYWAY ────────────────────────────────────────────────────────────
+  // Submit the user's original prompt immediately, exactly like the native send
+  // button. Clears the submission gate so our own interceptors let the click
+  // through, then clicks the site's send button (the send primitive used
+  // everywhere else in this driver). Finally clears the TrustPrompt UI.
+  function sendAnyway() {
+    allowSubmit = true;
+    scanState   = STATE.DONE;
+    updateSendButtonState();
+
+    const btn = findSendButton();
+    if (btn) {
+      console.log("[TP/chatgpt] Send Anyway — clicking native send button");
+      btn.click();
+    } else {
+      console.warn("[TP/chatgpt] Send Anyway — send button not found");
+    }
+
+    // Tear down the TrustPrompt UI completely rather than resetting to a "none"
+    // badge. The prompt box is cleared and the composer reflows as the response
+    // renders; a persisted badge would be repositioned over the response
+    // content. teardown() removes the badge and clears _currentInputEl so the
+    // scroll/resize repositioner no-ops. The driver re-establishes the badge on
+    // the next input/scan via its listeners.
+    TrustUI.teardown();
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
   }
 
   // Walk up from the textarea to find the outermost card/form wrapper
@@ -733,6 +759,16 @@ const TP_CHATGPT = (() => {
     
     handleSubmitAttempt(e);
   }, true);
+
+  // ── SEND_ANYWAY from side panel ───────────────────────────────────────────
+  // The extension side panel also offers a "Send Anyway" button; honor it by
+  // performing the same immediate submit as the in-page panel button.
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === "SEND_ANYWAY") {
+      console.log("[TP/chatgpt] SEND_ANYWAY received from side panel");
+      sendAnyway();
+    }
+  });
 
   // ── 6. MUTATION OBSERVER + INIT ──────────────────────────────────────────
 

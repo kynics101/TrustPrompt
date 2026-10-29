@@ -901,6 +901,7 @@ const TrustScanner = (() => {
     ph_mobile:   5,
     phone_intl:  5,
     ph_address:  5,
+    birthday_date: 5,  // Birthday / birth date — demographic identifier
 
     // ── Low (Limited) — score 2 (Table 10) ───────────────────────────────
     source_code:      2,  // Source code blocks are Low-impact
@@ -917,6 +918,12 @@ const TrustScanner = (() => {
     nlp_person_name:     2,  // PATH C linguistic
     nlp_job_title:       2,  // PATH C linguistic
     nlp_organization:    2,  // PATH C linguistic
+    age_value:           2,  // Age (numeric or text)
+    sex_mention:         2,  // Sex / gender
+    eye_color_mention:   2,  // Eye color
+    blood_type_mention:  2,  // Blood type
+    height_mention:      2,  // Height
+    weight_mention:      2,  // Weight
 
     // ── Context indicators — score 0 (Table 11) ──────────────────────────
     // Ethnic origin, medical, financial terms carry NO independent base score.
@@ -971,6 +978,15 @@ const TrustScanner = (() => {
     nlp_person_name:     "limited",
     nlp_job_title:       "limited",
     nlp_organization:    "limited",
+    age_value:           "limited",
+    sex_mention:         "limited",
+    eye_color_mention:   "limited",
+    blood_type_mention:  "limited",
+    height_mention:      "limited",
+    weight_mention:      "limited",
+
+    // ── Significant — demographic identifier (score 5) ────────────────────
+    birthday_date:       "significant",
 
     // ── Contextual — context indicators (score 0) ─────────────────────────
     trigger_health:      "contextual",

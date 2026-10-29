@@ -1788,7 +1788,7 @@ const TRUSTPROMPT_PATTERNS = [
     label: "Birthday (Date Format)",
     reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrological predictions or other personal inferences.",
     regex: /(?:0?[1-9]|1[0-2])[-\/\.](0?[1-9]|[12]\d|3[01])[-\/\.](19|20)?\d{2}|(?:0?[1-9]|[12]\d|3[01])[-\/\.](0?[1-9]|1[0-2])[-\/\.](19|20)?\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(0?[1-9]|[12]\d|3[01]),?\s+(19|20)\d{2}|(0?[1-9]|[12]\d|3[01])\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(19|20)\d{2}/gi,
-    risk: "low",
+    risk: "moderate",
     validate: null,
     sanitize: (_m) => "[DATE REDACTED]"
   },
@@ -2089,6 +2089,28 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "low",
     validate: null,
     sanitize: (_m) => "[WEIGHT REDACTED]"
+  },
+
+  // -- SEX MENTION
+  {
+    id: "sex_mention",
+    label: "Sex Mention",
+    reason: "Sex is personal demographic information under RA 10173. When combined with other identifiers like name, age, or location, it contributes to individual identification and can enable profiling or discrimination.",
+    regex: /\b(?:sex|kasarian|gender)\s*[:=]\s*(?:male|female|m|f|lalaki|babae|intersex|non-?binary)\b/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[SEX REDACTED]"
+  },
+
+  // -- EYE COLOR MENTION
+  {
+    id: "eye_color_mention",
+    label: "Eye Color Mention",
+    reason: "Eye color is a personal physical characteristic under RA 10173. As a biometric-adjacent descriptor it contributes to individual identification when combined with other personal attributes.",
+    regex: /\b(?:eye\s*colou?r|eyes?)\s*(?:is|are|:|=)?\s*(?:brown|black|blue|green|grey|gray|hazel|amber)\b/gi,
+    risk: "low",
+    validate: null,
+    sanitize: (_m) => "[EYE COLOR REDACTED]"
   },
 
   // ── ID-IN-CODE PATTERNS (TASK: Detect Government IDs in Code Contexts) ─────

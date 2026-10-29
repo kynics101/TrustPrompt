@@ -273,11 +273,37 @@ const TP_CLAUDE = (() => {
   function applyResult(result, rawText) {
     const { findings, riskLevel } = result;
     const safeText   = buildSafeText(rawText, findings);
-    TrustUI.update(riskLevel, findings, safeText, promptBox, getComposerWrapper(),
-      () => { TrustUI.reset(promptBox); chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" }); },
-      null
-    );
+    TrustUI.update(riskLevel, findings, safeText, promptBox, getComposerWrapper(), sendAnyway);
     chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
+  }
+
+  // ── SEND ANYWAY ────────────────────────────────────────────────────────────
+  // Submit the user's original prompt immediately, exactly like the native send
+  // button. Clears the submission gate, unlocks the prompt box (Claude makes it
+  // read-only during the warning state), re-enables the native button, then
+  // clicks it — the send primitive used everywhere else in this driver.
+  function sendAnyway() {
+    allowSubmit = true;
+    scanState   = STATE.DONE;
+    makePromptBoxEditable();
+    updateSendButtonState();
+
+    const btn = findSendButton();
+    if (btn) {
+      console.log("[TP/claude] Send Anyway — clicking native send button");
+      btn.click();
+    } else {
+      console.warn("[TP/claude] Send Anyway — send button not found");
+    }
+
+    // Tear down the TrustPrompt UI completely rather than resetting to a "none"
+    // badge. The prompt box is cleared and the composer reflows as the response
+    // renders; a persisted badge would be repositioned over the response
+    // content. teardown() removes the badge and clears _currentInputEl so the
+    // scroll/resize repositioner no-ops. The driver re-establishes the badge on
+    // the next input/scan via its listeners.
+    TrustUI.teardown();
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
   }
 
   // ── PROMPT BOX CONTROL ─────────────────────────────────────────────────
@@ -720,6 +746,16 @@ const TP_CLAUDE = (() => {
     console.log("[TP/claude] prompt box adopted:", el.tagName,
       el.getAttribute("aria-label") || el.className.slice(0, 40));
   }
+
+  // ── SEND_ANYWAY from side panel ───────────────────────────────────────────
+  // The extension side panel also offers a "Send Anyway" button; honor it by
+  // performing the same immediate submit as the in-page panel button.
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === "SEND_ANYWAY") {
+      console.log("[TP/claude] SEND_ANYWAY received from side panel");
+      sendAnyway();
+    }
+  });
 
   // ── Submit intercept — document-level capture (send button + Enter fallback)
   document.addEventListener("keydown", (e) => {

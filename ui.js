@@ -257,7 +257,6 @@ const TrustUI = (() => {
     }
 
     const barTop    = composerBottom + 6;
-    const isHigh    = riskLevel === "high";
     const riskLabel = riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1);
 
     // Day mode bar uses a slightly darker tint for readability
@@ -283,7 +282,7 @@ const TrustUI = (() => {
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
       "font-size:12px",
       "font-weight:500",
-      isHigh ? "cursor:default" : "cursor:pointer",
+      "cursor:pointer",
       "z-index:9999",
       "box-sizing:border-box",
       "box-shadow:0 2px 8px rgba(0,0,0,0.18)",
@@ -300,13 +299,11 @@ const TrustUI = (() => {
           — ${findingsCount} sensitive item${findingsCount !== 1 ? "s" : ""} found
         </span>
       </span>
-      ${!isHigh ? `<span style="opacity:0.9;font-size:11px;white-space:nowrap;margin-left:8px;flex-shrink:0;">
+      <span style="opacity:0.9;font-size:11px;white-space:nowrap;margin-left:8px;flex-shrink:0;">
         View details →
-      </span>` : ""}`;
+      </span>`;
 
-    if (!isHigh) {
-      bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
-    }
+    bar.addEventListener("click", () => { if (typeof onOpen === "function") onOpen(); });
 
     document.body.appendChild(bar);
   }
@@ -550,16 +547,21 @@ const TrustUI = (() => {
       footer.appendChild(btnRefresh);
     }
 
-    footer.innerHTML += `
-      <div style="margin-top:10px;padding-top:8px;border-top:1px solid ${pc.legendBorder};">
-        <div style="font-size:9px;letter-spacing:.7px;color:${pc.legendLabel};margin-bottom:4px;">RISK LEVELS</div>
-        <div style="font-size:10px;color:${pc.legendText};line-height:1.8;">
-          <span style="color:#ef4444;">●</span> High — Cards, IDs, Keys, or accumulated data types present<br>
-          <span style="color:#f97316;">●</span> Moderate — Email, phone, address, or date of birth<br>
-          <span style="color:#eab308;">●</span> Low — Limited details, such as name or age/ labels<br>
-          <span style="color:#22c55e;">●</span> No Detected Privacy Risk present - No supported sensitive data found
-        </div>
+    // NOTE: build the legend as a real DOM node and append it.
+    // Using `footer.innerHTML += ...` here would re-parse the footer's markup
+    // and destroy the click listeners already attached to the buttons above,
+    // which previously made Copy Safe Version / Send Anyway do nothing.
+    const legend = document.createElement("div");
+    legend.style.cssText = `margin-top:10px;padding-top:8px;border-top:1px solid ${pc.legendBorder};`;
+    legend.innerHTML = `
+      <div style="font-size:9px;letter-spacing:.7px;color:${pc.legendLabel};margin-bottom:4px;">RISK LEVELS</div>
+      <div style="font-size:10px;color:${pc.legendText};line-height:1.8;">
+        <span style="color:#ef4444;">●</span> High — Cards, IDs, Keys, or accumulated data types present<br>
+        <span style="color:#f97316;">●</span> Moderate — Email, phone, address, or date of birth<br>
+        <span style="color:#eab308;">●</span> Low — Limited details, such as name or age/ labels<br>
+        <span style="color:#22c55e;">●</span> No Detected Privacy Risk present - No supported sensitive data found
       </div>`;
+    footer.appendChild(legend);
     panel.appendChild(footer);
   }
 
@@ -590,11 +592,9 @@ const TrustUI = (() => {
       return;
     }
 
-    // Show bar; for high risk the bar is display-only (no click handler)
+    // Show bar; clicking it (re)opens the detail panel for every risk level
     showBar(riskLevel, findings.length, inputEl,
-      riskLevel !== "high"
-        ? () => openPanel(findings, riskLevel, safeText, onSendAnyway, null)
-        : null
+      () => openPanel(findings, riskLevel, safeText, onSendAnyway, null)
     );
 
     // High risk: auto-open the panel immediately (single call, removePanel is inside openPanel)

@@ -25,6 +25,20 @@ const TrustUI = (() => {
   const ID_PANEL   = "tp-panel";
   const ID_OVERLAY = "tp-overlay";
 
+  // ── Context-indicator pattern IDs → badge label ─────────────────────────────
+  // Financial, medical, and nationality / ethnic-origin terms are context
+  // indicators: they have NO independent risk score and only participate in the
+  // Sensitive-Context Co-occurrence governance rule. In the panel they are shown
+  // with a blue category-specific badge ("Context: …") rather than a
+  // LOW/MODERATE/HIGH tier, so it is clear they have no individual bearing.
+  const CONTEXT_INDICATOR_LABELS = {
+    gazetteer_financial:            "CONTEXT: FINANCIAL",
+    trigger_financial:              "CONTEXT: FINANCIAL",
+    gazetteer_medical:              "CONTEXT: HEALTH",
+    trigger_health:                 "CONTEXT: HEALTH",
+    gazetteer_nationality_religion: "CONTEXT: ETHNIC ORIGIN",
+  };
+
   // ── Day / Night state (panel only) ─────────────────────────────────────────
   let isDark = (localStorage.getItem("tp-theme") ?? "dark") === "dark";
 
@@ -317,10 +331,23 @@ const TrustUI = (() => {
 
   function buildFindingCard(f, tier) {
     const pc       = PANEL_COLORS();
-    const dotColor = f.risk === "high" ? "#ef4444" : f.risk === "moderate" ? "#f97316" : "#eab308";
-    const riskTag  = f.risk.toUpperCase();
+    // ── Context indicators (financial / medical / nationality-ethnic origin) ──
+    // These carry NO independent risk score. They only matter when the
+    // Sensitive-Context Co-occurrence governance rule fires (a scored personal
+    // entity is also present). We render them with a distinct blue
+    // category-specific badge ("Context: Health", "Context: Financial",
+    // "Context: Ethnic Origin") instead of the yellow LOW badge so the user
+    // understands they have no individual bearing on the risk level.
+    const contextTag = CONTEXT_INDICATOR_LABELS[f.patternId];  // undefined if not a context indicator
+    const isContextIndicator = Boolean(contextTag);
+    const CONTEXT_BLUE = "#3b82f6";
+    const dotColor = isContextIndicator ? CONTEXT_BLUE
+                   : f.risk === "high" ? "#ef4444"
+                   : f.risk === "moderate" ? "#f97316"
+                   : "#eab308";
+    const riskTag  = isContextIndicator ? contextTag : f.risk.toUpperCase();
     const why      = WHY[f.patternId] || "Matched a known sensitive data pattern.";
-    const showSafe = (tier === "high" || tier === "moderate");
+    const showSafe = (tier === "high" || tier === "moderate") && !isContextIndicator;
 
     const card = document.createElement("div");
     card.style.cssText = [
@@ -341,7 +368,8 @@ const TrustUI = (() => {
           ${esc(f.label)}
         </span>
         <span style="background:${dotColor};color:#fff;border-radius:4px;
-              padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.5px;">
+              padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.5px;
+              white-space:nowrap;flex-shrink:0;">
           ${esc(riskTag)}
         </span>
       </div>
@@ -559,6 +587,7 @@ const TrustUI = (() => {
         <span style="color:#ef4444;">●</span> High — Cards, IDs, Keys, or accumulated data types present<br>
         <span style="color:#f97316;">●</span> Moderate — Email, phone, address, or date of birth<br>
         <span style="color:#eab308;">●</span> Low — Limited details, such as name or age/ labels<br>
+        <span style="color:#3b82f6;">●</span> Context (Health / Financial / Ethnic Origin) — No score on their own; raise risk only when they co-occur with personal data<br>
         <span style="color:#22c55e;">●</span> No Detected Privacy Risk present - No supported sensitive data found
       </div>`;
     footer.appendChild(legend);

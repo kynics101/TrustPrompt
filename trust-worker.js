@@ -73,6 +73,7 @@ const BASE_SCORES = {
   phone_intl:       5,
   ph_address:       5,
   source_code:      5,  // Source code blocks are significant-tier
+  birthday_date:    5,  // Birthday / birth date — demographic identifier (Moderate)
 
   ipv4:             2,
   ipv6:             2,
@@ -93,6 +94,7 @@ const BASE_SCORES = {
   nlp_person_name:     2,  // PATH C linguistic
   nlp_job_title:       2,  // PATH C linguistic
   nlp_organization:    2,  // PATH C linguistic
+  age_value:           2,  // Age (numeric or text) — demographic identifier (Low)
 };
 
 // ── Entity tiers ──────────────────────────────────────────────────────────────
@@ -124,6 +126,7 @@ const ENTITY_TIER = {
   phone_intl:       "significant",  // FIXED: Should be "significant", not "direct"
   ph_address:       "significant",  // FIXED: Should be "significant", not "direct"
   source_code:      "significant",  // Source code is significant-tier
+  birthday_date:    "significant",  // Birthday / birth date — demographic identifier
 
   ipv4:             "limited",
   ipv6:             "limited",
@@ -143,6 +146,7 @@ const ENTITY_TIER = {
   nlp_person_name:     "limited",  // PATH C linguistic
   nlp_job_title:       "limited",  // PATH C linguistic
   nlp_organization:    "limited",  // PATH C linguistic
+  age_value:           "limited",  // Age (numeric or text) — demographic identifier
 };
 
 const SENSITIVE_CONTEXT_IDS = new Set([

@@ -2446,7 +2446,9 @@ const TrustScanner = (() => {
                 
                 // Time Period Descriptions
                 /\b(from \d{4} to \d{4}|between .* and .*|span of|period of|range|timeframe|era)\b/,
-                /\b(past|history|historically|previously|former|old|vintage)\b/,
+                // NOTE: bare "old" removed — it collides with the age phrase "years old"
+                // and caused every "N years old" to be misclassified as non-PII.
+                /\b(past|history|historically|previously|former|vintage)\b/,
               ];
               
               // EXPANDED DURATION MARKERS

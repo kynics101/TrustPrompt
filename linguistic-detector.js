@@ -38,6 +38,11 @@ const TrustLinguisticDetector = (() => {
     'my', 'your', 'his', 'her', 'its', 'our', 'their',
     'mine', 'yours', 'theirs',
     'a', 'an', 'the', 'this', 'that', 'these', 'those',
+
+    // ★ Prepositions / conjunctions that get capitalized at sentence start
+    // (e.g. "In Davao, we...", "On Monday", "At the office") — never names.
+    'in', 'on', 'at', 'of', 'to', 'for', 'with', 'from', 'by', 'as',
+    'and', 'or', 'but', 'nor', 'so', 'if', 'is', 'are', 'was', 'were',
     
     // ★ EXPANDED: Added common verbs, participles, and discourse markers causing false positives
     
@@ -97,6 +102,27 @@ const TrustLinguisticDetector = (() => {
     'spouse', 'parent', 'child', 'sibling', 'emergency', 'contact', 'reference', 'description', 
     'notes', 'comments', 'details', 'preference', 'hobby', 'interest', 'experience', 'qualification'
   ]);
+
+  // ★ Place / country names that compromise.js and the capitalized-word
+  // heuristics sometimes mis-tag as person names (e.g. "Saudi Arabia", "Japan").
+  // A location is not a person name — reject these candidates. Stored lowercase;
+  // multi-word entries are matched against the full candidate, single words
+  // against each token. (PH places are handled separately as location data.)
+  const PLACE_NAME_WORDS = new Set([
+    'saudi', 'arabia', 'saudi arabia', 'qatar', 'kuwait', 'bahrain', 'oman',
+    'dubai', 'abu dhabi', 'emirates', 'uae', 'japan', 'korea', 'china', 'taiwan',
+    'hong kong', 'singapore', 'malaysia', 'indonesia', 'thailand', 'vietnam',
+    'india', 'pakistan', 'canada', 'america', 'australia', 'england', 'britain',
+    'germany', 'france', 'spain', 'italy', 'russia', 'brazil', 'mexico',
+    'manila', 'cebu', 'davao', 'luzon', 'visayas', 'mindanao'
+  ]);
+
+  function looksLikePlaceName(candidate) {
+    if (!candidate) return false;
+    const lower = candidate.toLowerCase().trim();
+    if (PLACE_NAME_WORDS.has(lower)) return true;
+    return lower.split(/\s+/).some(w => PLACE_NAME_WORDS.has(w));
+  }
 
   // Common job titles used for optional filtering
   const COMMON_JOB_TITLES = new Set([
@@ -507,8 +533,18 @@ const TrustLinguisticDetector = (() => {
   }
 
   // Honorifics: Mr, Ms, Mrs, Sir, Dr, Prof, Professor, etc.
-  // These indicate that a proper noun following them is likely a person name
-  const HONORIFICS = /\b(Mr|Ms|Mrs|Miss|Mx|Sir|Madam|Dr|Prof|Professor|Rev|Reverend|Fr|Father|Sr|Esq|Eng|Engr)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/gi;
+  // These indicate that a proper noun following them is likely a person name.
+  //
+  // ★ CRITICAL FIX (DEF-003): This pattern is CASE-SENSITIVE (no /i flag) and the
+  // honorific itself must be Capitalized. Previously the /gi flag meant:
+  //   (a) the lowercase common noun "professor" matched the "Professor" honorific
+  //       alternative, and
+  //   (b) the trailing name group [A-Z][a-z]+ matched lowercase words,
+  // so "...to my professor for missing the lab exam" produced a bogus person-name
+  // finding of "for missing the lab exam". A genuine honorific+name is written in
+  // Title Case (e.g. "Prof. Reyes", "Dr. Smith"); a lowercase "professor" is just a
+  // common noun and must NOT trigger name extraction.
+  const HONORIFICS = /\b(Mr|Ms|Mrs|Miss|Mx|Sir|Madam|Dr|Prof|Professor|Rev|Reverend|Fr|Father|Sr|Esq|Eng|Engr)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g;
 
   // ── Helper: Extract names with honorifics ────────────────────────────────────
 
@@ -569,7 +605,14 @@ const TrustLinguisticDetector = (() => {
     // Pattern: 2-3 consecutive capitalized words (typical person name format)
     // Examples: "John Smith", "Maria Garcia Lopez"
     // Does NOT require "is a/an/the" trigger (unlike extractSubjectPositionNames)
-    const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi;
+    //
+    // ★ CRITICAL FIX (DEF-002/DEF-003): This pattern is CASE-SENSITIVE (no /i flag).
+    // The previous /gi flag neutralised the [A-Z][a-z]+ capitalization requirement
+    // because, under case-insensitivity, [A-Z] and [a-z] both match ANY letter.
+    // That caused ordinary lowercase word sequences such as "for missing the",
+    // "in davao" and "change" to be captured and reported as person names.
+    // Real person names are capitalized, so we require genuine Title-Case tokens.
+    const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g;
     
     // ★ FIX: Possessive pronouns that should NEVER start a person name
     // These are always descriptors, not names (e.g., "My Birthday", "Your Address")
@@ -591,6 +634,11 @@ const TrustLinguisticDetector = (() => {
       const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
       if (hasNonNameWord) {
         continue;  // Skip any phrase containing non-name words like "Heavy"
+      }
+
+      // Heuristic 0b: Reject place/country names (e.g. "Saudi Arabia", "Japan").
+      if (looksLikePlaceName(potentialName)) {
+        continue;
       }
       
       // Heuristic 1: Name must be 3+ characters (lowered from 4 to catch more names)
@@ -770,7 +818,14 @@ const TrustLinguisticDetector = (() => {
       'and', 'or', 'but', 'the', 'a', 'an', 'this', 'that', 'these', 'those',
       'person', 'people', 'thing', 'stuff', 'item', 'group', 'team', 'member',
       'information', 'data', 'system', 'technology', 'service', 'result', 'file',
-      'name', 'file', 'type', 'text', 'content', 'message', 'email', 'phone'
+      'name', 'file', 'type', 'text', 'content', 'message', 'email', 'phone',
+      // ★ FIX (DEF-002): common nouns/verbs fuzzy-matched to org names
+      'change', 'changes', 'provider', 'providers', 'company', 'office', 'email',
+      'letter', 'speech', 'notice', 'update', 'account', 'payroll', 'income',
+      'salary', 'tax', 'fiesta', 'exam', 'class', 'section', 'load', 'rules',
+      // ★ FIX (DEF-005): country/place fragments mis-tagged as orgs
+      'arabia', 'saudi', 'america', 'africa', 'asia', 'europe', 'manila',
+      'luzon', 'visayas', 'mindanao'
     ]);
     
     const words = lower.split(/\s+/).length;
@@ -974,7 +1029,12 @@ const TrustLinguisticDetector = (() => {
     // Pattern: 1-3 capitalized words followed by "is a", "is an", or "is the"
     // Requires at least one capital letter to avoid matching common nouns
     // Stop at sentence boundaries or common conjunctions
-    const subjectPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:\s+[A-Z][a-z]+)?)\s+is\s+(?:a|an|the)\s+/gi;
+    // ★ FIX: CASE-SENSITIVE (no /i). Under /i the [A-Z][a-z]+ subject matched
+    // lowercase common nouns too, so "My mother is a retired nurse" captured
+    // "mother" as a name. The subject of a name-introducing copular clause is a
+    // proper noun, so we require genuine Title Case; the "is a/an/the" trailer
+    // stays lowercase as written.
+    const subjectPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:\s+[A-Z][a-z]+)?)\s+is\s+(?:a|an|the)\s+/g;
     
     let match;
     while ((match = subjectPattern.exec(text)) !== null) {
@@ -1361,11 +1421,15 @@ const TrustLinguisticDetector = (() => {
     const explicitOrgWords = new Set([
       'inc', 'corp', 'co', 'ltd', 'llc', 'llp', 'gmbh', 'ag', 'nv', 'sa',
       'department', 'dept', 'division', 'div', 'unit', 'group', 'team', 'bureau',
-      'agency', 'administration', 'admin', 'institute', 'university', 'college',
-      'school', 'hospital', 'clinic', 'bank', 'fund', 'association', 'society',
-      'organization', 'org', 'council', 'committee', 'board', 'foundation',
-      'ministry', 'office', 'authority', 'center', 'centre', 'service', 'network',
-      'company', 'corporation'
+      'agency', 'administration', 'admin', 'institute', 'institutes', 'university', 'universities',
+      'college', 'colleges', 'school', 'schools', 'academy', 'academies',
+      'hospital', 'hospitals', 'clinic', 'clinics', 'bank', 'banks', 'fund', 'funds',
+      'association', 'associations', 'society', 'societies', 'enterprises', 'enterprise',
+      'organization', 'organizations', 'org', 'council', 'councils', 'committee',
+      'board', 'foundation', 'foundations', 'cooperative', 'cooperatives',
+      'ministry', 'office', 'offices', 'authority', 'center', 'centre', 'centers',
+      'service', 'services', 'network', 'systems', 'holdings', 'ventures', 'solutions',
+      'company', 'companies', 'corporation', 'corporations'
     ]);
     const hasExplicitOrgWord = words.some(w => explicitOrgWords.has(w.toLowerCase()));
     if (hasExplicitOrgWord) {
@@ -2133,6 +2197,27 @@ const TrustLinguisticDetector = (() => {
             continue;
           }
 
+          // ★ FIX (DEF-002/DEF-003): compromise.js NER frequently mis-tags
+          // organization names as people (e.g. "Mapua Malayan Colleges").
+          // Run the org/name classifier and drop anything that looks like an
+          // organization so it is not reported as a person name. The dedicated
+          // organization extractor still captures it with the correct label.
+          if (classifyNameVsOrganization(rawMatch) === 'organization') {
+            continue;
+          }
+
+          // Also reject candidates that contain a non-name/stop word (e.g.
+          // "In Davao", "The Change") which compromise occasionally emits.
+          const candidateWords = rawMatch.split(/\s+/);
+          if (candidateWords.some(w => NON_NAME_WORDS.has(w.toLowerCase()))) {
+            continue;
+          }
+
+          // Reject place/country names mis-tagged as people (e.g. "Saudi Arabia").
+          if (looksLikePlaceName(rawMatch)) {
+            continue;
+          }
+
           // Deduplicate
           if (!findings.some(f => f.rawMatch.toLowerCase() === rawMatch.toLowerCase())) {
             findings.push({
@@ -2809,6 +2894,30 @@ const TrustLinguisticDetector = (() => {
           console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
           continue;
         }
+
+        // ★ FIX (DEF-003/DEF-005): Reject organization names and place/country
+        // names that compromise and the capitalized-phrase heuristic mis-tag as
+        // people — e.g. "Mapua Malayan Colleges", "Saudi Arabia". These are
+        // captured by the dedicated org extractor / location pattern instead.
+        if (classifyNameVsOrganization(candidateName) === 'organization') {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - classified as organization: "${candidateName}"`);
+          continue;
+        }
+        if (looksLikePlaceName(candidateName)) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - place/country name: "${candidateName}"`);
+          continue;
+        }
+
+        // ★ FIX (DEF-002): If the capitalized phrase is immediately followed by a
+        // corporate suffix (Inc, Corp, Ltd, LLC, Co, Company, Corporation), it is
+        // an organization, not a person — e.g. "Pacific Rim Logistics Inc.".
+        // classifyNameVsOrganization only sees the phrase itself and would score
+        // a 3-word Title-Case phrase as a name, so we check the trailing context.
+        const afterMatch = textNLP.slice(standaloneMatch.index + candidateName.length, standaloneMatch.index + candidateName.length + 16);
+        if (/^\s*,?\s*(?:inc|corp|corporation|incorporated|ltd|limited|llc|llp|co|company|enterprises?|holdings|ventures|group)\b\.?/i.test(afterMatch)) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - followed by corporate suffix (organization): "${candidateName}"`);
+          continue;
+        }
         
         // Must pass common name filter
         if (!shouldFilterCommonName(candidateName)) {
@@ -2881,11 +2990,25 @@ const TrustLinguisticDetector = (() => {
       
       // Add organizations to findings
       for (const org of validatedOrganizations) {
+        const orgRaw = org.rawMatch || org.name;
+        // ★ FIX (DEF-002/DEF-005): apply the common-word filter to CSV org
+        // matches too. Fuzzy/keyword passes otherwise surface false positives
+        // such as "change" and "arabia" (fragment of "Saudi Arabia"/"Saudi
+        // Aramco"). This guard was already applied to context/appositive orgs
+        // but not to the CSV-first results.
+        if (shouldFilterCommonOrganization(orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered CSV org (common word): "${orgRaw}"`);
+          continue;
+        }
+        if (looksLikePlaceName(orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered CSV org (place name): "${orgRaw}"`);
+          continue;
+        }
         findings.push({
           patternId: 'nlp_organization',
           label: `Organization (${org.source})`,
           risk: 'low',
-          rawMatch: org.rawMatch || org.name,
+          rawMatch: orgRaw,
           safeVersion: '[ORGANIZATION REDACTED]',
           source: 'C_linguistic',
           confidence: org.confidence,

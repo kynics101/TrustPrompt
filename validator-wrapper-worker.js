@@ -170,6 +170,10 @@ const TrustValidatorWorker = (() => {
     if (validatorName === "isPHAddress") {
       return { passed: PH_ADDRESS_DB.matchesAny(rawMatch), tier: "1_gazetteer" };
     }
+    // Bare PH place-name (province/city/region) — strict word-boundary lookup.
+    if (validatorName === "isPHPlaceName") {
+      return { passed: PH_ADDRESS_DB.isPlaceNameExact(rawMatch), tier: "1_gazetteer" };
+    }
 
     // ── Tier 2: lightweight structural heuristic ─────────────────────────
     if (validatorName === "isJWT") {

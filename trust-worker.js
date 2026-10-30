@@ -401,7 +401,45 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
     const ex  = seen.get(key);
     if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
   }
-  return [...seen.values()];
+
+  // ── ph_address overlap resolution (longest span wins) ────────────────────────
+  // Keep only the longest ph_address span; drop any whose text is a proper
+  // substring of another ph_address finding, or that is contained within an
+  // organization name.
+  const merged = [...seen.values()];
+  return merged.filter(f => {
+    if (f.patternId === 'ph_address') {
+      const self = f.rawMatch.trim().toLowerCase();
+      const hasLongerAddress = merged.some(other =>
+        other !== f &&
+        other.patternId === 'ph_address' &&
+        other.rawMatch.trim().toLowerCase() !== self &&
+        other.rawMatch.trim().toLowerCase().includes(self)
+      );
+      if (hasLongerAddress) return false;
+      const hasOrgParent = merged.some(other =>
+        other.patternId === 'nlp_organization' &&
+        other.rawMatch.trim().toLowerCase() !== self &&
+        other.rawMatch.trim().toLowerCase().includes(self)
+      );
+      if (hasOrgParent) return false;
+    }
+
+    // ── Address fragment mis-tagged as a person/organization ───────────────────
+    // Path C often tags street/barangay tokens inside an address as a person name
+    // or organization — e.g. "Mabini St", "San Roque" inside "45 Mabini St.,
+    // Brgy. San Roque, Cainta". Drop these duplicates so the score does not
+    // aggregate; the full address is already one ph_address entity.
+    if (f.patternId === 'nlp_person_name' || f.patternId === 'nlp_organization') {
+      const frag = f.rawMatch.trim().toLowerCase();
+      const insideAddress = merged.some(other =>
+        other.patternId === 'ph_address' &&
+        other.rawMatch.trim().toLowerCase().includes(frag)
+      );
+      if (insideAddress) return false;
+    }
+    return true;
+  });
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────

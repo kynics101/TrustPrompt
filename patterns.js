@@ -1562,6 +1562,82 @@ function structuralValidatePHID_PhilID(raw) {
 }
 
 
+// ── Street-level Philippine address detection ───────────────────────────────
+// A city/municipality name alone ("Antipolo", "Manila") names a PLACE, not a
+// person's location, and must NOT be scored as an address. We only accept a
+// street-level anchor that points to a specific premises.
+//
+// Street-type words — kept in ONE short constant (used by both the regex source
+// below and the structural validator). Abbreviated forms allow an optional dot.
+const PH_STREET_TYPES = ["Street", "St", "Avenue", "Ave", "Road", "Rd",
+  "Boulevard", "Blvd", "Drive", "Dr", "Lane", "Ln", "Highway", "Hwy", "Extension", "Ext"];
+
+// Area markers that, with a following name, denote a specific locality premises.
+const PH_AREA_MARKERS = ["Barangay", "Brgy", "Subdivision", "Subd", "Purok", "Sitio"];
+
+// Unit / building markers (interior premises).
+const PH_UNIT_MARKERS = ["Unit", "Blk", "Block", "Lot", "Bldg", "Building", "Floor", "Flr", "Rm", "Room", "Phase"];
+
+// Residence cue that licenses the WEAKER "street name + street-type, no number"
+// case (e.g. "I live at Rizal Street"). Without a number, label, or marker,
+// a bare "Rizal Avenue" is Low reliability and must be dropped unless cued.
+const PH_ADDRESS_CUES = ["i live at", "i live in", "i reside at", "i reside in",
+  "my address is", "my home address is", "located at", "residing at", "address is"];
+
+const _streetTypeAlt = PH_STREET_TYPES.join("|");
+const _areaMarkerAlt = PH_AREA_MARKERS.join("|");
+const _unitMarkerAlt = PH_UNIT_MARKERS.join("|");
+
+/**
+ * Structural validator for a street-level PH address candidate.
+ * Receives the raw matched span (the regex already required an anchor; this is
+ * a defensive re-check that at least one street-level signal is present and the
+ * span is not a bare city name).
+ *
+ * Accepts when ANY of these hold:
+ *   1. a number token adjacent to a street-type word   ("123 Rizal St.")
+ *   2. a unit/block/lot/building marker                ("Blk 5 Lot 12", "Unit 4B")
+ *   3. an area marker + a capitalized name             ("Brgy. San Roque")
+ *   4. a labeled "address:" field with content
+ *   5. a residence cue + street name + street-type     ("I live at Rizal Street")
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function structuralValidatePHStreetAddress(raw) {
+  if (!raw || typeof raw !== "string") return false;
+  const s = raw.trim();
+  if (s.length < 3) return false;
+
+  const streetType = `(?:${_streetTypeAlt})\\.?`;
+  const areaMarker = `(?:${_areaMarkerAlt})\\.?`;
+  const unitMarker = `(?:${_unitMarkerAlt})\\.?`;
+
+  // 1. Number somewhere before a street-type word ("123 Rizal St.")
+  if (new RegExp(`\\b\\d+[A-Za-z]?\\b[\\s\\S]{0,40}?\\b${streetType}(?:\\b|$)`, "i").test(s)) {
+    return true;
+  }
+  // 2. Unit / block / lot / building marker + a NUMERIC identifier.
+  //    Requiring a digit avoids matching common words ("Lot of", "Unit tests").
+  if (new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+[A-Za-z]?`, "i").test(s)) {
+    return true;
+  }
+  // 3. Area marker + a following name token
+  if (new RegExp(`\\b${areaMarker}\\s+[A-Za-z0-9][\\w-]*`, "i").test(s)) {
+    return true;
+  }
+  // 4. Labeled field with content
+  if (/\baddress\s*[:=]\s*\S+/i.test(s)) {
+    return true;
+  }
+  // 5. Residence cue + street name + street-type (no number)
+  const cueAlt = PH_ADDRESS_CUES.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  if (new RegExp(`\\b(?:${cueAlt})\\b[\\s\\S]{0,40}?\\b[A-Z][a-zA-Z]+\\s+${streetType}`, "i").test(s)) {
+    return true;
+  }
+  return false;
+}
+
+
 const TRUSTPROMPT_PATTERNS = [
 
   // ── HIGH RISK ──────────────────────────────────────────────────────────────
@@ -1573,7 +1649,11 @@ const TRUSTPROMPT_PATTERNS = [
     regex: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
     risk: "high",
     validate: "isCreditCard",
-    sanitize: (m) => m.replace(/\d(?=\d{4})/g, "*")
+    // Replace the entire card number with a placeholder. (The earlier
+    // digit-masking approach left the number raw when it contained spaces,
+    // e.g. "5363 7654 2347 5340", because the lookahead never matched across
+    // separators. A full placeholder avoids any chance of leaking digits.)
+    sanitize: (_m) => "[card identifier]"
   },
 
   // TASK-4.2: Hardened api_key pattern (Enhanced for comprehensive vendor coverage).
@@ -1701,7 +1781,9 @@ const TRUSTPROMPT_PATTERNS = [
     label: "IPv4 Address",
     reason: "Internal or private IP addresses reveal your network topology, which can assist attackers in mapping your infrastructure. Public IPs can be used to geolocate you or target your connection. Sharing server IPs in prompts may expose backend systems to reconnaissance.",
     regex: /\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g,
-    risk: "moderate",
+    // Low-impact (Limited) — base score 2. The display `risk` must match the
+    // BASE_SCORES/ENTITY_TIER classification ("limited" → Low), not "moderate".
+    risk: "low",
     validate: "isIP",
     sanitize: (m) => {
       const parts = m.split(".");
@@ -1716,7 +1798,8 @@ const TRUSTPROMPT_PATTERNS = [
     label: "IPv6 Address",
     reason: "IPv6 addresses can uniquely identify a specific device on the internet and may be directly tied to your hardware. Exposing an IPv6 address reveals more precise device and network information than an IPv4 address, and can be used for tracking or targeted attacks.",
     regex: /(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,7}:|::(?:[A-Fa-f0-9]{1,4}:){0,6}[A-Fa-f0-9]{1,4}/g,
-    risk: "moderate",
+    // Low-impact (Limited) — base score 2. Display risk aligned to Low.
+    risk: "low",
     validate: "isIPv6",
     sanitize: (_m) => "[REDACTED-IPv6]"
   },
@@ -1726,7 +1809,8 @@ const TRUSTPROMPT_PATTERNS = [
     label: "MAC Address",
     reason: "A MAC address is a hardware identifier burned into your network interface. It can be used to uniquely fingerprint and track a specific device across networks. MAC addresses are treated as device identifiers and their exposure can assist in device-level tracking or impersonation.",
     regex: /\b([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b/g,
-    risk: "moderate",
+    // Low-impact (Limited) — base score 2. Display risk aligned to Low.
+    risk: "low",
     validate: "isMACAddress",
     sanitize: (m) => {
       const sep = m.includes(":") ? ":" : "-";
@@ -1776,10 +1860,70 @@ const TRUSTPROMPT_PATTERNS = [
   {
     id: "ph_address",
     label: "Philippine Physical Address",
-    reason: "Physical addresses are sensitive location data under the Data Privacy Act. A Philippine address (barangay, street, subdivision, etc.) can precisely identify where a person lives or works. Combined with a name or contact number, it enables stalking, physical harassment, or targeted fraud.",
-    regex: /\b(?:barangay|brgy\.?|sitio|purok|street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|subdivision|subd\.?|village|vill\.?)\b[^.!?]{0,80}/gi,
-    risk: "low",
-    validate: "isPHAddress",
+    reason: "Physical addresses are sensitive location data under the Data Privacy Act. A street-level Philippine address (house/unit number, street, barangay, subdivision) can precisely identify where a person lives or works. Combined with a name or contact number, it enables stalking, physical harassment, or targeted fraud.",
+    // ── STREET-LEVEL ANCHORED DETECTION ──────────────────────────────────────
+    // A city/municipality name alone ("Antipolo", "Manila") names a place, not a
+    // person's premises, and is deliberately NOT matched here. Every alternative
+    // below requires a street-level anchor so the entity only fires on an actual
+    // address. The structuralValidate function re-checks the captured span.
+    //
+    // Alternatives (any one matches a span):
+    //   A. Number + (optional Blk/Lot run) + Name + street-type:
+    //        "123 Rizal St.", "Blk 5 Lot 12 Mabini Ave.", "123 rizal st"
+    //   B. Area marker + Name:  "Brgy. San Roque", "Sitio Maligaya"
+    //   C. Unit/Bldg/Floor marker + Name:  "Unit 4B, Sunrise Tower"
+    //   D. Labeled field + content:  "Address: 45 Del Pilar Street"
+    //   E. Residence cue + Name + street-type (NO number):  "I live at Rizal Street"
+    //      (bare "Rizal Avenue" with no cue is Low reliability → not matched)
+    // ── ADDRESS CONTINUATION (keeps a multi-part address as ONE span) ─────────
+    // A real address is written as comma-separated components: house/street,
+    // then barangay/subdivision, then city/province — e.g.
+    // "45 Mabini St., Brgy. San Roque, Cainta". Without stitching these together
+    // the detector emits a SEPARATE ph_address for each component and the risk
+    // score aggregates. The continuation below optionally consumes following
+    // comma-separated components, where each component is either an area marker
+    // (Brgy./Subd./Purok/Sitio) + name, or 1–3 Title-Case tokens (the city /
+    // subdivision name). It stops at the first lowercase function word (e.g.
+    // "...Cainta and the rent is overdue" stops before "and"), so prose does not
+    // leak in. Defined once and appended to the street/number alternatives.
+    regex: (() => {
+      const STREET = "(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Highway|Hwy|Extension|Ext)";
+      const AREA = "(?:Barangay|Brgy|Subdivision|Subd|Purok|Sitio)";
+      // One trailing component: ", [area marker ]Title-Case token(s)".
+      // The negative lookahead blocks common connectors that may follow a comma
+      // ("..., and the rent...") — needed because the /i flag makes [A-Z] match
+      // any case, so without it a lowercase "and" could be consumed.
+      const NOT_CONNECTOR = "(?!(?:and|or|but|the|a|an|with|for|then|so|which|who|that|is|are|was|were)\\b)";
+      const CONT = "(?:\\s*,\\s*" + NOT_CONNECTOR + "(?:" + AREA + "\\.?\\s+)?[A-Z][\\w.-]*(?:\\s+[A-Z][\\w.-]*){0,2}){0,4}";
+      return new RegExp(
+        "(?:" +
+          // A. number [unit run] name(s) street-type (+ continuation)
+          "\\b(?:Blk|Block|Lot|Unit|No)\\.?\\s*\\d+[A-Za-z]?(?:[,\\s]+(?:Blk|Block|Lot|Unit)\\.?\\s*\\d+[A-Za-z]?)*[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          "|" +
+          "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          "|" +
+          // B. area marker + name (+ continuation)
+          "\\b" + AREA + "\\.?\\s+[A-Za-z0-9][\\w.-]*(?:\\s+[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
+          "|" +
+          // C. unit/building marker + a NUMERIC identifier (+ optional building name)
+          //    The identifier must contain a digit (e.g. "4B", "5", "12") so common
+          //    words like "Lot of", "Unit tests", "Block diagram" do NOT match.
+          "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+[A-Za-z]?(?:[,\\s]+[A-Za-z0-9][\\w.-]*){0,3}" +
+          "|" +
+          // D. labeled address field
+          "\\baddress\\s*[:=]\\s*[A-Za-z0-9][^.!?\\n]{2,80}" +
+          "|" +
+          // E. residence cue + street name + street-type (no number) (+ continuation)
+          "\\b(?:I\\s+live\\s+(?:at|in)|I\\s+reside\\s+(?:at|in)|my\\s+(?:home\\s+)?address\\s+is|located\\s+at|residing\\s+at)\\s+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
+        ")",
+        "gi"
+      );
+    })(),
+    // Moderate (Significant) — base score 5. The display `risk` must match the
+    // BASE_SCORES/ENTITY_TIER classification ("significant" → Moderate).
+    risk: "moderate",
+    validate: null,
+    structuralValidate: structuralValidatePHStreetAddress,
     sanitize: (_m) => "[PHILIPPINE ADDRESS REMOVED]"
   },
 

@@ -243,16 +243,20 @@ Reference: Manuscript Table 17, Row 7
 
 ### Test 5.1: Low-Impact Entity Cap (Rule 3)
 ```
-Prompt: "John works as Manager at TechCorp in Manila with IP 192.168.1.1"
+Prompt: "John works as Manager at TechCorp Tower, 123 Rizal St. with IP 192.168.1.1"
 Expected Entities: nlp_person_name, nlp_job_title, nlp_organization, ph_address, ipv4
-Distinct Types: 5 (all Low-impact: nlp_person_name:2, nlp_job_title:2, nlp_organization:2, ph_address:2, ipv4:2)
-Base Score: 10
-Pre-Governance: 10 × 2.00 = 20.00
-Preliminary: High (20.00 >= 15)
-Governance Rule: Rule 3 (Low-Impact Entity Cap) applies — all scored entities have BASE_SCORES === 2
-Final Risk: Moderate (capped from High)
-Rationale: All-Low-impact types → Rule 3 caps at Moderate despite high multiplier
-Reference: Manuscript Table 17, Row 8
+Distinct Types: 5 — note ph_address is Moderate-impact (5), the rest Low (2)
+          nlp_person_name:2, nlp_job_title:2, nlp_organization:2, ipv4:2, ph_address:5
+Base Score: 13
+Pre-Governance: 13 × 2.00 = 26.00
+Preliminary: High (26.00 >= 15)
+Governance Rule: None — Rule 3 does NOT apply (ph_address is Moderate-impact, not all Low)
+Final Risk: High
+Rationale: UPDATED for street-level address detection. A street-level address
+          ("123 Rizal St.") is a Moderate (5) entity, so the set is no longer
+          all-Low-impact and Rule 3's cap does not apply. (Previously this test
+          used "in Manila" — a bare city name — which is NO LONGER detected as an
+          address under the street-level-anchored pattern.)
 ```
 
 ### Test 5.2: Name + Medical Context (Rule 2)
@@ -327,15 +331,18 @@ Rationale: Score 23.80 crosses into High tier
 
 ### Test 6.3: Multiplier Effect (High Distinct Type Count, Low Impact)
 ```
-Prompt: "John (Manager at TechCorp in Manila) has MAC 00:1A:2B:3C:4D:5E and IP 192.168.1.1"
-Expected Entities: nlp_person_name (2), nlp_job_title (2), nlp_organization (2), ph_address (2), mac_address (2), ipv4 (2)
-Distinct Types: 6 → multiplier cap at 5+ = 2.00
-Base Score: 12
-Pre-Governance: 12 × 2.00 = 24.00
+Prompt: "John (Manager at TechCorp) has MAC 00:1A:2B:3C:4D:5E and IP 192.168.1.1"
+Expected Entities: nlp_person_name (2), nlp_job_title (2), nlp_organization (2), mac_address (2), ipv4 (2)
+Distinct Types: 5 → multiplier 2.00
+Base Score: 10
+Pre-Governance: 10 × 2.00 = 20.00
 Preliminary: High
 Governance Rule: Rule 3 applies — all Low-impact
 Final Risk: Moderate (capped by Rule 3)
-Rationale: Even with 6 entity types, Rule 3 caps Low-impact-only prompts at Moderate
+Rationale: All-Low-impact types → Rule 3 caps at Moderate. UPDATED: removed the
+          "in Manila" bare city name, which is no longer detected as an address
+          under the street-level-anchored pattern. (If a street-level address were
+          added, it would be Moderate-impact and Rule 3 would no longer apply.)
 ```
 
 ### Test 6.4: Critical Entity Without Validation (should NOT trigger Rule 1)

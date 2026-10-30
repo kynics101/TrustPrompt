@@ -1584,9 +1584,30 @@ const PH_UNIT_MARKERS = ["Unit", "Blk", "Block", "Lot", "Bldg", "Building", "Flo
 const PH_ADDRESS_CUES = ["i live at", "i live in", "i reside at", "i reside in",
   "my address is", "my home address is", "located at", "residing at", "address is"];
 
+// Words that commonly follow "barangay"/"purok"/etc. in ordinary prose but do
+// NOT name a locality (so "barangay captain", "barangay in Batanes", "barangay
+// hall" must NOT be treated as an address). When one of these immediately
+// follows an area marker, the area-marker alternative is rejected. Because the
+// address regex runs with the /i flag, [A-Z] also matches lowercase; this
+// blocklist is what actually distinguishes a proper place name from prose.
+const PH_AREA_FOLLOW_STOPWORDS = [
+  // roles / officials
+  "captain", "chairman", "chairperson", "kapitan", "councilor", "kagawad",
+  "official", "officials", "secretary", "treasurer", "tanod", "worker", "workers",
+  "staff", "resident", "residents", "folk", "people",
+  // facilities / generic nouns
+  "hall", "health", "center", "centre", "office", "clinic", "school", "unit",
+  "level", "system", "program", "programs", "project", "projects", "council",
+  "assembly", "meeting", "fiesta", "event", "election", "elections",
+  // connectors / function words
+  "in", "of", "and", "or", "but", "the", "a", "an", "with", "for", "to", "near",
+  "is", "was", "where", "here", "there", "that", "this", "my", "our", "their"
+];
+
 const _streetTypeAlt = PH_STREET_TYPES.join("|");
 const _areaMarkerAlt = PH_AREA_MARKERS.join("|");
 const _unitMarkerAlt = PH_UNIT_MARKERS.join("|");
+const _areaStopAlt = PH_AREA_FOLLOW_STOPWORDS.join("|");
 
 /**
  * Structural validator for a street-level PH address candidate.
@@ -1621,8 +1642,11 @@ function structuralValidatePHStreetAddress(raw) {
   if (new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+[A-Za-z]?`, "i").test(s)) {
     return true;
   }
-  // 3. Area marker + a following name token
-  if (new RegExp(`\\b${areaMarker}\\s+[A-Za-z0-9][\\w-]*`, "i").test(s)) {
+  // 3. Area marker + a following PROPER-NOUN name token.
+  //    A following common word ("captain", "in", "hall", ...) means this is
+  //    ordinary prose ("barangay captain", "barangay in Batanes"), not an
+  //    address, so it is rejected via a negative lookahead stopword list.
+  if (new RegExp(`\\b${areaMarker}\\s+(?!(?:${_areaStopAlt})\\b)[A-Za-z0-9][\\w-]*`, "i").test(s)) {
     return true;
   }
   // 4. Labeled field with content
@@ -1889,6 +1913,11 @@ const TRUSTPROMPT_PATTERNS = [
     regex: (() => {
       const STREET = "(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Highway|Hwy|Extension|Ext)";
       const AREA = "(?:Barangay|Brgy|Subdivision|Subd|Purok|Sitio)";
+      // Common words that follow an area marker in prose ("barangay captain",
+      // "barangay in Batanes", "barangay hall") — these are NOT place names, so
+      // alternative B rejects them via a negative lookahead. Mirrors
+      // PH_AREA_FOLLOW_STOPWORDS used by the structural validator.
+      const AREA_STOP = "(?!(?:" + _areaStopAlt + ")\\b)";
       // One trailing component: ", [area marker ]Title-Case token(s)".
       // The negative lookahead blocks common connectors that may follow a comma
       // ("..., and the rent...") — needed because the /i flag makes [A-Z] match
@@ -1902,8 +1931,10 @@ const TRUSTPROMPT_PATTERNS = [
           "|" +
           "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
           "|" +
-          // B. area marker + name (+ continuation)
-          "\\b" + AREA + "\\.?\\s+[A-Za-z0-9][\\w.-]*(?:\\s+[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
+          // B. area marker + PROPER-NOUN name (+ continuation).
+          //    AREA_STOP rejects a following common word so "barangay captain"
+          //    and "barangay in Batanes" are NOT treated as an address.
+          "\\b" + AREA + "\\.?\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*(?:\\s+[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
           "|" +
           // C. unit/building marker + a NUMERIC identifier (+ optional building name)
           //    The identifier must contain a digit (e.g. "4B", "5", "12") so common

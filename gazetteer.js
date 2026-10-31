@@ -31,7 +31,7 @@
 //
 // Dependencies: ph-address-db.js (loaded before this file)
 
-/* global PH_ADDRESS_DB, TrustGazetteer, MEDICAL_TERMS_DATA, FINANCIAL_TERMS_DATA, ORGANIZATIONS_DATA */
+/* global PH_ADDRESS_DB, TrustGazetteer, MEDICAL_TERMS_DATA, FINANCIAL_TERMS_DATA, ORGANIZATIONS_DATA, OFFICIAL_TEST_CARDS */
 
 const TrustGazetteer = (() => {
 
@@ -100,6 +100,32 @@ const TrustGazetteer = (() => {
     ORGANIZATIONS_WORDS = ORGANIZATIONS_DATA.map(t => t.toLowerCase());
   } else if (typeof window !== 'undefined' && window.ORGANIZATIONS_DATA) {
     ORGANIZATIONS_WORDS = window.ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+  }
+
+  // ── OFFICIAL TEST CARDS ────────────────────────────────────────────────────
+  // Load test card whitelist (used by grammarCheck to suppress test card false positives)
+  let testCardsList = new Set();
+  
+  if (typeof OFFICIAL_TEST_CARDS !== 'undefined' && OFFICIAL_TEST_CARDS instanceof Set) {
+    testCardsList = OFFICIAL_TEST_CARDS;
+    console.log('[TrustGazetteer] ✅ Found global OFFICIAL_TEST_CARDS, loaded', testCardsList.size, 'test cards');
+  } else if (typeof window !== 'undefined' && window.OFFICIAL_TEST_CARDS instanceof Set) {
+    testCardsList = window.OFFICIAL_TEST_CARDS;
+    console.log('[TrustGazetteer] ✅ Found window.OFFICIAL_TEST_CARDS, loaded', testCardsList.size, 'test cards');
+  } else {
+    // Fallback: define common test cards inline if not globally available
+    testCardsList = new Set([
+      "4111111111111111",        // Stripe Visa test
+      "5500000000000004",        // Stripe Mastercard test
+      "378282246310005",         // Stripe Amex test
+      "5105105105105100",        // Mastercard generic
+      "2223003122003222",        // Mastercard 2-series
+      "3714890629140200",        // American Express
+      "4012888888881881",        // Visa
+      "6011111111111117",        // Discover
+      "3530111333300000",        // JCB
+    ]);
+    console.log('[TrustGazetteer] ⚠️  OFFICIAL_TEST_CARDS not found globally, using inline fallback with', testCardsList.size, 'test cards');
   }
 
   // ── PERFORMANCE: Pre-compile combined regexes ─────────────────────────────
@@ -932,8 +958,18 @@ const TrustGazetteer = (() => {
 
       case "financial":
         // Financial trigger value should have digits or financial keywords
-        return /\d/.test(span) ||
-               gazetteers.financial.some(t => span.toLowerCase().includes(t));
+        // BUT reject official test cards (e.g., Stripe test cards)
+        if (/\d/.test(span) || gazetteers.financial.some(t => span.toLowerCase().includes(t))) {
+          // Normalize card number by removing spaces/hyphens for test card comparison
+          const normalized = span.replace(/[\s\-]/g, "");
+          // Check if it matches any official test card
+          if (testCardsList.has(normalized)) {
+            // Official test card — reject this finding
+            return false;
+          }
+          return true;
+        }
+        return false;
 
       case "eye_color":
         // Eye color must be a recognized color term from the gazetteer

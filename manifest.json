@@ -98,6 +98,7 @@
         "linguistic-detector.js",
         "ph-address-db.js",
         "validator-wrapper-worker.js",
+        "worker-data-bundle.js",
         "trust-worker.js"
       ],
       "matches": [

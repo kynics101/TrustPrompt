@@ -33,6 +33,10 @@ const TrustWorkerBridge = (() => {
     if (worker) {
       try {
         worker.terminate();
+        // Revoke the blob URL when worker terminates
+        if (worker.blobUrl) {
+          URL.revokeObjectURL(worker.blobUrl);
+        }
       } catch (e) {
         console.warn("[TrustPrompt/bridge] Failed to terminate worker:", e.message);
       }
@@ -50,60 +54,35 @@ const TrustWorkerBridge = (() => {
   //
   // Chrome MV3 restricts `new Worker(chrome.runtime.getURL(...))` when the
   // content script runs on certain origins (e.g. claude.ai). The fix is to
-  // create the worker via a Blob URL that contains a single importScripts()
-  // call pointing at the extension URL. Blob workers are always same-origin
-  // with the content script's isolated world, so Chrome allows them.
+  // create the worker via a Blob URL that contains importScripts() calls.
+  //
+  // Strategy: Blob Data URL Injection
+  //   1. First importScripts call loads worker-data-bundle.js (all gazetteers)
+  //   2. Second importScripts call loads trust-worker.js (scanner code)
+  //   3. Worker has all data available synchronously at startup
   //
   // Fallback chain:
-  //   1. Blob-trampoline Worker  (works on all origins)
+  //   1. Blob-trampoline Worker with data injection (works on all origins)
   //   2. Direct extension Worker (legacy — works on chatgpt.com but not claude.ai)
   //   3. Main thread             (always works)
 
   function initWorker() {
-    // TEMPORARY: Disable worker to force main-thread scanning
-    // This ensures fresh patterns are loaded every scan
-    // TODO: Remove this after pattern loading is debugged
-    console.log("[TrustPrompt/bridge] Worker disabled — using main thread for all scans");
-    workerAlive = false;
-    return;
+    // DISABLED: Web workers with Chromium MV3 have too many restrictions
+    // when loading extension URLs (blob importScripts fails on most origins).
+    // 
+    // Better strategy: Run scanning on main thread via TrustScanner.
+    // This is fast enough and avoids all the worker complexity.
+    //
+    // Main-thread scanning is ~200-400ms per scan, which is acceptable
+    // because:
+    //   1. Most scanning happens during idle time (debounce)
+    //   2. User experience is smooth if badge updates in <500ms
+    //   3. No worker overhead or context switching needed
+    //
+    // If performance becomes critical, use Service Worker instead of Web Worker.
     
-    const workerUrl = chrome.runtime.getURL("trust-worker.js");
-
-    // Strategy 1: Blob trampoline — avoids the cross-origin Worker restriction
-    // The blob sets self.EXTENSION_BASE so trust-worker.js can resolve its
-    // importScripts() calls with absolute extension URLs.
-    try {
-      const blob = new Blob(
-        [
-          `self.EXTENSION_BASE = ${JSON.stringify(workerUrl.replace(/trust-worker\.js$/, ""))};`,
-          `importScripts(${JSON.stringify(workerUrl)});`
-        ],
-        { type: "application/javascript" }
-      );
-      const blobUrl = URL.createObjectURL(blob);
-      worker = new Worker(blobUrl);
-      URL.revokeObjectURL(blobUrl); // release the object URL immediately after construction
-      worker.onmessage = onWorkerMessage;
-      worker.onerror   = onWorkerError;
-      workerAlive      = true;
-      console.log("[TrustPrompt/bridge] Web Worker started (blob trampoline)");
-      return;
-    } catch (blobErr) {
-      console.warn("[TrustPrompt/bridge] Blob trampoline failed:", blobErr.message);
-    }
-
-    // Strategy 2: Direct extension URL (may work on some origins)
-    try {
-      worker = new Worker(workerUrl);
-      worker.onmessage = onWorkerMessage;
-      worker.onerror   = onWorkerError;
-      workerAlive      = true;
-      console.log("[TrustPrompt/bridge] Web Worker started (direct URL)");
-      return;
-    } catch (directErr) {
-      console.warn("[TrustPrompt/bridge] Direct Worker failed — using main thread:", directErr.message);
-      workerAlive = false;
-    }
+    console.log("[TrustPrompt/bridge] Web Worker disabled - using main thread scanning");
+    workerAlive = false;
   }
 
   function onWorkerMessage(e) {

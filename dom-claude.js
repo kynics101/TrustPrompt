@@ -274,7 +274,14 @@ const TP_CLAUDE = (() => {
     const { findings, riskLevel } = result;
     const safeText   = buildSafeText(rawText, findings);
     TrustUI.update(riskLevel, findings, safeText, promptBox, getComposerWrapper(), sendAnyway);
-    chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
+    
+    // Send message to background script, with error handling for invalidated contexts
+    try {
+      chrome.runtime.sendMessage({ type: "SCAN_RESULT", riskLevel, findings, rawText });
+    } catch (err) {
+      // Extension context invalidated (e.g., during reload) — this is non-fatal
+      console.warn("[TP/claude] Failed to send SCAN_RESULT (extension reloaded?):", err.message);
+    }
   }
 
   // ── SEND ANYWAY ────────────────────────────────────────────────────────────

@@ -90,7 +90,7 @@ const PH_ADDRESS_DB = (() => {
     // Region X
     "cagayan de oro", "iligan", "malaybalay", "oroquieta", "ozamiz", "tangub",
     // Region XI
-    "davao city", "tagum", "panabo", "samal", "digos",
+    "davao city", "davao", "tagum", "panabo", "samal", "digos",
     // Region XII
     "general santos", "kidapawan", "koronadal",
     // Region XIII
@@ -134,6 +134,60 @@ const PH_ADDRESS_DB = (() => {
     return ALL_PLACES.filter(place => lower.includes(place));
   }
 
-  return { matchesAny, findMatches };
+  // Pre-built lookup structures for fast, allocation-free whole-word matching.
+  //   PLACE_SET          — all place strings (lowercase) for O(1) exact lookup
+  //   PLACE_PHRASE_LIST  — multi-word places only (checked as word-boundary
+  //                         substrings, needed because a candidate like
+  //                         "Davao City" should match the phrase "davao city")
+  const PLACE_SET = new Set(ALL_PLACES);
+  const PLACE_PHRASE_LIST = ALL_PLACES.filter(p => p.includes(" "));
+
+  /**
+   * Strict, whole-word match against the place list. Unlike matchesAny (which
+   * uses substring .includes and can false-match e.g. "car" inside "Carol"),
+   * this requires the place to appear as a whole word or phrase.
+   * Used to validate bare place-name candidates (DEF-002/003/004/005/006).
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function matchesWhole(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+    // Fast path: the whole candidate is exactly a known place.
+    if (PLACE_SET.has(lower)) return true;
+    // Token path: any individual word of the candidate is a single-word place.
+    const tokens = lower.split(/[^a-z0-9]+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (PLACE_SET.has(tok)) return true;
+    }
+    // Phrase path: a multi-word place appears as a whole phrase in the candidate.
+    for (const phrase of PLACE_PHRASE_LIST) {
+      const idx = lower.indexOf(phrase);
+      if (idx === -1) continue;
+      const before = idx === 0 ? " " : lower[idx - 1];
+      const after = idx + phrase.length >= lower.length ? " " : lower[idx + phrase.length];
+      if (/[^a-z0-9]/.test(before) && /[^a-z0-9]/.test(after)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Strict whole-candidate place match: returns true ONLY when the entire
+   * candidate string is itself a known place (exact set membership), not when a
+   * place merely appears as one token inside a longer phrase.
+   *
+   * This is the validator for the bare-place-name location PATTERN (patterns.js).
+   * It prevents an organization name that happens to end in a province — e.g.
+   * "Mapua Malayan Colleges Laguna" — from being flagged as a location, while a
+   * standalone "Laguna" or "Davao City" still validates. (DEF-003)
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function isPlaceNameExact(text) {
+    if (!text) return false;
+    return PLACE_SET.has(text.toLowerCase().trim());
+  }
+
+  return { matchesAny, findMatches, matchesWhole, isPlaceNameExact };
 
 })();

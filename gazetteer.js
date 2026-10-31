@@ -1029,38 +1029,116 @@ const TrustGazetteer = (() => {
     const contextLower = contextBefore.toLowerCase();  // Use contextBefore for more reliable matching
     const contextAfterLower = contextAfter.toLowerCase();
 
+    // ── CLAUSE-LOCAL CONTEXT ─────────────────────────────────────────────────
+    // Personal-disclosure markers ("my", "our", "I am", pronouns) only indicate
+    // that the DETECTED TERM is PII when they belong to the SAME clause as the
+    // term. Scanning the whole 150-char window caused false positives: in
+    // "...my former teacher. She taught me Filipino", the possessive "my" binds
+    // to "teacher" (a different clause) yet wrongly flagged "Filipino".
+    //
+    // We isolate the clause immediately preceding the term by cutting at the
+    // last clause/sentence boundary (sentence enders, comma, semicolon, colon,
+    // or a coordinating conjunction). The disclosure heuristics below operate on
+    // this narrower window so distant, grammatically-unrelated possessives and
+    // pronouns no longer leak across clause boundaries.
+    // Boundaries used: sentence enders (. ! ? ;) and subordinating/relative
+    // conjunctions that start a new clause with a potentially different subject
+    // ("because", "while", "when", "who", "which"). Commas are intentionally NOT
+    // treated as boundaries, so appositive/listing disclosures in the same
+    // sentence (e.g. "I am a 30 year old, Filipino man") remain detectable.
+    const clauseBoundaryRe = /.*(?:[.!?;]|\b(?:because|while|when|who|which)\b)\s*/is;
+    const nearContextLower = contextLower.replace(clauseBoundaryRe, "");
+
+    // ── LOCATION-CONTEXT GUARD (nationality/religion only) ───────────────────
+    // DEF-005: A country/place name used as a LOCATION ("worked in Saudi Arabia",
+    // "lived in Japan for 20 years", "based in Qatar") is a place reference, not a
+    // nationality/ethnicity disclosure about the writer. When a nationality term
+    // is immediately preceded by a locational preposition (in/to/from/at) AND the
+    // near context contains a residence/work/movement verb, treat it as a safe
+    // location mention. (Bare PH place names are separately flagged as location
+    // data by the ph_address place-name pattern in patterns.js.)
+    if (category === "nationality_religion") {
+      const precededByPlacePrep = /\b(in|to|from|at)\s*$/.test(nearContextLower);
+      const locationVerbNearby = /\b(work(?:ed|ing|s)?|liv(?:ed|ing|es)?|resid(?:ed|ing|es)?|bas(?:ed|ing)|mov(?:ed|ing)|relocat(?:ed|ing)|station(?:ed)?|deploy(?:ed)?|assign(?:ed)?|went|stay(?:ed|ing)?|visit(?:ed|ing)?|travel(?:led|ing|ed)?)\b/.test(nearContextLower);
+      if (precededByPlacePrep && locationVerbNearby) {
+        return false;  // Safe: country used as a location, not a nationality claim
+      }
+    }
+
+    // ── FINANCIAL GENERIC-QUESTION GUARD (evaluated before risky rules) ──────
+    // DEF-007: A financial term used in a generic how-to / compliance question
+    // ("How do I declare my income to the BIR?", "how to compute my tax") is not
+    // a disclosure of the user's actual finances — no amount is being shared.
+    // Treat financial terms as safe when the context is interrogative/procedural
+    // and no monetary figure appears nearby. This must run BEFORE the possessive
+    // ("my") risky rule, otherwise "my income" would be flagged first. (Financial
+    // terms are context indicators that add no score, so this only affects
+    // whether the term surfaces as a detection.)
+    if (category === "financial") {
+      const combined = contextLower + " " + contextAfterLower;
+      const procedural = /\b(how\s+(?:do|to|can|should)|declare|file|compute|calculate|report|register|what\s+(?:is|are)|explain)\b/.test(combined);
+      const hasAmountNearby = /(?:php|₱|\$|usd)\s?\d|\b\d{3,}(?:[.,]\d+)?\b/.test(combined);
+      if (procedural && !hasAmountNearby) {
+        return false;  // Safe: generic financial/tax question, no value disclosed
+      }
+      // DEF-002: Otherwise a financial term is a legitimate SENSITIVE-CONTEXT
+      // indicator and should surface (e.g. "changing its payroll provider").
+      // Financial terms carry NO independent score (BASE_SCORES = 0); flagging
+      // them only makes the blue "CONTEXT: FINANCIAL" badge appear and lets the
+      // Sensitive-Context Co-occurrence rule consider them. It never raises the
+      // numeric risk on its own.
+      return true;
+    }
+
     // ── RISKY HEURISTICS (Check these FIRST to catch PII patterns) ──────────
     
-    // 1. Direct personal disclosure: "I'm X" or "I am X" (appears anywhere in contextBefore)
-    if (/\b(i\s+am|i'm|im)\b/.test(contextLower)) {
+    // 1. Direct personal disclosure: "I'm X" or "I am X" in the SAME clause
+    if (/\b(i\s+am|i'm|im)\b/.test(nearContextLower)) {
       return true;  // Risky: Direct personal identification like "I'm Filipino"
     }
 
     // 2. "Have diabetes", "have depression", etc. - personal possession
-    if (/\bhave\b/.test(contextLower) && category === "medical") {
+    if (/\bhave\b/.test(nearContextLower) && category === "medical") {
       return true;  // Risky: "I have diabetes"
     }
 
     // 2b. "Am experiencing" or "experiencing" for medical terms
-    if (/\b(experiencing|experience|am experiencing|i'm experiencing)\b/.test(contextLower) && category === "medical") {
+    if (/\b(experiencing|experience|am experiencing|i'm experiencing)\b/.test(nearContextLower) && category === "medical") {
       return true;  // Risky: "I am experiencing heavy menstruation"
     }
 
-    // 3. Possessive personal disclosure: "My X is", "Our X"
-    if (/\b(my|our)\b/.test(contextLower)) {
+    // 3. Possessive personal disclosure in the SAME clause: "My X is", "Our X"
+    //    Must be clause-local so "my former teacher. She taught me Filipino"
+    //    does NOT flag "Filipino" via a possessive that refers to the teacher.
+    if (/\b(my|our)\b/.test(nearContextLower)) {
       return true;  // Risky: "My girlfriend is Filipino", "My heritage is Filipino"
     }
 
-    // 4. Contact/sensitive information request
-    const contactMarkers = /\b(create|send|write|email|contact|call|phone|number|details|address)\b/;
-    if (contactMarkers.test(contextLower) || contactMarkers.test(contextAfterLower)) {
-      return true;  // Risky: Contact information context
+    // 4. Contact/sensitive-information SHARING request.
+    //    Previously this fired on any occurrence of common task verbs
+    //    ("create", "write", "email", "details", ...) anywhere in the 150-char
+    //    window. That produced false positives on ordinary requests such as
+    //    "...changing its payroll provider. Draft an email to employees..." —
+    //    where "email" is the deliverable the user is asking the AI to write,
+    //    not contact information being disclosed.
+    //
+    //    The marker now only counts when it appears in the SAME clause as the
+    //    detected term AND is paired with a first-person sharing/possessive cue
+    //    ("my", "our", "me", "i") — i.e. the user is actually sharing their own
+    //    contact/sensitive detail (e.g. "create an email for me with ...",
+    //    "my phone number is ..."). Generic task verbs alone no longer trigger.
+    const contactMarkers = /\b(send|contact|call|phone number|phone|my number|details|address)\b/;
+    const sharingCue = /\b(my|our|me|i)\b/;
+    if (contactMarkers.test(nearContextLower) && sharingCue.test(nearContextLower)) {
+      return true;  // Risky: user sharing their own contact/sensitive detail
     }
 
     // 5. Third-person personal disclosure: "Friend/Person/Someone is X"
     // BUT only if combined with sensitivity markers (understanding, knowing, etc.)
-    if (/\b(friend|person|woman|man|girl|boy|someone|she|he)\b/.test(contextLower)) {
-      const disclosureVerb = /\b(is|are|was|were)\b/.test(contextLower);
+    // Use clause-local context so a pronoun from a prior clause (e.g. "She taught
+    // me") does not bind to a nationality term in the following clause.
+    if (/\b(friend|person|woman|man|girl|boy|someone|she|he)\b/.test(nearContextLower)) {
+      const disclosureVerb = /\b(is|are|was|were)\b/.test(nearContextLower);
       const sensitivityMarker = /\b(understand|know|learn|relate|connect|talk to|discuss)\b/.test(contextAfterLower);
       if (disclosureVerb && sensitivityMarker) {
         return true;  // Risky: "My friend is Filipino, I want to understand her"

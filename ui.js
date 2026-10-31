@@ -587,7 +587,7 @@ const TrustUI = (() => {
         <span style="color:#ef4444;">●</span> High — Cards, IDs, Keys, or accumulated data types present<br>
         <span style="color:#f97316;">●</span> Moderate — Email, phone, address, or date of birth<br>
         <span style="color:#eab308;">●</span> Low — Limited details, such as name or age/ labels<br>
-        <span style="color:#3b82f6;">●</span> Context (Health / Financial / Ethnic Origin) — No score on their own; raise risk only when they co-occur with personal data<br>
+        <span style="color:#3b82f6;">●</span> Context (Health / Financial / Ethnic Origin) — Not risky on their own, but they raise your risk level when shared with your personal info<br>
         <span style="color:#22c55e;">●</span> No Detected Privacy Risk present - No supported sensitive data found
       </div>`;
     footer.appendChild(legend);

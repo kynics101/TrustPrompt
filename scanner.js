@@ -1221,6 +1221,7 @@ const TrustScanner = (() => {
       'credit_card',                   // Format documentation
       'api_key', 'jwt',                // Code/documentation blocks
       'birthday_date',                 // Calendar dates (can appear in "today is October 26, 2026" references)
+      'ph_address',                    // Street address can appear in song/book/movie titles, directions, lyrics
       // REMOVED: 'ph_mobile' - PII that must ALWAYS be flagged
       // REMOVED: 'ipv4', 'ipv6', 'mac_address' - Network PII that must ALWAYS be flagged
       // NOTE: ALL Philippine ID patterns are NOT in this list
@@ -1356,6 +1357,21 @@ const TrustScanner = (() => {
       
       if (temporalMarkers.some(m => m.test(fullContext))) {
         console.log(`[TrustPrompt/context] filtered ${patternId}: temporal reference context`);
+        return true;
+      }
+    }
+
+    // 9. ph_address: creative-work titles and asking-for-directions contexts.
+    // A street-like phrase inside a song/book/movie title or a "how do I get to"
+    // question is not the writer's own address. (Matches the lightweight,
+    // marker-based style of the phone-number context check.)
+    if (patternId === 'ph_address') {
+      const nonAddressMarkers = [
+        /\b(song|album|track|single|lyrics?|book|novel|movie|film|show|episode|title|band|poem|play)\b/,
+        /\b(how do i get to|how to get to|directions? to|on the way to|route to|near(?:est)?|closest)\b/,
+      ];
+      if (nonAddressMarkers.some(m => m.test(fullContext))) {
+        console.log(`[TrustPrompt/context] filtered ${patternId}: non-address (title/directions) context`);
         return true;
       }
     }
@@ -2630,6 +2646,45 @@ const TrustScanner = (() => {
           other => other.patternId === 'ph_id_umid' && other.rawMatch.includes(sssMatch)
         );
         if (hasUmidParent) return false;
+      }
+
+      // ── ph_address overlap resolution (longest span wins) ──────────────────
+      // Street-level address alternatives can occasionally produce a shorter
+      // ph_address span that is contained within a longer ph_address span. Keep
+      // only the longest; drop any ph_address whose text is a proper substring
+      // of another ph_address finding. Also drop a ph_address contained within an
+      // organization name (defensive against an address fragment overlapping an
+      // org token).
+      if (f.patternId === 'ph_address') {
+        const self = f.rawMatch.trim().toLowerCase();
+        const hasLongerAddress = result.some(other =>
+          other !== f &&
+          other.patternId === 'ph_address' &&
+          other.rawMatch.trim().toLowerCase() !== self &&
+          other.rawMatch.trim().toLowerCase().includes(self)
+        );
+        if (hasLongerAddress) return false;
+        const hasOrgParent = result.some(other =>
+          other.patternId === 'nlp_organization' &&
+          other.rawMatch.trim().toLowerCase() !== self &&
+          other.rawMatch.trim().toLowerCase().includes(self)
+        );
+        if (hasOrgParent) return false;
+      }
+
+      // ── Address fragment mis-tagged as a person/organization ───────────────
+      // Path C (NLP) often tags street/barangay tokens inside an address as a
+      // person name or organization — e.g. "Mabini St", "San Roque" inside
+      // "45 Mabini St., Brgy. San Roque, Cainta". These are part of the address
+      // already captured as one ph_address entity, so drop the duplicate
+      // name/org fragment to prevent the risk score from aggregating.
+      if (f.patternId === 'nlp_person_name' || f.patternId === 'nlp_organization') {
+        const frag = f.rawMatch.trim().toLowerCase();
+        const insideAddress = result.some(other =>
+          other.patternId === 'ph_address' &&
+          other.rawMatch.trim().toLowerCase().includes(frag)
+        );
+        if (insideAddress) return false;
       }
       return true;
     });

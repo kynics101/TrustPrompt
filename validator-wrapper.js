@@ -180,6 +180,17 @@ const TrustValidator = (() => {
     return PH_ADDRESS_DB.matchesAny(raw);
   }
 
+  /**
+   * Bare Philippine place-name (province / city / region) validator.
+   * Confirms a Title-Case candidate is an actual PH place via a strict
+   * word-boundary lookup, so ordinary capitalized words/names (e.g. "Carol",
+   * "Pacific Rim Logistics") are NOT flagged, while real places such as
+   * "Davao", "Laguna", "Antipolo", "Iloilo", "Batanes" are.
+   */
+  function isPHPlaceName(raw) {
+    return PH_ADDRESS_DB.isPlaceNameExact(raw);
+  }
+
   // ── Dispatch table ─────────────────────────────────────────────────────────
   // Keys match the `validate` field in patterns.js entries.
 
@@ -194,7 +205,8 @@ const TrustValidator = (() => {
     isIP,
     isIPv6,
     isMACAddress,
-    isPHAddress
+    isPHAddress,
+    isPHPlaceName
   };
 
   /**

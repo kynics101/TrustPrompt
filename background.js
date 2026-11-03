@@ -18,13 +18,33 @@ chrome.sidePanel
 
 // ── 2. FIREBASE RULES FETCH ───────────────────────────────────────────────────
 
-const FIREBASE_RULES_URL = "https://YOUR_PROJECT.web.app/trustprompt-rules.json";
+// Remote rules endpoint. Leave as null (or the placeholder) to disable the
+// remote fetch entirely — TrustPrompt ships its detection rules bundled in
+// scanner.js / the gazetteer files, so the remote fetch is optional.
+//
+// To enable remote rules later: deploy trustprompt-rules.json to a host that
+// returns an Access-Control-Allow-Origin header (Firebase Hosting does by
+// default) and set FIREBASE_RULES_URL to that URL.
+const FIREBASE_RULES_URL = null; // e.g. "https://my-project.web.app/trustprompt-rules.json"
 const RULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// Guard against accidentally shipping the placeholder URL.
+function isValidRulesUrl(url) {
+  return typeof url === "string"
+    && /^https:\/\//.test(url)
+    && !/YOUR_PROJECT/.test(url);
+}
 
 let cachedRules    = null;
 let rulesFetchedAt = 0;
 
 async function fetchRules() {
+  // Remote rules disabled or not configured → silently use bundled defaults.
+  if (!isValidRulesUrl(FIREBASE_RULES_URL)) {
+    console.log("[TrustPrompt/bg] remote rules not configured — using bundled defaults");
+    return null;
+  }
+
   const now = Date.now();
   if (cachedRules && (now - rulesFetchedAt) < RULES_CACHE_TTL_MS) return cachedRules;
   try {

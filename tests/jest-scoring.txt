@@ -1,0 +1,209 @@
+﻿  console.log
+    [STARTUP] linguistic-detector.js loading...
+
+      at linguistic-detector.js:18:9
+
+  console.log
+    [STARTUP] COMPROMISE_AVAILABLE: false
+
+      at linguistic-detector.js:26:11
+
+  console.log
+    [STARTUP] typeof window.nlp: undefined
+
+      at linguistic-detector.js:27:11
+
+  console.debug
+    [TrustPrompt/PATH_C] compromise.js not found; skipping linguistic detection
+
+      at linguistic-detector.js:30:13
+
+  console.log
+    [STARTUP] TrustLinguisticDetector initialized
+
+      at linguistic-detector.js:33:11
+
+  console.log
+    [STARTUP] TrustLinguisticDetector is ready. Test with:
+
+      at linguistic-detector.js:1487:9
+
+  console.log
+    testLinguisticDetector()
+
+      at linguistic-detector.js:1488:9
+
+  console.log
+    [STARTUP] testLinguisticDetector attached to window
+
+      at linguistic-detector.js:1513:11
+
+  console.log
+    [STARTUP] typeof window.testLinguisticDetector: function
+
+      at linguistic-detector.js:1514:11
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [trigger_person_name] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [email] | base:5 ├ù1 = 5.00 | prelim:moderate | gov:none(null) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [trigger_person_name, email] | base:7 ├ù1.2 = 8.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:3 [email, nlp_organization, nlp_job_title] | base:9 ├ù1.4 = 12.60 | prelim:moderate | gov:none(null) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:3 [trigger_person_name, email, ph_mobile] | base:12 ├ù1.4 = 16.80 | prelim:high | gov:none(null) | final:high
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [ph_id_passport] | base:10 ├ù1 = 10.00 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [credit_card, trigger_person_name] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:5 [trigger_person_name, nlp_organization, nlp_job_title, mac_address, ipv4] | base:10 ├ù2 = 20.00 | prelim:high | gov:low_impact_cap(null) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [trigger_person_name] | base:2 ├ù1 = 2.00 | prelim:low | gov:sensitive_context(moderate) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [email] | base:5 ├ù1 = 5.00 | prelim:moderate | gov:none(null) | final:moderate
+
+      at computeRiskScore (trust-worker.js:279:11)
+
+node : PASS tests/unit/scoring.test.js
+At line:1 char:1
++ node node_modules/jest/bin/jest.js --testPathPattern "tests/unit/scor ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS tests/unit/scoring.test.js:String) [], RemoteEx 
+   ception
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  getMultiplier (Table 12)
+    ΓêÜ 1 distinct type ΓåÆ ├ù1.00 (1 ms)
+    ΓêÜ 2 distinct types ΓåÆ ├ù1.20
+    ΓêÜ 3 distinct types ΓåÆ ├ù1.40
+    ΓêÜ 4 distinct types ΓåÆ ├ù1.70
+    ΓêÜ 5 distinct types ΓåÆ ├ù2.00
+    ΓêÜ 6 distinct types ΓåÆ ├ù2.00 (5+ ceiling)
+    ΓêÜ 0 distinct types ΓåÆ ├ù1.00 (edge ΓÇö no score anyway)
+  preliminaryClass (Table 13)
+    ΓêÜ score 0 ΓåÆ none
+    ΓêÜ score 2 ΓåÆ low (boundary)
+    ΓêÜ score 4.99 ΓåÆ low (boundary)
+    ΓêÜ score 5 ΓåÆ moderate (boundary)
+    ΓêÜ score 8.40 ΓåÆ moderate
+    ΓêÜ score 14.99 ΓåÆ moderate (boundary)
+    ΓêÜ score 15 ΓåÆ high (boundary)
+    ΓêÜ score 20 ΓåÆ high
+    ΓêÜ score 1.99 ΓåÆ none (below Low threshold)
+  evaluateGovernance ΓÇö Rule 1 (critical entity)
+    ΓêÜ validated credit_card ΓåÆ critical_entity rule fires (1 ms)
+    ΓêÜ validated ph_id_tin ΓåÆ critical_entity rule fires
+    ΓêÜ validated ph_id_passport ΓåÆ critical_entity rule fires
+    ΓêÜ unvalidated credit_card ΓåÆ Rule 1 does NOT fire
+    ΓêÜ validated api_key ΓåÆ Rule 1 fires (API keys are critical tier)
+    ΓêÜ validated jwt ΓåÆ Rule 1 fires (1 ms)
+    ΓêÜ Rule 1 outranks Rule 2 when both conditions are present
+  evaluateGovernance ΓÇö Rule 2 (sensitive context co-occurrence)
+    ΓêÜ personal name (Low) + medical context ΓåÆ Rule 2 fires
+    ΓêÜ Low ΓåÆ raised to Moderate
+    ΓêÜ Moderate ΓåÆ raised to High
+    ΓêÜ High + sensitive context ΓåÆ stays High (ceiling) (1 ms)
+    ΓêÜ context indicator ONLY (no scored entity) ΓåÆ Rule 2 does NOT fire (1 ms)
+    ΓêÜ scored entity ONLY (no context indicator) ΓåÆ Rule 2 does NOT fire
+    ΓêÜ gazetteer_nationality_religion qualifies as sensitive context indicator (1 ms)
+  evaluateGovernance ΓÇö Rule 3 (low-impact cap)
+    ΓêÜ all Low-impact scored entities ΓåÆ low_impact_cap fires (1 ms)
+    ΓêÜ mixing in an email (Moderate) ΓåÆ Rule 3 does NOT fire
+    ΓêÜ mixing in a credit_card (Critical) ΓåÆ Rule 3 does NOT fire
+    ΓêÜ Rule 3 result is null (cap is applied by finalClass, not by the rule itself) (1 ms)
+  evaluateGovernance ΓÇö Rule 4 (no rule)
+    ΓêÜ single email, no context ΓåÆ rule is 'none'
+    ΓêÜ empty findings array ΓåÆ rule is 'none'
+    ΓêÜ 3 types crossing High without critical or context ΓåÆ rule is 'none'
+  finalClass
+    ΓêÜ Rule 1 (critical_entity) ΓåÆ always high
+    ΓêÜ Rule 2 returns the raised level
+    ΓêÜ Rule 3 caps preliminary High at Moderate
+    ΓêÜ Rule 3 retains Moderate if preliminary was already Moderate
+    ΓêÜ Rule 3 retains Low if preliminary was Low (1 ms)
+    ΓêÜ Rule 4 (none) ΓåÆ retains preliminary
+  computeRiskScore ΓÇö Table 17 worked examples
+    ΓêÜ personal name only ΓåÆ Low (2 ├ù 1.00 = 2.00) (6 ms)
+    ΓêÜ email only ΓåÆ Moderate (5 ├ù 1.00 = 5.00) (1 ms)
+    ΓêÜ personal name + email ΓåÆ Moderate (7 ├ù 1.20 = 8.40) (1 ms)
+    ΓêÜ email + org + job title ΓåÆ Moderate (9 ├ù 1.40 = 12.60)
+    ΓêÜ name + email + phone ΓåÆ High (12 ├ù 1.40 = 16.80) (2 ms)
+    ΓêÜ validated passport (single critical) ΓåÆ High via Rule 1 (10 ├ù 1.00 = 10.00 pre-gov) (2 
+ms)
+    ΓêÜ validated credit card + name ΓåÆ High via Rule 1 (14.40 pre-gov) (2 ms)
+    ΓêÜ 5 low-impact types ΓåÆ Moderate via Rule 3 (20.00 pre-gov, capped) (1 ms)
+    ΓêÜ name + medical context ΓåÆ Moderate via Rule 2 (2.00 pre-gov Low, raised) (1 ms)
+    ΓêÜ financial term only (context, no personal entity) ΓåÆ No Risk
+    ΓêÜ empty findings ΓåÆ No Risk (score 0)
+    ΓêÜ duplicate same patternId ΓåÆ counted once in score (1 ms)
+  BASE_SCORES (Table 10)
+    ΓêÜ credit_card has base score 10
+    ΓêÜ jwt has base score 10
+    ΓêÜ api_key has base score 10
+    ΓêÜ ph_id_tin has base score 10
+    ΓêÜ ph_id_sss has base score 10
+    ΓêÜ ph_id_gsis has base score 10
+    ΓêÜ ph_id_philhealth has base score 10
+    ΓêÜ ph_id_passport has base score 10
+    ΓêÜ ph_id_umid has base score 10
+    ΓêÜ ph_id_prc has base score 10
+    ΓêÜ ph_id_philid has base score 10 (1 ms)
+    ΓêÜ ph_id_drivers_license has base score 10
+    ΓêÜ ph_id_nbi_clearance has base score 10
+    ΓêÜ ph_id_police_clearance has base score 10
+    ΓêÜ ph_id_psa_certificate has base score 10
+    ΓêÜ ph_id_barangay_clearance has base score 10
+    ΓêÜ ph_id_comelec_voter_id has base score 10
+    ΓêÜ email has base score 5
+    ΓêÜ ph_mobile has base score 5 (1 ms)
+    ΓêÜ phone_intl has base score 5
+    ΓêÜ ph_address has base score 5
+    ΓêÜ source_code has base score 5 (1 ms)
+    ΓêÜ ipv4 has base score 2
+    ΓêÜ ipv6 has base score 2
+    ΓêÜ mac_address has base score 2
+    ΓêÜ trigger_person_name has base score 2
+    ΓêÜ nlp_organization has base score 2
+    ΓêÜ nlp_job_title has base score 2
+    ΓêÜ gazetteer_medical has base score 0 (context indicator) (4 ms)
+    ΓêÜ gazetteer_financial has base score 0 (context indicator) (1 ms)
+    ΓêÜ trigger_health has base score 0 (context indicator)
+    ΓêÜ trigger_financial has base score 0 (context indicator)
+    ΓêÜ gazetteer_nationality_religion has base score 0 (context indicator) (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       88 passed, 88 total
+Snapshots:   0 total
+Time:        0.524 s, estimated 1 s
+Ran all test suites matching /tests\\unit\\scoring/i.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations 
+that kept running after all tests finished?

@@ -1,0 +1,1056 @@
+﻿  console.log
+    [STARTUP] linguistic-detector.js loading...
+
+      at linguistic-detector.js:18:9
+
+  console.log
+    [STARTUP] COMPROMISE_AVAILABLE: false
+
+      at linguistic-detector.js:26:11
+
+  console.log
+    [STARTUP] typeof window.nlp: undefined
+
+      at linguistic-detector.js:27:11
+
+  console.debug
+    [TrustPrompt/PATH_C] compromise.js not found; skipping linguistic detection
+
+      at linguistic-detector.js:30:13
+
+  console.log
+    [STARTUP] TrustLinguisticDetector initialized
+
+      at linguistic-detector.js:33:11
+
+  console.log
+    [STARTUP] TrustLinguisticDetector is ready. Test with:
+
+      at linguistic-detector.js:1487:9
+
+  console.log
+    testLinguisticDetector()
+
+      at linguistic-detector.js:1488:9
+
+  console.log
+    [STARTUP] testLinguisticDetector attached to window
+
+      at linguistic-detector.js:1513:11
+
+  console.log
+    [STARTUP] typeof window.testLinguisticDetector: function
+
+      at linguistic-detector.js:1514:11
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [id_label, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ph_id_gsis, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ph_id_sss, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ph_id_prc, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [id_label, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ph_id_passport, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:3 [id_label, ph_id_philhealth, nlp_organization] | base:22 ├ù1.4 = 30.80 | prelim:high | gov:none(null) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:5 [id_label, ph_id_umid, ph_id_gsis, ph_id_sss, nlp_organization] | base:42 ├ù2 = 84.00 | prelim:high | gov:critical_entity(high) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:3 [id_label, ph_id_drivers_license, nlp_organization] | base:22 ├ù1.4 = 30.80 | prelim:high | gov:none(null) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/suppressed] placeholder findings removed (worker): credit_card:4111 1111 1111 1111
+
+      at Object.suppressPlaceholders (trust-worker.js:309:13)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/suppressed] placeholder findings removed (worker): credit_card:5500-0000-0000-0004
+
+      at Object.suppressPlaceholders (trust-worker.js:309:13)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ph_id_philid, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [credit_card, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [jwt, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [api_key, nlp_organization] | base:12 ├ù1.2 = 14.40 | prelim:moderate | gov:critical_entity(high) | final:high
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:4
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/suppressed] placeholder findings removed (worker): nlp_organization:example
+
+      at Object.suppressPlaceholders (trust-worker.js:309:13)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [email, nlp_organization] | base:7 ├ù1.2 = 8.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:3
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [email, nlp_organization] | base:7 ├ù1.2 = 8.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:4
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/suppressed] placeholder findings removed (worker): nlp_organization:test, nlp_organization:example
+
+      at Object.suppressPlaceholders (trust-worker.js:309:13)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [email, nlp_organization] | base:7 ├ù1.2 = 8.40 | prelim:moderate | gov:none(null) | final:moderate
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:3
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:2
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ipv4, nlp_organization] | base:4 ├ù1.2 = 4.80 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [ipv4, nlp_organization] | base:4 ├ù1.2 = 4.80 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [mac_address, nlp_organization] | base:4 ├ù1.2 = 4.80 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:1
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:2 [mac_address, nlp_organization] | base:4 ├ù1.2 = 4.80 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B/B1] Filtered safe context: "hypertension" in category "medical"
+
+      at runGazetteerScan (gazetteer.js:889:21)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:4
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+  console.log
+    [TrustPrompt/PATH_B/B1] Filtered safe context: "salary" in category "financial"
+
+      at runGazetteerScan (gazetteer.js:889:21)
+
+  console.log
+    [TrustPrompt/PATH_B] Results: B2 triggers: 0, B1 fallback: 0
+
+      at Object.scan (gazetteer.js:1060:13)
+
+  console.debug
+    [TrustPrompt/PATH_C] Running enhanced trigger phrase patterns as backup...
+
+      at Object.scan (linguistic-detector.js:1184:15)
+
+  console.log
+    [TrustPrompt/PATH_C] detected (fallback): person:0 job:0 org:3
+
+      at Object.scan (linguistic-detector.js:1455:17)
+
+  console.log
+    [TrustPrompt/worker/scorer] distinctTypes:1 [nlp_organization] | base:2 ├ù1 = 2.00 | prelim:low | gov:low_impact_cap(null) | final:low
+
+      at Object.computeRiskScore (trust-worker.js:279:11)
+
+node : FAIL tests/unit/detection.test.js
+At line:1 char:1
++ node node_modules/jest/bin/jest.js --testPathPattern "tests/unit/dete ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAIL tests/unit/detection.test.js:String) [], Remote 
+   Exception
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Detection ΓÇö Philippine TIN
+    ├ù standard format 123-456-789-000 (26 ms)
+    ├ù dot-separated TIN 123.456.789.000 (11 ms)
+    ├ù space-separated TIN 123 456 789 000 (8 ms)
+    ΓêÜ random 12-digit number without TIN context must not produce validated TIN (7 ms)
+  Detection ΓÇö Philippine SSS
+    ΓêÜ standard format 33-4567890-1 (6 ms)
+    ├ù space format 33 4567890 1 (13 ms)
+  Detection ΓÇö Philippine Passport
+    ├ù letter + 8 digits format A12345678 (5 ms)
+    ΓêÜ two letters + 7 digits AB1234567 (8 ms)
+  Detection ΓÇö PhilHealth
+    ΓêÜ standard 12-digit PhilHealth number with hyphens (3 ms)
+  Detection ΓÇö UMID
+    ΓêÜ UMID format 0000-1234567-8 (4 ms)
+  Detection ΓÇö Driver's License
+    ΓêÜ standard LTO format N01-23-456789 (4 ms)
+  Detection ΓÇö Credit / Debit Cards
+    ├ù Visa 4111 1111 1111 1111 (Luhn valid) (8 ms)
+    ├ù Mastercard 5500 0000 0000 0004 (Luhn valid) (3 ms)
+    ΓêÜ Invalid card number fails Luhn ΓåÆ not validated (6 ms)
+  Detection ΓÇö JWT
+    ΓêÜ valid JWT is detected and validated (32 ms)
+    ΓêÜ three random base64 segments that are NOT JSON ΓåÆ not validated as JWT (8 ms)
+  Detection ΓÇö API Keys
+    ΓêÜ OpenAI sk- key is detected (10 ms)
+    ├ù GitHub ghp_ token is detected (8 ms)
+  Detection ΓÇö Email
+    ΓêÜ plain email address is detected (11 ms)
+    ΓêÜ email with subdomains is detected (4 ms)
+    ΓêÜ email with + tag is detected (9 ms)
+    ΓêÜ broken email (no TLD) is NOT detected (12 ms)
+  Detection ΓÇö Philippine Mobile Number
+    ├ù +63 format is detected (7 ms)
+    ├ù 09xx format is detected (6 ms)
+    ΓêÜ non-PH mobile (non-09xx/+63 prefix) must not match ph_mobile (7 ms)
+  Detection ΓÇö IPv4
+    ΓêÜ valid IPv4 is detected (4 ms)
+    ΓêÜ broadcast address 255.255.255.255 is detected (3 ms)
+    ΓêÜ invalid octet 999.0.0.1 must not produce validated IPv4 (4 ms)
+  Detection ΓÇö MAC Address
+    ΓêÜ colon-separated MAC is detected (3 ms)
+    ΓêÜ hyphen-separated MAC is detected (4 ms)
+  Detection ΓÇö Path B Gazetteer (context indicators)
+    ├ù medical term 'hypertension' is detected as gazetteer_medical (20 ms)
+    ├ù financial term 'salary' is detected as gazetteer_financial (20 ms)
+  validators-non-luhn ΓÇö validateEmail
+    ΓêÜ valid email returns true
+    ΓêÜ email with plus tag returns true (1 ms)
+    ΓêÜ missing domain returns false
+    ΓêÜ missing @ returns false
+  validators-non-luhn ΓÇö validatePhilippineMobileNumber
+    ΓêÜ +63 917 123 4567 is valid (1 ms)
+    ΓêÜ 0917 123 4567 is valid (1 ms)
+    ΓêÜ invalid prefix 0800 returns false (1 ms)
+  validators-non-luhn ΓÇö validateIPv4
+    ΓêÜ valid IPv4 returns true (1 ms)
+    ΓêÜ invalid octet >255 returns false (1 ms)
+    ΓêÜ loopback address is valid (1 ms)
+  validators-non-luhn ΓÇö validateMACAddress
+    ΓêÜ colon MAC is valid
+    ΓêÜ hyphen MAC is valid
+    ΓêÜ invalid MAC (too short) returns false (1 ms)
+  validators-non-luhn ΓÇö validateJWT
+    ΓêÜ valid JWT returns true
+    ΓêÜ two-segment string is not a JWT
+    ΓêÜ non-base64 segments return false
+  validators-non-luhn ΓÇö validateOpenAIApiKey
+    ΓêÜ sk- prefix key returns true
+    ΓêÜ sk-proj- prefix key returns true
+    ΓêÜ wrong prefix returns false
+  TrustNormalizer.normalize
+    ΓêÜ returns expected shape
+    ├ù all-caps input sets wasCapsConverted (1 ms)
+    ΓêÜ mixed-case input does not set wasCapsConverted (1 ms)
+
+  ΓùÅ Detection ΓÇö Philippine TIN ΓÇ║ standard format 123-456-789-000
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 35 |[39m   test([32m"standard format 123-456-789-000"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 36 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"My TIN is 
+123-456-789-000."[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 37 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_id_tin"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m    |[39m                                             [31m[1m^[22m[39m
+     [90m 38 |[39m   })[33m;[39m
+     [90m 39 |[39m
+     [90m 40 |[39m   test([32m"dot-separated TIN 123.456.789.000"[39m[33m,[39m () 
+[33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:37:45)
+
+  ΓùÅ Detection ΓÇö Philippine TIN ΓÇ║ dot-separated TIN 123.456.789.000
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 40 |[39m   test([32m"dot-separated TIN 123.456.789.000"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 41 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"TIN: 
+123.456.789.000"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 42 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_id_tin"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m    |[39m                                             [31m[1m^[22m[39m
+     [90m 43 |[39m   })[33m;[39m
+     [90m 44 |[39m
+     [90m 45 |[39m   test([32m"space-separated TIN 123 456 789 000"[39m[33m,[39m () 
+[33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:42:45)
+
+  ΓùÅ Detection ΓÇö Philippine TIN ΓÇ║ space-separated TIN 123 456 789 000
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 45 |[39m   test([32m"space-separated TIN 123 456 789 000"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 46 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"TIN 123 456 789 
+000"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 47 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_id_tin"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m    |[39m                                             [31m[1m^[22m[39m
+     [90m 48 |[39m   })[33m;[39m
+     [90m 49 |[39m
+     [90m 50 |[39m   test([32m"random 12-digit number without TIN context must not produce 
+validated TIN"[39m[33m,[39m () [33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:47:45)
+
+  ΓùÅ Detection ΓÇö Philippine SSS ΓÇ║ space format 33 4567890 1
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 64 |[39m   test([32m"space format 33 4567890 1"[39m[33m,[39m () [33m=>[39m {
+     [90m 65 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"My SSS is 33 4567890 
+1."[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 66 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_id_sss"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m    |[39m                                             [31m[1m^[22m[39m
+     [90m 67 |[39m   })[33m;[39m
+     [90m 68 |[39m })[33m;[39m
+     [90m 69 |[39m[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:66:45)
+
+  ΓùÅ Detection ΓÇö Philippine Passport ΓÇ║ letter + 8 digits format A12345678
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 71 |[39m   test([32m"letter + 8 digits format A12345678"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 72 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"Passport no.: 
+A12345678"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 73 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_id_passport"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m    |[39m                                                  [31m[1m^[22m[39m
+     [90m 74 |[39m   })[33m;[39m
+     [90m 75 |[39m
+     [90m 76 |[39m   test([32m"two letters + 7 digits AB1234567"[39m[33m,[39m () 
+[33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:73:50)
+
+  ΓùÅ Detection ΓÇö Credit / Debit Cards ΓÇ║ Visa 4111 1111 1111 1111 (Luhn valid)
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 109 |[39m     [36mconst[39m { findings[33m,[39m riskLevel } [33m=[39m 
+scan([32m"Card: 4111 1111 1111 1111"[39m)[33m;[39m
+     [90m 110 |[39m     [36mconst[39m f [33m=[39m findById(findings[33m,[39m 
+[32m"credit_card"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 111 |[39m     expect(f)[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 112 |[39m     expect(f[33m.[39mvalidated)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m 113 |[39m     expect(riskLevel)[33m.[39mtoBe([32m"high"[39m)[33m;[39m
+     [90m 114 |[39m   })[33m;[39m[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:111:15)
+
+  ΓùÅ Detection ΓÇö Credit / Debit Cards ΓÇ║ Mastercard 5500 0000 0000 0004 (Luhn valid)
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 117 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"Card: 
+5500-0000-0000-0004"[39m)[33m;[39m
+     [90m 118 |[39m     [36mconst[39m f [33m=[39m findById(findings[33m,[39m 
+[32m"credit_card"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 119 |[39m     expect(f)[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 120 |[39m     expect(f[33m.[39mvalidated)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m 121 |[39m   })[33m;[39m
+     [90m 122 |[39m[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:119:15)
+
+  ΓùÅ Detection ΓÇö API Keys ΓÇ║ GitHub ghp_ token is detected
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 170 |[39m   test([32m"GitHub ghp_ token is detected"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 171 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"GitHub token: 
+ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 172 |[39m     expect(findById(findings[33m,[39m 
+[32m"api_key"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m                                           [31m[1m^[22m[39m
+     [90m 173 |[39m   })[33m;[39m
+     [90m 174 |[39m })[33m;[39m
+     [90m 175 |[39m[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:172:43)
+
+  ΓùÅ Detection ΓÇö Philippine Mobile Number ΓÇ║ +63 format is detected
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 210 |[39m   test([32m"+63 format is detected"[39m[33m,[39m () [33m=>[39m {
+     [90m 211 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"Call +63 917 123 
+4567"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 212 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_mobile"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m                                             [31m[1m^[22m[39m
+     [90m 213 |[39m   })[33m;[39m
+     [90m 214 |[39m
+     [90m 215 |[39m   test([32m"09xx format is detected"[39m[33m,[39m () [33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:212:45)
+
+  ΓùÅ Detection ΓÇö Philippine Mobile Number ΓÇ║ 09xx format is detected
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 215 |[39m   test([32m"09xx format is detected"[39m[33m,[39m () [33m=>[39m {
+     [90m 216 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"My number: 0917 123 
+4567"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 217 |[39m     expect(findById(findings[33m,[39m 
+[32m"ph_mobile"[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m                                             [31m[1m^[22m[39m
+     [90m 218 |[39m   })[33m;[39m
+     [90m 219 |[39m
+     [90m 220 |[39m   test([32m"non-PH mobile (non-09xx/+63 prefix) must not match 
+ph_mobile"[39m[33m,[39m () [33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:217:45)
+
+  ΓùÅ Detection ΓÇö Path B Gazetteer (context indicators) ΓÇ║ medical term 'hypertension' is 
+detected as gazetteer_medical
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 266 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"Patient has 
+hypertension and is on medication."[39m)[33m;[39m
+     [90m 267 |[39m     [36mconst[39m f [33m=[39m findById(findings[33m,[39m 
+[32m"gazetteer_medical"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 268 |[39m     expect(f)[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 269 |[39m   })[33m;[39m
+     [90m 270 |[39m
+     [90m 271 |[39m   test([32m"financial term 'salary' is detected as 
+gazetteer_financial"[39m[33m,[39m () [33m=>[39m {[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:268:15)
+
+  ΓùÅ Detection ΓÇö Path B Gazetteer (context indicators) ΓÇ║ financial term 'salary' is detected 
+as gazetteer_financial
+
+    expect(received).toBeTruthy()
+
+    Received: undefined
+
+    [0m [90m 272 |[39m     [36mconst[39m { findings } [33m=[39m scan([32m"His monthly 
+salary is undisclosed."[39m)[33m;[39m
+     [90m 273 |[39m     [36mconst[39m f [33m=[39m findById(findings[33m,[39m 
+[32m"gazetteer_financial"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 274 |[39m     expect(f)[33m.[39mtoBeTruthy()[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 275 |[39m   })[33m;[39m
+     [90m 276 |[39m })[33m;[39m
+     [90m 277 |[39m[0m
+
+      at Object.toBeTruthy (tests/unit/detection.test.js:274:15)
+
+  ΓùÅ TrustNormalizer.normalize ΓÇ║ all-caps input sets wasCapsConverted
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+    [0m [90m 402 |[39m   test([32m"all-caps input sets wasCapsConverted"[39m[33m,[39m () 
+[33m=>[39m {
+     [90m 403 |[39m     [36mconst[39m result [33m=[39m 
+normalizer[33m.[39mnormalize([32m"MY EMAIL IS USER@EXAMPLE.COM"[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 404 |[39m     
+expect(result[33m.[39mwasCapsConverted)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m     |[39m                                     [31m[1m^[22m[39m
+     [90m 405 |[39m   })[33m;[39m
+     [90m 406 |[39m
+     [90m 407 |[39m   test([32m"mixed-case input does not set 
+wasCapsConverted"[39m[33m,[39m () [33m=>[39m {[0m
+
+      at Object.toBe (tests/unit/detection.test.js:404:37)
+
+Test Suites: 1 failed, 1 total
+Tests:       13 failed, 41 passed, 54 total
+Snapshots:   0 total
+Time:        0.836 s
+Ran all test suites matching /tests\\unit\\detection/i.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations 
+that kept running after all tests finished?

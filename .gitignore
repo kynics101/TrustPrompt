@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Lock files (manage locally)
+package-lock.json
+
+# Build outputs
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/settings.json

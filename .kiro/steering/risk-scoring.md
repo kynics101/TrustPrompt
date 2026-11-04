@@ -30,6 +30,21 @@ Each **distinct validated entity type** is assigned one base score. The same typ
 
 > **Context Indicators** (ethnic origin, medical terms, financial terms) detected via gazetteer — assigned **no independent score**. They do not confirm that personal information belongs to an identifiable individual. Their role is limited to the Sensitive-Context Co-occurrence governance rule.
 
+### Scoring-Unit Grouping (refinement)
+
+Closely related fields are collapsed into a single **scoring unit** so the base total and the distinct-type count are not inflated when several fields describe the same information category. Detection and explanation stay field-specific; only the risk calculation counts the unit once.
+
+| Scoring Unit | Included `patternId`s | Unit Base Score | Counting |
+|---|---|---|---|
+| Contact Information (`contact_information`) | `email`, `ph_mobile`, `phone_intl` | 5 | Count once if any are detected |
+| Organizational Affiliation | `trigger_employer`, `nlp_organization`, `nlp_job_title` | 2 | Count once if any are detected |
+
+- Any `patternId` not in a group forms its own unit keyed by its own `patternId` (1:1 behavior, base from `BASE_SCORES`).
+- Implemented via `SCORING_UNIT_GROUPS`, `SCORING_UNIT_BASE`, `scoringUnitKey(patternId)`, `scoringUnitBase(unitKey)`.
+- `computeRiskScore()` dedupes by **scoring-unit key**, sums `scoringUnitBase(unitKey)` once per unit, and uses `seenUnits.size` as the distinct-type count fed to `getMultiplier()`.
+- Applied identically in `scanner.js` (main thread) and `trust-worker.js` (web worker).
+- Base scores, multipliers, and thresholds are unchanged.
+
 ---
 
 ## Step 3 — Distinct Entity-Type Multiplier (RA 10173 §3(g)) (Table 12)
@@ -38,7 +53,7 @@ Applied to the **summed base score** to reflect the increased identifiability wh
 
 | Distinct Entity Types Detected | Multiplier | Disclosure-Diversity Level         |
 |-------------------------------|------------|------------------------------------|
-| 1 type                        | × 1.00     | Single-type disclosure             |
+| 1 type (scoring unit)         | × 1.00     | Single-type disclosure             |
 | 2 types                       | × 1.20     | Limited multi-type disclosure      |
 | 3 types                       | × 1.40     | Moderate multi-type disclosure     |
 | 4 types                       | × 1.70     | High multi-type disclosure         |
@@ -46,8 +61,10 @@ Applied to the **summed base score** to reflect the increased identifiability wh
 
 **Formula:**
 ```
-Risk Score = (Σ Base Entity Score per distinct eligible entity type) × Distinct Entity-Type Multiplier
+Risk Score = (Σ Base Score per distinct scoring unit) × Distinct Entity-Type Multiplier
 ```
+
+"Distinct entity types" in the multiplier table means **distinct scoring units** (see Scoring-Unit Grouping).
 
 ---
 
@@ -55,7 +72,7 @@ Risk Score = (Σ Base Entity Score per distinct eligible entity type) × Distinc
 
 | Preliminary Risk Level | Score Range (Pre-Governance) | Interpretation |
 |------------------------|------------------------------|----------------|
-| **No Risk**            | 0                            | No supported validated entity detected |
+| **No Risk** (UI: "No Detected Risk") | 0              | No supported validated entity detected |
 | **Low**                | 2 – 4.99                     | Limited information or low-impact identifiers with low standalone identifiability |
 | **Moderate**           | 5 – 14.99                    | Direct personal information or a combination of identifying entities not yet reaching the breadth associated with High disclosure |
 | **High**               | 15+                          | Strong breadth of disclosure, reflecting the presence of multiple distinct entity types within a single prompt |
@@ -104,13 +121,20 @@ Their separate treatment allows the system to recognize potentially privacy-rele
 | Personal name only | 1 | 2 | 2 × 1.00 = 2.00 | n/a | Low |
 | Email address | 1 | 5 | 5 × 1.00 = 5.00 | n/a | Moderate |
 | Personal name + Email address | 2 | 7 | 7 × 1.20 = 8.40 | n/a | Moderate |
-| Email + Organization + Job title | 3 | 9 | 9 × 1.40 = 12.60 | n/a | Moderate |
-| Personal name + Email + Phone number | 3 | 12 | 12 × 1.40 = 16.80 | n/a | High |
+| Email + Organization + Job title | 2 units (Contact, Org Affiliation) | 7 | 7 × 1.20 = 8.40 | n/a | Moderate |
+| Personal name + Email + Phone number | 2 units (Name, Contact) | 7 | 7 × 1.20 = 8.40 | n/a | Moderate |
+| Email + Phone number | 1 unit (Contact) | 5 | 5 × 1.00 = 5.00 | n/a | Moderate |
+| Organization + Job title + Department | 1 unit (Org Affiliation) | 2 | 2 × 1.00 = 2.00 | n/a | Low |
 | Validated Philippine Passport number | 1 | 10 | 10 × 1.00 = 10.00 (Preliminary: Moderate) | Strongly Validated Critical-Entity Rule applies | High |
 | Credit card number + personal name | 2 | 12 | 12 × 1.20 = 14.40 (Preliminary: Moderate) | Strongly Validated Critical-Entity Rule applies | High |
 | Name + Organization + Job title + Department + IP address | 5 | 10 | 10 × 2.00 = 20.00 (Preliminary: High) | Low-Impact Entity Cap applies | Moderate |
 | Name + Medical Context Term | 1 (scored) | 2 | 2 × 1.00 = 2.00 (Preliminary: Low) | Sensitive-Context Co-occurrence applies | Moderate |
 | Financial Term only | 0 | 0 | 0 | Rule does not apply | No Risk |
+| "I was diagnosed with diabetes" (no scored entity, first-person anchor) | 0 | 0 | 0 | Sensitive-Context Co-occurrence via first-person anchor | Low |
+| "Maria is researching cancer for her thesis paper." | 1 (name) | 2 | 2.00 | Rule 2 escalation suppressed by Contextual Exclusion Filter | Low |
+| "My name is Carlo and I have hypertension." | 1 (name) | 2 | 2.00 (Preliminary: Low) | Sensitive-Context Co-occurrence applies (attribution) | Moderate |
+
+> **Note (refinement impact):** The manuscript's Table 17 rows "Email + Org + Job title" (Moderate, 12.60) and "Name + Email + Phone" (High, 16.80) assumed ungrouped types. With grouping they now score 8.40 / Moderate. The "Name + Org + Job title + Dept + IP" row was not re-verified end to end; Department is not in the Organizational Affiliation group, so it counts as its own unit, and Rule 3 still caps the result at Moderate.
 
 ---
 
@@ -152,8 +176,14 @@ Source code is classified as a **Moderate-impact** entity (score = 5). Detection
 
 ## Key Design Constraints
 
+- **Rule 2 trigger scope:** the Sensitive-Context Co-occurrence rule is triggered only by these valid personal identifiers: personal name, email, phone, physical address, date of birth, card number, and government ID (or the first-person anchor). Other scored types (e.g. job title such as "doctor", organization, department, IP/MAC) are scored normally but never trigger Rule 2 escalation.
+
 - All scoring executes **locally within the browser** — no prompt content is transmitted externally during scanning.
-- Context indicators (ethnic origin, medical, financial terms) carry **no independent base score** and cannot independently trigger any risk level.
-- The multiplier is applied to the **sum of distinct entity type scores**, not to the count of individual entity instances. Repeated entities of the same type are deduplicated before scoring.
+- Context indicators (ethnic origin, medical, financial terms) carry **no independent base score** and cannot independently trigger any risk level on their own. They escalate only through Rule 2, which requires a scored entity or a first-person anchor.
+- The multiplier is applied to the **sum of distinct scoring-unit scores**, not to the count of individual entity instances. Repeated entities and grouped related fields are deduplicated before scoring.
+- The first-person self-attribution anchor is a **trigger only**: never scored, never changes the numeric base score.
+- `computeRiskScore(findings, fullText)` and `evaluateGovernance(findings, preliminary, fullText)` take the raw prompt text (needed for the anchor and exclusion filter). Call sites pass `rawText` in `scanner.js` `scan()` and the `trust-worker.js` SCAN handler.
+- `computeRiskScore` must not return early when no entity has a base score > 0 if a first-person anchor and a sensitive-context finding are both present; governance must still run (anchor-only path: No Risk → Low).
+- The scoring worker is currently disabled in `worker-bridge.js`. If re-enabled, `worker-data-bundle.js` needs the supplementary medical terms too.
 - Scores, multiplier values, and thresholds are **researcher-defined operational parameters** grounded in NIST SP 800-122 and RA 10173 principles, subject to validation during testing.
 - The `risk` field on a finding object is used only for UI display. **All scoring uses `BASE_SCORES[patternId]` exclusively** — the `risk` string field is never used in the scoring formula.

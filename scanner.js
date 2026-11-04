@@ -1004,6 +1004,22 @@ const TrustScanner = (() => {
     "trigger_financial",
   ]);
 
+  // Rule 2 condition 1 is limited to valid personal identifiers: personal name,
+  // email, phone, physical address, date of birth, card number, government ID.
+  // Other scored types (job title, organization, IP, age, etc.) still score but
+  // do NOT trigger Rule 2 co-occurrence escalation.
+  const RULE2_TRIGGER_IDS = new Set([
+    "nlp_person_name", "trigger_person_name",
+    "email", "ph_mobile", "phone_intl",
+    "ph_address",
+    "birthday_date", "trigger_dob",
+    "credit_card",
+    "id_label",
+  ]);
+  function isRule2TriggerEntity(patternId) {
+    return RULE2_TRIGGER_IDS.has(patternId) || /^ph_id_/.test(patternId);
+  }
+
   // ── Scoring-unit grouping (Table: Scoring-unit grouping) ─────────────────
   //
   // Closely related fields are collapsed into a single "scoring unit" so the
@@ -1250,10 +1266,10 @@ const TrustScanner = (() => {
     //              an explicit first-person self-attribution anchor. The
     //              anchor is a trigger only; it is never scored.
     const hasScoredEntity = findings.some(
-      f => (BASE_SCORES[f.patternId] ?? 0) > 0
+      f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)
     );
     const hasAnchor = hasFirstPersonAnchor(fullText);
-    const scoredEntityTypes = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0).map(f => f.patternId);
+    const scoredEntityTypes = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)).map(f => f.patternId);
     const triggerPresent = hasScoredEntity || hasAnchor;
     console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "hasAnchor:", hasAnchor, "types:", scoredEntityTypes.join(", "));
 

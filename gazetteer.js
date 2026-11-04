@@ -54,6 +54,42 @@ const TrustGazetteer = (() => {
   //
   // All entries are lowercase. Regex matching is case-insensitive.
 
+  // ── AMBIGUOUS FINANCIAL VOCABULARY ────────────────────────────────────────
+  // The FinRAD list (terms-financial.js) contains many everyday English words
+  // and Greek letters used as finance jargon. Matching them produced false
+  // "CONTEXT: FINANCIAL" findings ("Will other systems read it?") which then
+  // fed governance Rule 2 and escalated Moderate to High.
+  //
+  // HARD: never a financial context indicator (removed when lists are built).
+  const AMBIGUOUS_FINANCIAL_HARD = new Set([
+    "will", "alpha", "beta", "gamma", "delta", "lambda", "epsilon", "theta",
+    "rho", "vega", "vanna", "volga", "vomma", "zomma", "ultima", "charm",
+    "color", "speed", "emir", "oracle", "sampling", "target", "term",
+    "volume", "duration", "option", "index", "bridge", "chips", "bubble",
+    "rally", "crash", "default", "mining", "halving", "staking", "airdrop",
+    "promote", "workout", "posting", "layering", "drawer", "drawee",
+    "issuer", "clearing", "custody", "alpha", "variance", "skewness",
+    "kurtosis", "breakout", "rollup", "flowback", "novation", "synergy",
+    "unicorn", "decacorn", "m1", "m2", "pip", "spin-off", "phishing",
+    "spoofing", "skimming", "scalping", "slippage", "dilution", "estate",
+  ]);
+  // SOFT: real finance words that are also common general vocabulary. Kept,
+  // but only surfaced when a personal (my/our/I) or monetary-amount cue is
+  // present (see analyzeTermContext).
+  const AMBIGUOUS_FINANCIAL_SOFT = new Set([
+    "share", "stock", "balance", "bond", "cash", "interest", "premium",
+    "receipt", "recovery", "sales", "trust", "merger", "audit", "asset",
+    "deposit", "expense", "revenue", "tariff", "hedge", "leverage",
+    "account", "credit", "debit", "default", "bonus", "overtime", "target",
+    "pledge", "lien", "invoice", "broker", "lender", "payer", "payee",
+    "overhead", "coupon", "cheque", "check", "bail-in", "bailout",
+    "takeover", "recovery", "goodwill", "patent", "medicare", "equity",
+    "index", "growth", "savings",
+  ]);
+  function excludeAmbiguousFinancial(terms) {
+    return terms.filter(t => !AMBIGUOUS_FINANCIAL_HARD.has(t));
+  }
+
   // Initialize term arrays from JavaScript data
   let MEDICAL_WORDS = [];
   let MEDICAL_PHRASES = [];
@@ -112,12 +148,12 @@ const TrustGazetteer = (() => {
     console.log('[TrustGazetteer] ✅ Found FINANCIAL_TERMS_DATA, loading', FINANCIAL_TERMS_DATA.length, 'terms');
     const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
     FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
-    FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+    FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
   } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
     console.log('[TrustGazetteer] ✅ Found window.FINANCIAL_TERMS_DATA, loading', window.FINANCIAL_TERMS_DATA.length, 'terms');
     const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
     FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
-    FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+    FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
   } else {
     console.warn('[TrustGazetteer] ❌ FINANCIAL_TERMS_DATA not found in global scope');
   }
@@ -559,11 +595,11 @@ const TrustGazetteer = (() => {
     if (typeof FINANCIAL_TERMS_DATA !== 'undefined' && Array.isArray(FINANCIAL_TERMS_DATA)) {
       const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
       FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
-      FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+      FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
     } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
       const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
       FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
-      FINANCIAL_WORDS = financialTerms.filter(t => !t.includes(' '));
+      FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
     }
 
     if (typeof ORGANIZATIONS_DATA !== 'undefined' && Array.isArray(ORGANIZATIONS_DATA)) {
@@ -1110,6 +1146,18 @@ const TrustGazetteer = (() => {
       const hasAmountNearby = /(?:php|₱|\$|usd)\s?\d|\b\d{3,}(?:[.,]\d+)?\b/.test(combined);
       if (procedural && !hasAmountNearby) {
         return false;  // Safe: generic financial/tax question, no value disclosed
+      }
+      // Ambiguous general-vocabulary finance words ("share", "stock", "account",
+      // "balance", ...) only count as a financial context indicator when the
+      // user ties them to themselves (my/our/I/me) in the same clause, or a
+      // monetary amount appears nearby. "Share the file" / "stock photo" /
+      // "create an account" stay safe.
+      const matchedTerm = fullText.substr(matchIndex, matchLength).toLowerCase();
+      if (AMBIGUOUS_FINANCIAL_SOFT.has(matchedTerm)) {
+        const personalCue = /\b(my|our|mine|i|i'm|im|i've|ive|me|we)\b/.test(nearContextLower);
+        if (!personalCue && !hasAmountNearby) {
+          return false;  // Safe: general-word usage, no personal/monetary cue
+        }
       }
       // DEF-002: Otherwise a financial term is a legitimate SENSITIVE-CONTEXT
       // indicator and should surface (e.g. "changing its payroll provider").

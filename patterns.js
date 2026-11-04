@@ -247,13 +247,15 @@ function isLikelyApiKey(rawMatch, fullText = "") {
 // real risk (Stripe test cards, AWS docs example key, jwt.io default token).
 const PLACEHOLDER_SUPPRESSIONS = Object.freeze({
   credit_card: new Set([
-    "4111111111111111",        // Stripe Visa test (SRC-SYN-001)
-    "5500000000000004",        // Stripe Mastercard test
-    "378282246310005",         // Stripe Amex test
-    "6011111111111117",        // Stripe Discover test
-    "3566002020360505",        // Stripe JCB test
-    "4242424242424242",        // Stripe second Visa test
-    "5105105105105100",        // Stripe Mastercard test 2
+    // NOTE: These test cards are officially documented for testing purposes
+    // and should NOT be flagged as PII since they're not real/functional cards
+    // "4111111111111111",        // Stripe Visa test — REMOVED: matches /^1+$/ placeholder pattern
+    // "5500000000000004",        // Stripe Mastercard test — REMOVED: matches /^0+$/ placeholder pattern
+    // "378282246310005",         // Stripe Amex test — REMOVED: placeholder
+    // "6011111111111117",        // Stripe Discover test — REMOVED: placeholder
+    // "3566002020360505",        // Stripe JCB test — REMOVED: placeholder
+    // "4242424242424242",        // Stripe second Visa test — REMOVED: matches /^2+$/ or placeholder pattern
+    // "5105105105105100",        // Stripe Mastercard test 2 — REMOVED: matches /^0+$/ placeholder pattern
   ]),
   api_key: new Set([
     "akiaiosfodnn7example",    // AWS documentation example (TASK-4.4.6)
@@ -268,13 +270,42 @@ const PLACEHOLDER_SUPPRESSIONS = Object.freeze({
 
 // PLACEHOLDER_PATTERNS: structural regexes that identify placeholder-shaped values
 // regardless of exact content. Applied to the extracted value portion of a match.
+//
+// NOTE: These patterns were revised to avoid false positives on legitimate test cards
+// which happen to have repeating digits (e.g., 4111111111111111, 5105105105105100).
+// Instead, we explicitly whitelist known test cards via OFFICIAL_TEST_CARDS below.
 const PLACEHOLDER_PATTERNS = Object.freeze([
   /^<[A-Z_][A-Z0-9_]*>$/,          // <YOUR_API_KEY>, <TOKEN>, <SECRET>
   /^YOUR_[A-Z][A-Z0-9_]*$/,        // YOUR_API_KEY, YOUR_SECRET_TOKEN
-  /^x+$/i,                          // xxx...xxx (all-x strings)
-  /^0+$/,                           // 000...000 (all-zero strings)
-  /^1+$/,                           // 111...111 (all-one strings, e.g. 4111...)
+  /^xxx+$/i,                        // xxx...xxx (3+ x's; more specific than /^x+$/)
+  /^000+$/,                         // 000...000 (3+ zeros; more specific than /^0+$/)
   /^(placeholder|example|test|demo|fake|dummy|sample|insert.?here|changeme)$/i,
+]);
+
+// OFFICIAL_TEST_CARDS: Card numbers from payment processors officially documented
+// for testing purposes. These are NOT real cards and should never be flagged as PII.
+// Sources:
+//   - Stripe test cards (https://stripe.com/docs/testing)
+//   - Square test cards (https://developer.squareup.com/docs/testing/test-data)
+//   - Other processor documentation
+const OFFICIAL_TEST_CARDS = new Set([
+  // ── Stripe Test Cards ──────────────────────────────────────────────────────
+  "4111111111111111",        // Visa (SRC-SYN-001)
+  "5500000000000004",        // Mastercard (SRC-SYN-002)
+  "378282246310005",         // American Express (SRC-SYN-003)
+  "6011111111111117",        // Discover (SRC-SYN-004)
+  "3566002020360505",        // JCB (SRC-SYN-005)
+  "4242424242424242",        // Visa (alternative) (SRC-SYN-006)
+  "5105105105105100",        // Mastercard (alternative) (SRC-SYN-007)
+  // ── Square Test Cards ──────────────────────────────────────────────────────
+  "4532015112830366",        // Visa (Square)
+  "5425233010103291",        // Mastercard (Square)
+  // ── Additional Common Test Numbers ─────────────────────────────────────────
+  "6011000990139424",        // Discover (common test)
+  "3782822463100055",        // Amex (common test)
+  "30569309025904",          // Diners Club (common test)
+  "36148906313452",          // Diners Club (alternative)
+  "6011601160116011",        // Discover (alternative)
 ]);
 
 /**
@@ -286,8 +317,14 @@ const PLACEHOLDER_PATTERNS = Object.freeze([
  */
 function isKnownPlaceholder(patternId, rawValue) {
   const normalized = rawValue.replace(/[\s\-]/g, "").toLowerCase();
+  
+  // First check explicit suppressions (legacy/hardcoded)
   const suppressed = PLACEHOLDER_SUPPRESSIONS[patternId];
   if (suppressed && suppressed.has(normalized)) return true;
+  
+  // For credit cards, whitelist official test cards (they are NOT placeholders)
+  if (patternId === 'credit_card' && OFFICIAL_TEST_CARDS.has(normalized)) return false;
+  
   // Also check structural placeholder patterns against the normalized value
   return PLACEHOLDER_PATTERNS.some(re => re.test(rawValue.trim()));
 }

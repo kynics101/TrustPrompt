@@ -31,7 +31,7 @@
 //
 // Dependencies: ph-address-db.js (loaded before this file)
 
-/* global PH_ADDRESS_DB, TrustGazetteer, MEDICAL_TERMS_DATA, FINANCIAL_TERMS_DATA, ORGANIZATIONS_DATA */
+/* global PH_ADDRESS_DB, TrustGazetteer, MEDICAL_TERMS_DATA, FINANCIAL_TERMS_DATA, ORGANIZATIONS_DATA, OFFICIAL_TEST_CARDS */
 
 const TrustGazetteer = (() => {
 
@@ -77,6 +77,34 @@ const TrustGazetteer = (() => {
     console.warn('[TrustGazetteer] ❌ MEDICAL_TERMS_DATA not found in global scope');
   }
 
+  // ── SUPPLEMENTARY MEDICAL CONTEXT TERMS ───────────────────────────────────
+  // terms-medical.js is a broad clinical vocabulary but omits several common
+  // everyday terms that the risk model lists as medical context indicators
+  // (Table 11 / governance Rule 2: diagnosis, treatment, medication,
+  // hypertension, diabetes, surgery). Without them, prompts such as
+  // "I have hypertension" produce no gazetteer_medical finding, so the
+  // Sensitive-Context Co-occurrence rule has nothing to pair with the
+  // first-person anchor. Merged (deduplicated) by mergeSupplementaryMedical(),
+  // which is called from rebuildGazetteers() because that function rebuilds
+  // MEDICAL_WORDS / MEDICAL_PHRASES from MEDICAL_TERMS_DATA and would
+  // otherwise discard any terms added here.
+  const SUPPLEMENTARY_MEDICAL_TERMS = [
+    "hypertension", "cancer", "surgery", "medication", "medications",
+    "treatment", "insulin", "chemotherapy", "heart disease", "kidney disease",
+    "high cholesterol", "blood pressure",
+  ];
+  function mergeSupplementaryMedical() {
+    const existing = new Set([...MEDICAL_WORDS, ...MEDICAL_PHRASES]);
+    for (const term of SUPPLEMENTARY_MEDICAL_TERMS) {
+      if (existing.has(term)) continue;
+      if (term.includes(' ')) MEDICAL_PHRASES.push(term);
+      else MEDICAL_WORDS.push(term);
+    }
+    // Keep phrases longest-first so a phrase shadows its component words.
+    MEDICAL_PHRASES.sort((a, b) => b.length - a.length);
+  }
+  mergeSupplementaryMedical();
+
   // Load financial terms from terms-financial.js
   // FINANCIAL_TERMS_DATA is injected by manifest.json before this file loads
   console.log('[TrustGazetteer] Checking for FINANCIAL_TERMS_DATA:', typeof FINANCIAL_TERMS_DATA, Array.isArray(FINANCIAL_TERMS_DATA ? FINANCIAL_TERMS_DATA : null));
@@ -100,6 +128,32 @@ const TrustGazetteer = (() => {
     ORGANIZATIONS_WORDS = ORGANIZATIONS_DATA.map(t => t.toLowerCase());
   } else if (typeof window !== 'undefined' && window.ORGANIZATIONS_DATA) {
     ORGANIZATIONS_WORDS = window.ORGANIZATIONS_DATA.map(t => t.toLowerCase());
+  }
+
+  // ── OFFICIAL TEST CARDS ────────────────────────────────────────────────────
+  // Load test card whitelist (used by grammarCheck to suppress test card false positives)
+  let testCardsList = new Set();
+  
+  if (typeof OFFICIAL_TEST_CARDS !== 'undefined' && OFFICIAL_TEST_CARDS instanceof Set) {
+    testCardsList = OFFICIAL_TEST_CARDS;
+    console.log('[TrustGazetteer] ✅ Found global OFFICIAL_TEST_CARDS, loaded', testCardsList.size, 'test cards');
+  } else if (typeof window !== 'undefined' && window.OFFICIAL_TEST_CARDS instanceof Set) {
+    testCardsList = window.OFFICIAL_TEST_CARDS;
+    console.log('[TrustGazetteer] ✅ Found window.OFFICIAL_TEST_CARDS, loaded', testCardsList.size, 'test cards');
+  } else {
+    // Fallback: define common test cards inline if not globally available
+    testCardsList = new Set([
+      "4111111111111111",        // Stripe Visa test
+      "5500000000000004",        // Stripe Mastercard test
+      "378282246310005",         // Stripe Amex test
+      "5105105105105100",        // Mastercard generic
+      "2223003122003222",        // Mastercard 2-series
+      "3714890629140200",        // American Express
+      "4012888888881881",        // Visa
+      "6011111111111117",        // Discover
+      "3530111333300000",        // JCB
+    ]);
+    console.log('[TrustGazetteer] ⚠️  OFFICIAL_TEST_CARDS not found globally, using inline fallback with', testCardsList.size, 'test cards');
   }
 
   // ── PERFORMANCE: Pre-compile combined regexes ─────────────────────────────
@@ -518,6 +572,8 @@ const TrustGazetteer = (() => {
       ORGANIZATIONS_WORDS = window.ORGANIZATIONS_DATA.map(t => t.toLowerCase());
     }
 
+    // Re-apply supplementary medical terms (the reload above resets the lists)
+    mergeSupplementaryMedical();
     // Rebuild GAZETTEER with fresh data
     GAZETTEER = {
       medical: [
@@ -932,8 +988,18 @@ const TrustGazetteer = (() => {
 
       case "financial":
         // Financial trigger value should have digits or financial keywords
-        return /\d/.test(span) ||
-               gazetteers.financial.some(t => span.toLowerCase().includes(t));
+        // BUT reject official test cards (e.g., Stripe test cards)
+        if (/\d/.test(span) || gazetteers.financial.some(t => span.toLowerCase().includes(t))) {
+          // Normalize card number by removing spaces/hyphens for test card comparison
+          const normalized = span.replace(/[\s\-]/g, "");
+          // Check if it matches any official test card
+          if (testCardsList.has(normalized)) {
+            // Official test card — reject this finding
+            return false;
+          }
+          return true;
+        }
+        return false;
 
       case "eye_color":
         // Eye color must be a recognized color term from the gazetteer
@@ -1064,6 +1130,18 @@ const TrustGazetteer = (() => {
     // 2. "Have diabetes", "have depression", etc. - personal possession
     if (/\bhave\b/.test(nearContextLower) && category === "medical") {
       return true;  // Risky: "I have diabetes"
+    }
+
+    // 2a. Diagnosis / suffering phrasing directly before a medical term:
+    //     "I was diagnosed with diabetes", "Carlo was diagnosed with leukemia",
+    //     "diagnosis of cancer", "suffering from asthma". These are the
+    //     attribution phrasings the Sensitive-Context Co-occurrence rule
+    //     relies on. The term is only surfaced as a (zero-score) context
+    //     indicator; whether it escalates is decided by governance Rule 2
+    //     (anchor / scored entity + contextual exclusion filter).
+    if (category === "medical" &&
+        /\b(?:diagnosed\s+(?:with|as)|diagnosis\s+of|suffer(?:s|ed|ing)?\s+from|treated\s+for)\s*$/.test(nearContextLower)) {
+      return true;  // Risky: personal diagnosis attribution
     }
 
     // 2b. "Am experiencing" or "experiencing" for medical terms

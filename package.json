@@ -1,18 +1,1 @@
-{
-  "name": "trustprompt",
-  "version": "1.0.0",
-  "description": "TrustPrompt privacy disclosure risk engine — test suite",
-  "private": true,
-  "scripts": {
-    "test": "jest --run",
-    "test:unit": "jest tests/unit --run",
-    "test:accuracy": "jest tests/accuracy --run",
-    "test:perf": "jest tests/perf --run",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --run"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0",
-    "jest-environment-node": "^29.7.0"
-  }
-}
+﻿{"name": "trustprompt", "version": "1.0.0", "description": "TrustPrompt privacy disclosure risk engine — test suite", "private": true, "scripts": {"test": "jest --run", "test:unit": "jest tests/unit --run", "test:accuracy": "jest tests/accuracy --run", "test:perf": "jest tests/perf --run", "test:watch": "jest --watch", "test:coverage": "jest --coverage --run", "build:worker": "node scripts/build-worker-bundle.js", "prepare": "npm run build:worker"}, "devDependencies": {"jest": "^29.7.0", "jest-environment-node": "^29.7.0"}, "dependencies": {"@huggingface/transformers": "^4.3.1"}}

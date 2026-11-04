@@ -2755,9 +2755,14 @@ const TrustLinguisticDetector = (() => {
       
       // METHOD 2: Names from trigger phrases - "my name is", "i am", "call me"
       const nameTriggerPatterns = [
-        /\bmy\s+name\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        // The trigger words accept an upper-case first letter so a sentence-initial
+        // "My name is Carlo" / "Call me Maria" matches. The captured name stays
+        // case-sensitive (Title Case only) so common nouns are not captured.
+        // (The path normalizer capitalises the first character of the prompt,
+        // so a prompt that begins with this phrase always arrives as "My name is".)
+        /\b[Mm]y\s+[Nn]ame\s+[Ii]s\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
         /\b(?:i\s+)?(?:am|'m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
-        /\bcall\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        /\b[Cc]all\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
         /\bi['']m\s+called\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
       ];
       

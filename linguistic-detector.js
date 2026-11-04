@@ -340,6 +340,14 @@ const TrustLinguisticDetector = (() => {
         continue;  // Skip this potential match
       }
       
+      // Length lower-bound pre-check: edit distance can never be smaller than
+      // the difference in lengths (levenshtein(a,b) >= |len(a)-len(b)|), so a
+      // window whose length differs from the pattern by more than maxDistance
+      // can never satisfy distance <= maxDistance. Skip the DP for those pairs.
+      if (Math.abs(textPhrase.length - pattern.length) > maxDistance) {
+        continue;
+      }
+      
       const distance = levenshteinDistance(textPhrase, pattern.toLowerCase());
       
       if (distance <= maxDistance) {

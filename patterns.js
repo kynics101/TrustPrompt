@@ -1813,7 +1813,7 @@ const TRUSTPROMPT_PATTERNS = [
   {
     id: "email",
     label: "Email Address",
-    reason: "Email addresses are personally identifiable information (PII) under the Philippine Data Privacy Act (RA 10173). Sharing someone else's email without consent may violate data privacy law. Even your own email can be used for targeted phishing, spam, or account enumeration attacks if exposed.",
+    reason: "Email addresses are personally identifiable information (PII) under the Philippine Data Privacy Act (RA 10173). Sharing someone else's email without consent may violate data privacy law. Even your own email can be used for targeted phishing, spam, or account enumeration attacks if exposed. This pattern detects emails from all providers: Gmail, Outlook, Yahoo, ProtonMail, and others.",
     regex: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
     risk: "moderate",
     validate: "isEmail",
@@ -1830,6 +1830,43 @@ const TRUSTPROMPT_PATTERNS = [
     regex: /(\+639|09)[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d/gi,
     risk: "moderate",
     validate: "isMobilePhone_PH",
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // TASK: Suppress false positives when the context is clearly non-phone-related
+      // Examples:
+      //   - "09876543212 grams converted into metric tons" is a math problem
+      //   - "Serial is 09123456789 under the barcode" is a product serial number
+      
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (200 chars before and after the match)
+      const contextStart = Math.max(0, matchIndex - 200);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 200);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // Non-phone contexts: math/science units, operations, and product identifiers
+      const nonPhoneContextPatterns = [
+        // Math/science conversions
+        /(?:converted?|convert|convert(?:ing)?|metric|gram|kg|pound|liter|meter|inch|feet|celsius|fahrenheit|ounce|milligram|ton|unit)\s*(?:to|into|\?)/i,
+        /^[\d\s\-\.+]+\s+(?:gram|kg|pound|liter|meter|inch|feet|celsius|fahrenheit|ounce|milligram|ton|cm|mm|ml|oz|lb)/i,
+        /(?:chemistry|physics|math|conversion|worksheet|problem|equation|calculate|solve)\b/i,
+        /(?:what\s+is|calculate|convert|how\s+(?:many|much)|formula|step-by-step|working)\s+[\d\s]+(?:gram|kg|pound|liter|meter)/i,
+        
+        // Product/serial number contexts
+        /(?:serial|serial\s+number|model|product|warranty|barcode|sku|part\s+number|item\s+number|identification|ean|upc|code)\b/i,
+        /(?:printed|under|barcode|warranty\s+card|product\s+card|device|appliance|equipment)\b.*(?:serial|code|number)/i,
+        /(?:serial.*begins|serial.*starts|serial.*starts\s+with)\b/i,
+        /\b(?:printed|stamped|embossed)\s+(?:on|under|beneath).*(?:barcode|warranty|card)/i
+      ];
+      
+      // Check if any non-phone context pattern matches
+      for (const pattern of nonPhoneContextPatterns) {
+        if (pattern.test(context)) {
+          return false; // Suppress this match
+        }
+      }
+      
+      return true; // Allow the match
+    },
     sanitize: (m) => {
       // Remove spacing/dashes and show only first 3 and last 2 digits
       const cleaned = m.replace(/[\s\-]/g, '');
@@ -1998,10 +2035,33 @@ const TRUSTPROMPT_PATTERNS = [
   {
     id: "birthday_date",
     label: "Birthday (Date Format)",
-    reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrological predictions or other personal inferences.",
+    reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrolithic predictions or other personal inferences.",
     regex: /(?:0?[1-9]|1[0-2])[-\/\.](0?[1-9]|[12]\d|3[01])[-\/\.](19|20)?\d{2}|(?:0?[1-9]|[12]\d|3[01])[-\/\.](0?[1-9]|1[0-2])[-\/\.](19|20)?\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(0?[1-9]|[12]\d|3[01]),?\s+(19|20)\d{2}|(0?[1-9]|[12]\d|3[01])\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(19|20)\d{2}/gi,
     risk: "moderate",
     validate: null,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // TASK: Suppress false positives when the date is part of an IP address
+      // Example: "192.168.1.42" should not match "8.1.42" as a birthday
+      
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (20 chars before and after to check for IP patterns)
+      const contextStart = Math.max(0, matchIndex - 20);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 20);
+      const context = fullText.substring(contextStart, contextEnd);
+      
+      // Check if this date is part of an IPv4 address (digits.digits.digits.digits pattern)
+      // Examples to suppress:
+      //   - "192.168.1.42" (if matching "8.1.42")
+      //   - "10.0.0.1" (if matching "0.0.1")
+      const ipv4Pattern = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
+      
+      if (ipv4Pattern.test(context)) {
+        return false; // Suppress this match (it's part of an IP address)
+      }
+      
+      return true; // Allow the match
+    },
     sanitize: (_m) => "[DATE REDACTED]"
   },
 
@@ -2176,6 +2236,35 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "high",
     validate: null,
     structuralValidate: null,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // TASK: Suppress false positives when the context is clearly non-ID-related
+      // Example: "0.9123456789 milligrams" is a measurement, not a senior citizen ID
+      
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (150 chars before and after the match)
+      const contextStart = Math.max(0, matchIndex - 150);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 150);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // Measurement contexts that indicate this is NOT an ID
+      const measurementPatterns = [
+        // Decimal numbers with units (0.9123456789 milligrams, 0.123456789 grams)
+        /\d\.\d+\s*(?:milligram|mg|gram|g|liter|l|ml|meter|m|cm|inch|foot|pound|kg|oz|celsius|fahrenheit|fahrenheit|°|%|percent)/i,
+        /(?:milligram|mg|gram|g|liter|l|ml|meter|m|cm|inch|foot|pound|kg|oz|celsius|fahrenheit)\b/i,
+        /(?:add|mix|combine|blend|stir|recipe|cooking|baking|dose|dosage)\b/i,
+        /(?:amount|quantity|volume|weight|measurement|measure|portion)\b/i
+      ];
+      
+      // Check if any measurement pattern matches
+      for (const pattern of measurementPatterns) {
+        if (pattern.test(context)) {
+          return false; // Suppress this match
+        }
+      }
+      
+      return true; // Allow the match
+    },
     sanitize: (m) => {
       const digits = m.replace(/[^\d]/g, "");
       if (digits.length === 10) {

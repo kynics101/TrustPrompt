@@ -1254,12 +1254,21 @@ const TrustScanner = (() => {
     // 1. Educational/How-To contexts
     // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by educational context
     // because real sensitive data in educational discussions still poses a risk
+    // ALSO: emails in PROFESSIONAL CONTACT contexts (like "You can reach me at") should NOT be filtered
     const educationalMarkers = [
       /\b(how to|how do|how can|guide|tutorial|lesson|learn|study|teach|instruction)\b/,
       /\b(explain|describe|show|demonstrate|example|sample|documentation)\b/,
     ];
     
-    if (!criticalPatterns.includes(patternId) && educationalMarkers.some(m => m.test(fullContext))) {
+    // ★ PROFESSIONAL CONTACT EXCEPTION: Don't filter emails in professional/contact contexts ★
+    const professionalContactMarkers = [
+      /\b(you can reach|you can contact|contact me|reach me|feel free|reach out|get in touch|contact information|email me|drop|send)\b/,
+      /\b(phone|mobile|call|message|telegram|whatsapp|slack|discord|linkedin)\b/,
+    ];
+    
+    const isProfessionalContact = patternId === 'email' && professionalContactMarkers.some(m => m.test(fullContext));
+    
+    if (!criticalPatterns.includes(patternId) && !isProfessionalContact && educationalMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: educational context`);
       return true;
     }
@@ -1267,12 +1276,16 @@ const TrustScanner = (() => {
     // 2. Example/Demo/Test/Sample contexts
     // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by example context
     // because even in examples, these are critical sensitive data that shouldn't be shared
+    // ALSO: emails in PROFESSIONAL SHARING contexts should NOT be filtered
     const exampleMarkers = [
       /\b(example|demo|demonstration|test case|sample|mock|dummy|fake|test data)\b/,
       /\b(format example|template|structure|layout|pattern)\b/,
     ];
     
-    if (!criticalPatterns.includes(patternId) && exampleMarkers.some(m => m.test(fullContext))) {
+    // ★ PROFESSIONAL SHARING EXCEPTION: Don't filter emails when clearly being shared professionally ★
+    const isProfessionalSharing = patternId === 'email' && professionalContactMarkers.some(m => m.test(fullContext));
+    
+    if (!criticalPatterns.includes(patternId) && !isProfessionalSharing && exampleMarkers.some(m => m.test(fullContext))) {
       console.log(`[TrustPrompt/context] filtered ${patternId}: example/demo context`);
       return true;
     }
@@ -1906,6 +1919,40 @@ const TrustScanner = (() => {
   //     features: { ... },
   //     featureDetails: { ... }
   //   }
+  // ── NEW: Prose Detection Helper ──────────────────────────────────────────
+  // Detects natural language prose markers to prevent false positives on conversational text
+  function detectProseMarkers(text) {
+    // Check for question marks, exclamation marks, or ellipsis (conversational)
+    const conversationalPatterns = /[?!]\s|Could you|Can you|I\s(?:always|never|think|need|want|have)|registering|filling out|help me|get wrong|it insists|format|confirm|correct|proper/i;
+    
+    // Check for complete sentences with natural punctuation
+    const sentencePattern = /^[A-Z][^.!?]*[.!?]\s+[A-Z]/m;
+    
+    // Check for common prose structures
+    const proseStructures = /\b(?:I'm|it's|that's|what's|how|when|where|why|because|if|which|that|and|or|but)\b/gi;
+    
+    // Check for absence of typical code patterns
+    const hasConversational = conversationalPatterns.test(text);
+    const hasSentences = sentencePattern.test(text);
+    const proseWordsCount = (text.match(proseStructures) || []).length;
+    
+    // Prose score: weight conversational markers higher
+    let proseScore = 0;
+    if (hasConversational) proseScore += 3;
+    if (hasSentences) proseScore += 2;
+    if (proseWordsCount >= 5) proseScore += 2;
+    
+    return {
+      isProse: proseScore >= 3,
+      proseScore,
+      reasons: [
+        hasConversational ? 'Has conversational markers' : null,
+        hasSentences ? 'Has complete sentences' : null,
+        proseWordsCount >= 5 ? `Has ${proseWordsCount} prose connectors` : null
+      ].filter(r => r !== null)
+    };
+  }
+
   function computeSourceCodeScore(text) {
     if (!text || typeof text !== 'string' || !text.trim()) {
       return {
@@ -1913,6 +1960,32 @@ const TrustScanner = (() => {
         score: 0,
         strong_evidence: false,
         reason: 'Empty or invalid input text',
+        sampled: false,
+        features: {
+          code_keywords: 0,
+          import_statements: 0,
+          braces: 0,
+          function_calls: 0,
+          semicolons: 0,
+          operators: 0,
+          naming_conventions: 0,
+          comments: 0,
+          indentation: 0,
+          line_density: 0,
+          credentialIndicators: 0
+        },
+        featureDetails: {}
+      };
+    }
+
+    // ── TASK 14.0: Early prose detection to prevent false positives ─────────
+    const proseDetection = detectProseMarkers(text);
+    if (proseDetection.isProse) {
+      return {
+        classification: 'prose',
+        score: 0,
+        strong_evidence: false,
+        reason: `Detected as prose: ${proseDetection.reasons.join(', ')}`,
         sampled: false,
         features: {
           code_keywords: 0,
@@ -2277,6 +2350,16 @@ const TrustScanner = (() => {
         if (shouldFilterByContext(pattern.id, raw, normalisedText, matchIndex)) {
           console.log(`[TrustPrompt/context] filtered ${pattern.id}: ${raw.slice(0, 30)}`);
           continue;
+        }
+
+        // TASK-4.8: Pattern-specific context filter (if defined)
+        // Some patterns define their own contextFilter function for specialized filtering
+        if (pattern.contextFilter && typeof pattern.contextFilter === 'function') {
+          const shouldSuppress = !pattern.contextFilter(raw, normalisedText, matchIndex);
+          if (shouldSuppress) {
+            console.log(`[TrustPrompt/contextFilter] pattern filter suppressed ${pattern.id}: ${raw.slice(0, 30)}`);
+            continue;
+          }
         }
 
         // TASK-4.4: Apply placeholder suppression for known test/dummy values
@@ -2648,6 +2731,26 @@ const TrustScanner = (() => {
         if (hasUmidParent) return false;
       }
 
+      // ── TASK: Credit Card vs PhilID Disambiguation ──────────────────────────
+      // Both credit_card and ph_id_philid can match the same 16-digit format
+      // (e.g., "6011-1111-1111-1117"). Credit cards are validated with Luhn,
+      // while PhilID has no validation. When both match the same raw value,
+      // suppress the PhilID finding if the credit card is validated, since:
+      //   1. Credit cards have mathematical validation (Luhn)
+      //   2. PhilID has no built-in check digit for disambiguation
+      //   3. Test card numbers (Discover 6011-*, Visa 4111-*, etc.) should be
+      //      detected as credit_card, not misidentified as PhilID
+      if (f.patternId === 'ph_id_philid') {
+        const philidMatch = f.rawMatch.trim();
+        const hasValidatedCreditCard = result.some(
+          other => 
+            other.patternId === 'credit_card' &&
+            other.rawMatch.trim() === philidMatch &&
+            other.validated === true
+        );
+        if (hasValidatedCreditCard) return false;
+      }
+
       // ── ph_address overlap resolution (longest span wins) ──────────────────
       // Street-level address alternatives can occasionally produce a shorter
       // ph_address span that is contained within a longer ph_address span. Keep
@@ -2982,9 +3085,15 @@ const TrustScanner = (() => {
       const { score, riskLevel, governance } = computeRiskScore(findings);
       console.log(`[TrustPrompt/scanner] ★★★ SCORING RESULT: score=${score}, riskLevel=${riskLevel}`);
 
+      // Calculate final category counts from the deduplicated findings array
+      const finalCountA = findings.filter(f => f.origin === 'pathA').length;
+      const finalCountB = findings.filter(f => f.origin === 'pathB').length;
+      const finalCountC = findings.filter(f => f.origin === 'pathC').length;
+      const finalCountSrc = findings.filter(f => f.patternId === 'source_code').length;
+
       console.log(
         "[TrustPrompt/scanner] FINAL RESULT - risk:", riskLevel, `score:${score}`,
-        `| findings: ${findings.length} (A:${pathAFindings.length} B:${pathBFindings.length} C:${pathCFindings.length} SRC:${sourceCodeFindings.length})`
+        `| findings: ${findings.length} (A:${finalCountA} B:${finalCountB} C:${finalCountC} SRC:${finalCountSrc})`
       );
       if (findings.length > 0) {
         console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch}`).join(", "));

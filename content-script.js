@@ -53,6 +53,7 @@ let lastScanResult  = null;
 let pendingSubmitResolver = null;
 let allowNextSubmit  = false; // Flag to allow submit after scan completes
 let submitBlocked    = false; // True when submit is blocked waiting for user to press Enter again
+let scanLocked       = false; // True while scan is actively running — blocks Enter keypresses
 let performanceMarkers = {}; // Track timing of scan pipeline
 
 // ── PERFORMANCE TRACKING HELPERS ──────────────────────────────────────────────
@@ -489,6 +490,7 @@ function runScan() {
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
     scanState = "IDLE";
+    scanLocked = false; // Unlock
     markEnd('scan-total');
     return;
   }
@@ -499,6 +501,7 @@ function runScan() {
     if (lastScanResult && scanState !== "DONE") {
       scanState = "DONE";
       console.log("[TrustPrompt/Claude] scan — skipping re-scan, state set to DONE");
+      scanLocked = false; // Unlock
       if (pendingSubmitResolver) {
         const resolve = pendingSubmitResolver;
         pendingSubmitResolver = null;
@@ -511,6 +514,8 @@ function runScan() {
 
   lastScannedText = rawText;
   scanState = "SCANNING";
+  scanLocked = true; // Lock while scanning
+  console.log("[TrustPrompt/Claude] scanLocked = true (scan starting)");
 
   markStart('scan-pattern-match');
   const findings  = scanText(rawText);
@@ -539,6 +544,8 @@ function runScan() {
   markEnd('scan-background-msg');
   
   scanState = "DONE";
+  scanLocked = false; // Unlock after scan completes
+  console.log("[TrustPrompt/Claude] scanLocked = false (scan complete)");
   markEnd('scan-total');
   reportScanTiming();
   
@@ -649,94 +656,96 @@ function findSendButton() {
 
 // Release the submit by clicking the send button
 function releaseSubmit() {
+  // Mark both the button and the prompt element with release flag
+  // so that BOTH keydown and click listeners will allow the submit through
   const btn = findSendButton();
   if (btn) {
     btn._tpRelease = true;
+  }
+  if (promptBox) {
+    promptBox._tpRelease = true;
+  }
+  
+  // Also set a global flag that persists through event listeners
+  window._tpAllowSubmit = true;
+  
+  // Click the button to trigger submit
+  if (btn) {
     btn.click();
   }
 }
 
 function handleSubmitAttempt(e) {
   if (!promptBox || !isVisible(promptBox)) {
-    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but no promptBox");
+    console.log("[TrustPrompt/Claude] handleSubmitAttempt: no promptBox");
     return;
   }
   
   const rawText = extractText(promptBox);
   if (!rawText.trim()) {
-    console.log("[TrustPrompt/Claude] handleSubmitAttempt called but text is empty — allowing empty submission");
+    console.log("[TrustPrompt/Claude] handleSubmitAttempt: text is empty, allowing");
     return; // allow empty submissions
   }
 
-  // CASE 1: Submit is blocked waiting for user to press Enter again
-  // User is pressing Enter the second time — allow the send
-  if (submitBlocked) {
-    console.log("[TrustPrompt/Claude] submit was blocked, user pressed Enter again — releasing submit");
-    submitBlocked = false; // Reset the flag
-    if (e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }
-    releaseSubmit();
-    return;
-  }
+  console.log("[TrustPrompt/Claude] handleSubmitAttempt fired — submitBlocked:", submitBlocked, "scanLocked:", scanLocked);
 
-  // CASE 2: Submit is NOT blocked — first Enter press after paste
-  // Block it and start the scan
-  
-  // Always prevent the event from propagating initially
+  // ALWAYS prevent the event
   if (e) {
     e.preventDefault();
     e.stopImmediatePropagation();
   }
 
-  // Mark flag so we can detect when it's our own release click
-  if (e?.type === "click") {
-    e.target.closest("button")?._tpSubmitBlocked = true;
+  // BLOCK: If scan is actively running, don't allow anything
+  if (scanLocked) {
+    console.log("[TrustPrompt/Claude] BLOCKED: Scan is actively running (scanLocked=true)");
+    showToast("⏸ Still scanning… Please wait for results.", 2000);
+    return;
   }
 
+  // CASE 1: Submit is already blocked — user pressing Enter/clicking send a second time
+  if (submitBlocked) {
+    console.log("[TrustPrompt/Claude] CASE 1: submitBlocked=true, releasing submit now");
+    submitBlocked = false;
+    releaseSubmit();
+    return;
+  }
+
+  // CASE 2: First submission attempt — block it and scan
+  console.log("[TrustPrompt/Claude] CASE 2: First submission, blocking and scanning");
+  
   const safeVersion = extractSafeVersion(rawText);
-  console.log("[TrustPrompt/Claude] submit intercepted — state:", scanState);
   console.log("[TrustPrompt/Claude] safe version:", safeVersion);
   
-  // Show blocking toast only if still scanning/scoring
+  // Show blocking toast if scan is not instant
   if (scanState === "PENDING" || scanState === "SCANNING") {
-    console.log("[TrustPrompt/Claude] showing blocking toast - state is", scanState);
+    console.log("[TrustPrompt/Claude] showing blocking toast");
     showToast("⏸ Scanning… TrustPrompt is analyzing your prompt. Please wait.");
   }
 
-  console.log("[TrustPrompt/Claude] awaiting scan...");
+  // Wait for scan to complete
   awaitScan().then(result => {
-    console.log("[TrustPrompt/Claude] scan complete:", result);
-    console.log("[TrustPrompt/Claude] setting submitBlocked flag — user must press Enter again to send");
+    console.log("[TrustPrompt/Claude] scan complete, result:", result);
     
-    // Use requestAnimationFrame to ensure badge is painted before blocking
-    requestAnimationFrame(() => {
-      submitBlocked = true;
-      showToast("✓ Scan complete. Press Enter again to send, or edit your message.", 5000);
-      console.log("[TrustPrompt/Claude] badge painted, submitBlocked = true");
-    });
+    // Block submission and wait for user's second Enter
+    submitBlocked = true;
+    console.log("[TrustPrompt/Claude] submitBlocked set to TRUE");
+    
+    // Show toast telling user to press Enter again
+    showToast("✓ Scan complete! Press Enter again to send, or edit your message.", 5000);
   });
 }
 
 // Submit interception: Enter key on the prompt box (fires before ProseMirror)
 function onPromptBoxKeydown(e) {
-  console.log("[TrustPrompt/Claude] onPromptBoxKeydown fired - key:", e.key, "shiftKey:", e.shiftKey);
+  console.log("[TrustPrompt/Claude] onPromptBoxKeydown fired - key:", e.key, "shiftKey:", e.shiftKey, "ctrlKey:", e.ctrlKey);
   if (e.key !== "Enter" || e.shiftKey) return;
   
-  // If submit was blocked, we need to intercept again to allow the second Enter
-  if (submitBlocked) {
-    console.log("[TrustPrompt/Claude] onPromptBoxKeydown - submitBlocked is true, user pressing Enter to send");
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    handleSubmitAttempt(e);
+  if (e._tpRelease || promptBox._tpRelease || window._tpAllowSubmit) {
+    console.log("[TrustPrompt/Claude] onPromptBoxKeydown - release flag set, allowing through");
+    window._tpAllowSubmit = false; // Reset after use
     return;
   }
   
-  if (e._tpRelease) {
-    console.log("[TrustPrompt/Claude] onPromptBoxKeydown - release flag set, allowing through");
-    return;
-  }
   console.log("[TrustPrompt/Claude] onPromptBoxKeydown - calling handleSubmitAttempt");
   handleSubmitAttempt(e);
 }
@@ -749,62 +758,38 @@ document.addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
   
+  if (btn._tpRelease || window._tpAllowSubmit) { 
+    console.log("[TrustPrompt/Claude] send button _tpRelease flag set, allowing through");
+    btn._tpRelease = false;
+    window._tpAllowSubmit = false; // Reset after use
+    return; 
+  }
+  
   const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
   if (!label.includes("send")) return;
   if (!promptBox || !isVisible(promptBox)) return;
   
-  // If submit is blocked, allow the click only if user pressed Enter (handled by keydown)
-  // For button clicks while blocked, we need to treat it as if user pressed Enter again
-  if (submitBlocked) {
-    console.log("[TrustPrompt/Claude] send button clicked while submitBlocked — user requesting send");
-    if (btn._tpRelease) { 
-      console.log("[TrustPrompt/Claude] send button clicked with _tpRelease flag, allowing through");
-      btn._tpRelease = false; 
-      return; 
-    }
-    // Allow the send
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    submitBlocked = false;
-    releaseSubmit();
-    return;
-  }
-  
-  if (btn._tpRelease) { 
-    console.log("[TrustPrompt/Claude] send button clicked with _tpRelease flag, allowing through");
-    btn._tpRelease = false; 
-    return; 
-  }
-  
-  console.log("[TrustPrompt/Claude] send button clicked — intercepting (first click)");
+  console.log("[TrustPrompt/Claude] send button clicked, handleSubmitAttempt");
   handleSubmitAttempt(e);
 }, true);
 
 // Document-level Enter key intercept (fallback for events outside promptBox)
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;
-  if (e._tpRelease) {
-    console.log("[TrustPrompt/Claude] document keydown - release flag set, allowing through");
+  if (e._tpRelease || window._tpAllowSubmit) {
+    console.log("[TrustPrompt/Claude] document keydown - release flag set, allowing");
+    window._tpAllowSubmit = false; // Reset after use
     return;
   }
   if (!promptBox || !isVisible(promptBox)) return;
+  
   // If the event came from inside promptBox, skip (will be handled by onPromptBoxKeydown)
   if (promptBox.contains(e.target)) {
-    console.log("[TrustPrompt/Claude] document keydown - event from inside promptBox, skipping (will be handled by onPromptBoxKeydown)");
+    console.log("[TrustPrompt/Claude] document keydown - event is from promptBox, skip");
     return;
   }
   
-  // If submit is blocked, allow the second Enter
-  if (submitBlocked) {
-    console.log("[TrustPrompt/Claude] document keydown - submitBlocked is true, allowing second Enter");
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    submitBlocked = false;
-    releaseSubmit();
-    return;
-  }
-  
-  console.log("[TrustPrompt/Claude] document keydown - calling handleSubmitAttempt (fallback)");
+  console.log("[TrustPrompt/Claude] document keydown - fallback, calling handleSubmitAttempt");
   handleSubmitAttempt(e);
 }, true);
 
@@ -817,6 +802,7 @@ chrome.runtime.onMessage.addListener((message) => {
     updateFloatingBadge("none");
     sendToBackground({ type: "SCAN_CLEARED" });
     submitBlocked = false; // Also reset the block flag
+    scanLocked = false;    // Unlock in case scan was stuck
   }
 });
 

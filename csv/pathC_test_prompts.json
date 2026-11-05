@@ -1,0 +1,6600 @@
+[
+  {
+    "id": "C-001",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "Hi, my name is Maria Clara Santos and I need help writing a cover letter for a position I am applying to next week. Can you make it sound confident and professional?",
+    "expected": {
+      "names": [
+        "Maria Clara Santos"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-002",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 172,
+    "prompt": "Please draft a birthday greeting for Juan dela Cruz. He is turning sixty this Saturday and the whole family is gathering at our house in the province to celebrate with him.",
+    "expected": {
+      "names": [
+        "Juan dela Cruz"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase particle 'dela'"
+  },
+  {
+    "id": "C-003",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "Can you check if Roberto Villanueva Jr. is a common name in the Philippines, and what the Jr. suffix usually implies in Filipino naming customs and family traditions?",
+    "expected": {
+      "names": [
+        "Roberto Villanueva Jr."
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "suffix Jr. with period mid-sentence"
+  },
+  {
+    "id": "C-004",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "quoted_message",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Summarize the following message and keep the sender's name intact: Dear Jose Rizal Mercado, thank you for your submission. We will reply within five business days.",
+    "expected": {
+      "names": [
+        "Jose Rizal Mercado"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-005",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "passive",
+      "hyphenated",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 235,
+    "prompt": "Rewrite this sentence from our monthly update so it sounds less stiff: The report was reviewed by Angelica Reyes-Domingo and then forwarded to the committee for final comments before the end of the month, as agreed in the last meeting.",
+    "expected": {
+      "names": [
+        "Angelica Reyes-Domingo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-006",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "last_first_format",
+      "form_data",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Student record: Dimaculangan, Kristine Joy, Grade 10, Section Rizal. Please format this entry into a table with columns for last name, first name, and grade level.",
+    "expected": {
+      "names": [
+        "Dimaculangan, Kristine Joy"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Last, First format; 'Rizal' as section name is a distractor"
+  },
+  {
+    "id": "C-007",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "run_on",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "can you help me write an apology text to my friend carlo mendoza? i forgot his birthday again and i feel really bad about it, so i want it to sound sincere",
+    "expected": {
+      "names": [
+        "carlo mendoza"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "all lowercase; violates normalization assumption on purpose"
+  },
+  {
+    "id": "C-008",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "uppercase",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 162,
+    "prompt": "PLEASE PROOFREAD THIS CERTIFICATE: THIS IS TO CERTIFY THAT RICARDO ANTONIO BAUTISTA HAS COMPLETED ALL THE REQUIREMENTS FOR THE COURSE AND IS ELIGIBLE TO GRADUATE.",
+    "expected": {
+      "names": [
+        "RICARDO ANTONIO BAUTISTA"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "ALL CAPS"
+  },
+  {
+    "id": "C-009",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "diacritics",
+      "abbreviation",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "Write a short thank-you note to Ma. Cristina Peña-Muñoz for hosting us last weekend. She prepared lechon, pancit, and a lot of desserts for everyone who came.",
+    "expected": {
+      "names": [
+        "Ma. Cristina Peña-Muñoz"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Ma. abbreviation, ñ, hyphen"
+  },
+  {
+    "id": "C-010",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "single_name",
+      "imperative",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 181,
+    "prompt": "Write a quick text message I can send to my groupmate Bryan to say the meeting moved to Thursday and ask if he can still bring the projector and the extension cords. Keep it casual.",
+    "expected": {
+      "names": [
+        "Bryan"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "first name only"
+  },
+  {
+    "id": "C-011",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "initials",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "My lola, J. P. Rizal-Alonso, left me a recipe for adobo. Can you convert the measurements from cups to grams and keep her name at the top of the recipe card?",
+    "expected": {
+      "names": [
+        "J. P. Rizal-Alonso"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "initials"
+  },
+  {
+    "id": "C-012",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "historical",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "Compare the leadership styles of Emilio Aguinaldo and Andres Bonifacio in two paragraphs, and then explain how each of them is remembered in our history books today.",
+    "expected": {
+      "names": [
+        "Emilio Aguinaldo",
+        "Andres Bonifacio"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "public/historical figures"
+  },
+  {
+    "id": "C-013",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "possessive",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "Explain why Gloria's mother, Teresita Macaraeg, keeps refusing to use the new e-wallet even though everyone else in the family has already switched to it.",
+    "expected": {
+      "names": [
+        "Gloria",
+        "Teresita Macaraeg"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "possessive; single first name + full name"
+  },
+  {
+    "id": "C-014",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "dialogue",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 219,
+    "prompt": "Fix the punctuation and grammar in this paragraph from my short story: He said, \"Tell Nathaniel Ocampo that the shipment arrived,\" and then he walked out of the room without waiting for any response from the rest of us.",
+    "expected": {
+      "names": [
+        "Nathaniel Ocampo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-015",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "title_prefix",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "Engr. Ramon Bautista asked me to rewrite his email, but I am not sure how formal it should be since he is also the father of our biggest client this year.",
+    "expected": {
+      "names": [
+        "Ramon Bautista"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Engr.' is an occupation-title; decide whether prefix is part of the span"
+  },
+  {
+    "id": "C-016",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "conditional",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 212,
+    "prompt": "Write an out-of-office email reply for me. I'm away until Monday. If Sofia Hernandez follows up, she should know the documents are in the blue folder and that I'll call her back by Monday afternoon at the latest.",
+    "expected": {
+      "names": [
+        "Sofia Hernandez"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-017",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "nickname",
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Everyone at home calls my brother Bong-Bong, but his real name is Ferdinand Miguel Alcantara III, and I need to write it correctly on the scholarship form today.",
+    "expected": {
+      "names": [
+        "Bong-Bong",
+        "Ferdinand Miguel Alcantara III"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "nickname + roman numeral suffix"
+  },
+  {
+    "id": "C-018",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "list",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 152,
+    "prompt": "Attendees: Rizza Mae Abad, Dionisio Cabrera, Lorna Lacson-Pineda, and Mario Tanedo. Please arrange them alphabetically by last name and number the list.",
+    "expected": {
+      "names": [
+        "Rizza Mae Abad",
+        "Dionisio Cabrera",
+        "Lorna Lacson-Pineda",
+        "Mario Tanedo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "4 names in one prompt"
+  },
+  {
+    "id": "C-019",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "email_username",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Is it safe to use my full name in my username, like gabriela.fajardo2001@example.com? Someone told me it is risky, but I want to understand exactly why before changing it.",
+    "expected": {
+      "names": [
+        "gabriela.fajardo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "name embedded in email local-part"
+  },
+  {
+    "id": "C-020",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "hashtag",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Our class made the hashtag #JusticeForMarianoDeLeon but I am not sure it is a good idea to post it. What should we consider before it goes public online?",
+    "expected": {
+      "names": [
+        "MarianoDeLeon"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "CamelCase name inside hashtag"
+  },
+  {
+    "id": "C-021",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "reported_speech",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 207,
+    "prompt": "Summarize this in two sentences for a barangay incident report: my mother said that Aling Nena Pascual saw the whole thing from her store window and that she would testify if the barangay asked her to do so.",
+    "expected": {
+      "names": [
+        "Nena Pascual"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Aling' honorific"
+  },
+  {
+    "id": "C-022",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "run_on",
+      "casual",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 190,
+    "prompt": "so yesterday i met this guy named Kenneth Dumalagan at the mall and he was super nice and then we talked for like two hours about basketball and now i dont know if i should message him first",
+    "expected": {
+      "names": [
+        "Kenneth Dumalagan"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "run-on, no punctuation; name properly capitalized"
+  },
+  {
+    "id": "C-023",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "fragment",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Write a eulogy for my lola Dolores Katigbak. Warm, not too formal, about 200 words. Mention her gardening and her love for the church choir.",
+    "expected": {
+      "names": [
+        "Dolores Katigbak"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "sentence fragments"
+  },
+  {
+    "id": "C-024",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "intl",
+      "no_please_opener",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "Rewrite this paragraph so it flows better: Wei Zhang and Fatima Al-Rashid co-authored the study, while Jonathan Whitaker handled the statistical analysis.",
+    "expected": {
+      "names": [
+        "Wei Zhang",
+        "Fatima Al-Rashid",
+        "Jonathan Whitaker"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "non-Filipino names for contrast"
+  },
+  {
+    "id": "C-025",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "exclamatory",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "Congratulations to Hazel Anne Villaruel for passing the licensure exam! Please write a short, heartfelt Facebook caption we can post on her behalf tonight.",
+    "expected": {
+      "names": [
+        "Hazel Anne Villaruel"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-026",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "title_of_work",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "Write a review of the book 'The Diary of Corazon Magsaysay' for my literature class, focusing on how the author handles memory and grief across the chapters.",
+    "expected": {
+      "names": [
+        "Corazon Magsaysay"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "name inside a book title"
+  },
+  {
+    "id": "C-027",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "placeholder",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "Fill in the sample form using the placeholder name John Smith, address 123 Sample Street, and leave the other fields blank so I can reuse the template later.",
+    "expected": {
+      "names": [
+        "John Smith"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "placeholder name; policy decision whether to flag"
+  },
+  {
+    "id": "C-028",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "honorific",
+      "imperative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 152,
+    "prompt": "Please address the memo to Mr. Alfredo Quimpo and Ms. Divina Esguerra, and then add a line asking them to sign on or before the fifteenth of next month.",
+    "expected": {
+      "names": [
+        "Alfredo Quimpo",
+        "Divina Esguerra"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-029",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "spacing",
+      "no_please_opener",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "Correct the spacing in this line: Juan   dela    Cruz   requested a copy of his transcript, and the registrar  needs to prepare it before Friday afternoon.",
+    "expected": {
+      "names": [
+        "Juan   dela    Cruz"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "irregular whitespace inside name"
+  },
+  {
+    "id": "C-030",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "line_break",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Format this signature block properly:\nMaria\nSantos\nBranch Coordinator for the northern region, who handles all the requests coming from the provincial offices every week.",
+    "expected": {
+      "names": [
+        "Maria\nSantos"
+      ],
+      "occupations": [
+        "Branch Coordinator"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "name split across line break"
+  },
+  {
+    "id": "C-031",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "obfuscation",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Check whether this spelling looks suspicious: Ma​ria Sant​os wrote that she never received the package, but the tracking page says it was delivered on Tuesday morning.",
+    "expected": {
+      "names": [
+        "Ma​ria Sant​os"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "zero-width space inside name"
+  },
+  {
+    "id": "C-032",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "leading_trailing",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Dela Cruz, Juan is requesting a copy of his transcript of records for scholarship purposes, so please help me write the request letter. Thank you, Santos, Maria.",
+    "expected": {
+      "names": [
+        "Dela Cruz, Juan",
+        "Santos, Maria"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "name at start and end of prompt, Last-First format"
+  },
+  {
+    "id": "C-033",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "emoji",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 148,
+    "prompt": "Thanks so much for the lovely dinner, Pia Escudero 💕😊! Please turn this into a short message I can send before the end of the day, with a warm tone.",
+    "expected": {
+      "names": [
+        "Pia Escudero"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "name adjacent to emoji"
+  },
+  {
+    "id": "C-034",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "coreference",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 169,
+    "prompt": "Maria Santos applied for the grant. Maria said the deadline is tight. Ms. Santos hopes the committee will respond soon, and Maria's adviser has agreed to write a letter.",
+    "expected": {
+      "names": [
+        "Maria Santos",
+        "Maria",
+        "Ms. Santos"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "same person repeated in different forms"
+  },
+  {
+    "id": "C-035",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "leet",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 162,
+    "prompt": "Check this username list for impersonation: J0hn Santos, Maria Cl4ra, and R1cardo Bautista all posted the same giveaway link in the group chat during the weekend.",
+    "expected": {
+      "names": [
+        "R1cardo Bautista"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "leetspeak: expect Compromise to miss or only partially tag the obfuscated names (Bautista alone may still be tagged)"
+  },
+  {
+    "id": "C-036",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "long_name",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Write the full name correctly on the certificate: Maria Cristina Esperanza Villanueva y Montenegro-Dela Paz, and make sure the font is formal and the line fits on one row.",
+    "expected": {
+      "names": [
+        "Maria Cristina Esperanza Villanueva y Montenegro-Dela Paz"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "very long Spanish-style name"
+  },
+  {
+    "id": "C-037",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "Write a short poem about April showers and May flowers for the rainy season, using simple words a grade school child can follow without any trouble at all.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "April / May are months, not names"
+  },
+  {
+    "id": "C-038",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "Will you explain how the grace period on a loan works? I think mine is only five days, but I don't remember where I read that or what happens after it ends.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Will / Grace as common words"
+  },
+  {
+    "id": "C-039",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 160,
+    "prompt": "Joy and hope are central themes in many Christmas songs, so please list a few simple ideas for a school program that focuses on those feelings and on gratitude.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Joy / Hope as nouns"
+  },
+  {
+    "id": "C-040",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "places",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 162,
+    "prompt": "What is the best way to travel from Paris to Georgia, then to Victoria, and finally Jordan, if I only have two weeks and a very limited budget for the whole trip?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "given-name-like place names"
+  },
+  {
+    "id": "C-041",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Give me a checklist for the ceremony this Saturday afternoon: mark the deadline on the calendar and buy rose petals and a bouquet of lily and iris flowers. Keep it short.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Mark / rose / lily / iris as common words"
+  },
+  {
+    "id": "C-042",
+    "category": "NAME",
+    "label": "TN",
+    "tags": [
+      "street_names",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Take Mabini Street, turn left at Rizal Avenue, and stop near Quezon Boulevard. Is there a faster route to the Sto. Domingo church from the town plaza at this hour?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "streets named after people; not a person reference"
+  },
+  {
+    "id": "C-043",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "I have been working as a registered nurse for six years and I want to know how I can move into hospital administration without taking another full degree.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "registered nurse"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-044",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "My father is a jeepney driver in Tarlac City, and he is worried about the jeepney modernization program. Can you explain the consolidation requirements in simple terms?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "jeepney driver"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-045",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 160,
+    "prompt": "As a public school teacher, I need a lesson plan idea for Grade 6 science about the water cycle that works even without a projector or reliable internet access.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "public school teacher"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-046",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "list",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Our barangay needs a barangay health worker, a tanod, and a secretary for the new community program, and I would like help writing the job descriptions for each.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "barangay health worker",
+        "tanod",
+        "secretary"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-047",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "plural",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Software engineers and data scientists are in demand, so explain which skills a fresh graduate should prioritize over the next two years in the local job market.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "Software engineers",
+        "data scientists"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "plural forms; check stemming vs 0.9 fuzzy"
+  },
+  {
+    "id": "C-048",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 149,
+    "prompt": "My uncle is a seaman and my aunt is a call center agent, so our family is rarely complete during the holidays. Suggest ways for us to stay connected.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "seaman",
+        "call center agent"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-049",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "multiword",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "I'm a chief financial officer and my sister is a certified public accountant, so our family dinners are mostly arguments about taxes. Suggest other conversation topics.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "chief financial officer",
+        "certified public accountant"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-050",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "abbreviation",
+      "interrogative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "Which is more stable over the next ten years, being a CPA or an RN? I like numbers but also enjoy helping people, so I am torn between the two career paths.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "CPA",
+        "RN"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "occupation abbreviations"
+  },
+  {
+    "id": "C-051",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "possessive",
+      "non_self_reference",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "The doctor's note says I should rest for three days, but my boss wants me back on Wednesday. How should I explain this politely without causing any conflict at work?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "doctor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "occupation mentioned incidentally; 'boss' is relational"
+  },
+  {
+    "id": "C-052",
+    "category": "OCC",
+    "label": "TN",
+    "tags": [
+      "verbs_not_nouns",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 162,
+    "prompt": "Can you teach me how to cook adobo and how to nurse a sick plant back to health using only things I already have at home? I also want to learn how to drive stick.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "cook/nurse/drive/teach used as verbs"
+  },
+  {
+    "id": "C-053",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "surnames_as_occupations",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Please address the letter to Mr. Baker and Ms. Carpenter, and make sure Taylor and Cook are copied in the email, since they handle the invoices for our department.",
+    "expected": {
+      "names": [
+        "Baker",
+        "Carpenter",
+        "Taylor",
+        "Cook"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "occupation-words used as surnames; occupations should NOT be flagged"
+  },
+  {
+    "id": "C-054",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "i work as a freelance graphic designer and virtual assistant, and my rates are too low according to my friends. how do i raise them without losing my current clients?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "graphic designer",
+        "virtual assistant"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase occupations"
+  },
+  {
+    "id": "C-055",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "list",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "My lola is a sari-sari store owner, my kuya is a tricycle driver, and my ate is an online seller. Please help me create a simple family budget template for all of us.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "sari-sari store owner",
+        "tricycle driver",
+        "online seller"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "kuya/ate are address terms, not names"
+  },
+  {
+    "id": "C-056",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 160,
+    "prompt": "What does a pharmacist do compared to a pharmacy technician, and what licensure requirements apply in the Philippines for each one of those roles in a hospital?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "pharmacist",
+        "pharmacy technician"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-057",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Explain the difference between a mayor, a vice mayor, and a councilor in a Philippine municipality, and tell me who has the authority to approve the annual budget.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "mayor",
+        "vice mayor",
+        "councilor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-058",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "uppercase",
+      "job_ad",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 149,
+    "prompt": "WANTED: SECURITY GUARD, UTILITY WORKER, AND CASHIER FOR A NEW BRANCH. PLEASE REWRITE THIS AD TO SOUND MORE ATTRACTIVE TO FRESH GRADUATES IN THE AREA.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "SECURITY GUARD",
+        "UTILITY WORKER",
+        "CASHIER"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "ALL CAPS gazetteer matching"
+  },
+  {
+    "id": "C-059",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "status_not_job",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "I'm a college student and a volunteer, and I'm also the eldest daughter, so I handle a lot at home. Suggest a weekly schedule that keeps my stress manageable.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "student",
+        "volunteer"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "dictionary-dependent: student/volunteer may or may not be in terms-occupation.js"
+  },
+  {
+    "id": "C-060",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "passive",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "A welder and an electrician were hired to repair the gate, but the plumber arrived first and fixed the pipes instead, which confused everybody at the site.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "welder",
+        "electrician",
+        "plumber"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-061",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "conditional",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "If I became a flight attendant or a pilot, would I need to relocate to Manila, and how much would the training cost compared with studying nursing instead?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "flight attendant",
+        "pilot"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'nursing' is a field, not an occupation"
+  },
+  {
+    "id": "C-062",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "fragment",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "Job: tricycle driver. Years: 12. Route: Tarlac City to Capas. Daily boundary: 400 pesos. Please format as a short profile for a livelihood loan application.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "tricycle driver"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "key-value fragments"
+  },
+  {
+    "id": "C-063",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "occupation_prefix",
+      "no_please_opener",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "Thank Nurse Karen Tiongson and Dr. Alvin Mercado, the surgeon who handled my father's operation, in a short, sincere message for the hospital feedback form.",
+    "expected": {
+      "names": [
+        "Karen Tiongson",
+        "Alvin Mercado"
+      ],
+      "occupations": [
+        "Nurse",
+        "surgeon",
+        "Dr."
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "title-as-occupation before name"
+  },
+  {
+    "id": "C-064",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "I applied to the Department of Health and the Philippine National Bank last month, but neither of them has replied. How long should I wait before following up?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Department of Health",
+        "Philippine National Bank"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-065",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "Meralco raised its rates again, so please help me write a complaint letter that is polite but firm and includes a request for a detailed billing breakdown.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Meralco"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-066",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "acronyms",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Do I need to register with the BIR, SSS, PhilHealth, and Pag-IBIG before I start my small online business, and in what order should I do it?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "BIR",
+        "SSS",
+        "PhilHealth",
+        "Pag-IBIG"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-067",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 176,
+    "prompt": "I'm deciding between Tarlac State University and the University of the Philippines Diliman for my master's degree. Which one has better research support for part-time students?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Tarlac State University",
+        "University of the Philippines Diliman"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-068",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "unknown_org",
+      "compromise_only",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "Our startup, Lumenbridge Analytics Inc., is looking for seed funding. Please polish our pitch introduction so it sounds credible to local investors and angel groups.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Lumenbridge Analytics Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "not in gazetteer; relies on Compromise"
+  },
+  {
+    "id": "C-069",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "ampersand",
+      "imperative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "The contract between Reyes & Associates Law Offices and Santos-Lim Trading Corporation expires next year, so list the clauses we should renegotiate before signing.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Reyes & Associates Law Offices",
+        "Santos-Lim Trading Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "person surnames inside org names should not become separate NAME hits"
+  },
+  {
+    "id": "C-070",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "ambiguous_orgs",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Apple released a new phone, and Amazon is having a sale, while Shell raised fuel prices again. Summarize how these three announcements could affect a small business owner.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Apple",
+        "Amazon",
+        "Shell"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "org names that are also common words, capitalized"
+  },
+  {
+    "id": "C-071",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "ambiguous_orgs",
+      "lowercase",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "I'm eating an apple while reading about the amazon rainforest and a shell collection I found at the beach last summer in Zambales. Help me write a short travel blog.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "same words, common-noun usage"
+  },
+  {
+    "id": "C-072",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "pldt and globe both have outages in our area, so draft a message to ask which one offers a better fiber plan for working from home with two people on video calls",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "pldt",
+        "globe"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase org names; 'globe' also common noun"
+  },
+  {
+    "id": "C-073",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "email_url",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 187,
+    "prompt": "Draft a follow-up email to hr@jollibee.com.ph about my job application, and tell me if I should also check the careers page at www.sm-investments.com for updates on my interview schedule.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "jollibee",
+        "sm-investments"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "org inside email/URL"
+  },
+  {
+    "id": "C-074",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "acronyms",
+      "interrogative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 146,
+    "prompt": "Is UP or DLSU better for engineering, and does ADMU have a stronger alumni network than both when it comes to getting hired in the banking sector?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "UP",
+        "DLSU",
+        "ADMU"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'UP' collides with the word 'up'"
+  },
+  {
+    "id": "C-075",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "acronyms",
+      "gov",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 144,
+    "prompt": "Remind me what documents I should bring to the LTO, and whether DepEd or DOLE handles the work permit for a foreign teacher in a private school.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "LTO",
+        "DepEd",
+        "DOLE"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-076",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "generic_nouns",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "The company announced a new policy, and the department head will explain the details at the meeting later this afternoon in the conference room on the third floor.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "generic org nouns, no proper names"
+  },
+  {
+    "id": "C-077",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "generic_nouns",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Please explain how a bank, a hospital, and a university differ in their organizational structures, and give me a simple comparison table with three rows.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "generic institution types"
+  },
+  {
+    "id": "C-078",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "no_please_opener",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Explain the roles of the Commission on Audit, the Bangko Sentral ng Pilipinas, and the Office of the Ombudsman, and how they differ from one another in practice.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Commission on Audit",
+        "Bangko Sentral ng Pilipinas",
+        "Office of the Ombudsman"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-079",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "intl",
+      "len_100-249"
+    ],
+    "length": 164,
+    "prompt": "Compare the internship programs of Google, Microsoft, and Meta, and tell me which one has the most accessible application process for students from the Philippines.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Google",
+        "Microsoft",
+        "Meta"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-080",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "media",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Summarize the Philippine Daily Inquirer and The Manila Times coverage of the typhoon, and point out any differences in how they describe the government response.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Philippine Daily Inquirer",
+        "The Manila Times"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-081",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "ngo_church",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Our parish, the Archdiocese of Tarlac, and the Philippine Red Cross are organizing a donation drive; draft an announcement that invites volunteers from every barangay.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Archdiocese of Tarlac",
+        "Philippine Red Cross"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-082",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "suffixes",
+      "unknown_org",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Invoice from Northgate Logistics Corp., cc: Eastwind Packaging Ltd. and Southpoint Supplies, Inc. Please reformat the header so the company names appear on separate lines.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Northgate Logistics Corp.",
+        "Eastwind Packaging Ltd.",
+        "Southpoint Supplies, Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "corporate suffixes with periods/commas"
+  },
+  {
+    "id": "C-083",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "ambiguous_words",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Please look up the policy, and then follow up with the office. I think it is up to the manager, but let's check the handbook before we decide anything final today.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'up' must not be read as UP; 'manager' is generic"
+  },
+  {
+    "id": "C-084",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 201,
+    "prompt": "Improve this 'About me' paragraph for my resume: I graduated from Tarlac National High School and later studied at Central Luzon State University before working at a local cooperative near my hometown.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Tarlac National High School",
+        "Central Luzon State University"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'local cooperative' generic"
+  },
+  {
+    "id": "C-085",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "occupation_inside_org",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 202,
+    "prompt": "I'm writing a news brief. The Philippine Nurses Association, Doctors Without Borders, and the Philippine National Police all sent statements, so help me combine them into one balanced summary paragraph.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Philippine Nurses Association",
+        "Doctors Without Borders",
+        "Philippine National Police"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "occupation words inside org names should not yield separate OCC hits"
+  },
+  {
+    "id": "C-086",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "person_inside_org",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 164,
+    "prompt": "I read that the Henry Sy Foundation funds scholarships, so can you help me draft a request letter addressed to the foundation's director for my engineering studies?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Henry Sy Foundation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'Henry Sy' inside org should not become a separate NAME hit (policy decision)"
+  },
+  {
+    "id": "C-087",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "fuzzy_false_positive",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 150,
+    "prompt": "I live on Ayala Lane, two blocks from the plaza, and the street lights have been broken for weeks. Help me write a complaint to the barangay about it.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Ayala Lane' vs 'Ayala Land' similarity ~0.9; fuzzy false-positive probe"
+  },
+  {
+    "id": "C-088",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "fuzzy_false_positive",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 172,
+    "prompt": "Is the Department of Wealth Management seminar a real government office? A flyer in our barangay uses that name and I want to be sure before I share it with the group chat.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Department of Wealth' vs 'Department of Health' similarity 0.95; fuzzy false-positive probe"
+  },
+  {
+    "id": "C-089",
+    "category": "ORG",
+    "label": "TN",
+    "tags": [
+      "acronyms_not_orgs",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 141,
+    "prompt": "What do ASAP, FYI, OTP, and FAQ mean in a work chat, and which of them is acceptable to use when emailing a government office or a professor?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "all-caps acronyms that are not orgs"
+  },
+  {
+    "id": "C-090",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 147,
+    "prompt": "Hello, I'm Patricia Gonzales from Ayala Land. Please polish this message to our partners so it sounds warm but still professional and easy to read.",
+    "expected": {
+      "names": [
+        "Patricia Gonzales"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Ayala Land"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-091",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Write a polite email to Mark Anthony Lim of Globe Telecom asking if the installation date can be moved. He was very helpful the last time we spoke, so keep the tone warm.",
+    "expected": {
+      "names": [
+        "Mark Anthony Lim"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Globe Telecom"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-092",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "reported_speech",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "Per Elena Cruz at the Department of Education, the new guidelines will take effect next semester. Rewrite this as a short announcement for the faculty bulletin board.",
+    "expected": {
+      "names": [
+        "Elena Cruz"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Department of Education"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-093",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "two_orgs",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 160,
+    "prompt": "Carlos Reyes, formerly with BDO Unibank, is now consulting for Jollibee Foods Corporation, as far as I know. Can you help me write a congratulatory note to him?",
+    "expected": {
+      "names": [
+        "Carlos Reyes"
+      ],
+      "occupations": [],
+      "organizations": [
+        "BDO Unibank",
+        "Jollibee Foods Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-094",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "email_header",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 188,
+    "prompt": "From: Ramon Dizon <ramon.dizon@meralco.com.ph>\nTo: Support Team\nSubject: Billing inquiry\n\nPlease help me answer this customer email in a friendly tone and ask for the account number first.",
+    "expected": {
+      "names": [
+        "Ramon Dizon"
+      ],
+      "occupations": [],
+      "organizations": [
+        "meralco"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "org only appears (lowercase) in the email domain"
+  },
+  {
+    "id": "C-095",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "possessive",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Lourdes Navarro's employer, Philippine Airlines, has delayed her flight again, so write a firm complaint letter that asks for compensation and a clear written explanation.",
+    "expected": {
+      "names": [
+        "Lourdes Navarro"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Philippine Airlines"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-096",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "org_contains_surname",
+      "no_please_opener",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "Prepare the invoice for Santos-Lim Trading Corporation, attention to Mr. Dennis Lim, and make sure the company name is spelled exactly as it was registered.",
+    "expected": {
+      "names": [
+        "Dennis Lim"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Santos-Lim Trading Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "surname overlap between person and org"
+  },
+  {
+    "id": "C-097",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "message from rodel aquino of pldt says the technician will come tomorrow morning, so please remind me to be home and to prepare the valid id they asked for",
+    "expected": {
+      "names": [
+        "rodel aquino"
+      ],
+      "occupations": [],
+      "organizations": [
+        "pldt"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "all lowercase"
+  },
+  {
+    "id": "C-098",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 188,
+    "prompt": "Write a holiday greeting card message for Teresa Villanueva, who handles the corporate accounts at the Bank of the Philippine Islands. Keep it warm and professional, about three sentences.",
+    "expected": {
+      "names": [
+        "Teresa Villanueva"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Bank of the Philippine Islands"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-099",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "signature_block",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 150,
+    "prompt": "Please polish this closing so it looks more professional:\nBest regards,\nAndrea Joy Sarmiento\nTarlac State University\nCollege of Education, Main Campus",
+    "expected": {
+      "names": [
+        "Andrea Joy Sarmiento"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Tarlac State University"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-100",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "passive",
+      "unknown_org",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 223,
+    "prompt": "Summarize this announcement in one sentence for our newsletter: The proposal was submitted by Rolando Pascua on behalf of Mabuhay Farmers Cooperative and later endorsed by the Department of Agriculture for possible funding.",
+    "expected": {
+      "names": [
+        "Rolando Pascua"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Mabuhay Farmers Cooperative",
+        "Department of Agriculture"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "Mabuhay Farmers Cooperative not in gazetteer"
+  },
+  {
+    "id": "C-101",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "person_inside_org",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "Write to Ms. Imelda Baltazar, director of the Henry Sy Foundation, and thank her for the scholarship that allowed me to finish my engineering degree on time.",
+    "expected": {
+      "names": [
+        "Imelda Baltazar"
+      ],
+      "occupations": [
+        "director"
+      ],
+      "organizations": [
+        "Henry Sy Foundation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "NAME+ORG+OCC; 'Henry Sy' inside org"
+  },
+  {
+    "id": "C-102",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 151,
+    "prompt": "Dr. Maria Luisa Fernandez, a cardiologist, recommended that my father cut down on salty food. Please make a one-week meal plan that follows her advice.",
+    "expected": {
+      "names": [
+        "Maria Luisa Fernandez"
+      ],
+      "occupations": [
+        "cardiologist"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-103",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "honorific_nickname",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 138,
+    "prompt": "My neighbor Mang Tonyo is a tricycle driver, and he asked me to help him compute his daily boundary and fuel costs for the last two weeks.",
+    "expected": {
+      "names": [
+        "Mang Tonyo"
+      ],
+      "occupations": [
+        "tricycle driver"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "honorific + nickname"
+  },
+  {
+    "id": "C-104",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 169,
+    "prompt": "Atty. Liza Soriano, our family lawyer, said we need to update the deed of sale before the buyer pays. Summarize what that means in plain, simple language for my parents.",
+    "expected": {
+      "names": [
+        "Liza Soriano"
+      ],
+      "occupations": [
+        "lawyer"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Atty.' title + 'lawyer' noun"
+  },
+  {
+    "id": "C-105",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "Kapitan Benigno Salonga, the barangay captain, will lead the clean-up drive on Sunday. Write a friendly reminder that I can post in the community group chat.",
+    "expected": {
+      "names": [
+        "Benigno Salonga"
+      ],
+      "occupations": [
+        "barangay captain"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-106",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "title_prefix",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Engineer John Paul Tolentino inspected the building and said the foundation is sound, but the roofing needs repairs. Please turn this into a short note for the owners.",
+    "expected": {
+      "names": [
+        "John Paul Tolentino"
+      ],
+      "occupations": [
+        "Engineer"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-107",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "long_appositive",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Marites Aquino, a part-time call center agent and full-time mother of three, wants a weekly budget plan that fits her night-shift schedule and her children's school needs.",
+    "expected": {
+      "names": [
+        "Marites Aquino"
+      ],
+      "occupations": [
+        "call center agent"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-108",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "occupation_before_name",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "The pilot, Captain Eduardo Villareal, announced a delay due to weather. Write a calm and reassuring in-flight announcement based on this information for the passengers.",
+    "expected": {
+      "names": [
+        "Eduardo Villareal"
+      ],
+      "occupations": [
+        "pilot",
+        "Captain"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-109",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "list",
+      "parenthetical",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Team: Anna Marie Co (accountant), Pedro Ramos (electrician), Luz Bernardo (pharmacist). Please convert this list into a table with name and role columns.",
+    "expected": {
+      "names": [
+        "Anna Marie Co",
+        "Pedro Ramos",
+        "Luz Bernardo"
+      ],
+      "occupations": [
+        "accountant",
+        "electrician",
+        "pharmacist"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-110",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "no_please_opener",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 151,
+    "prompt": "Introduce Joshua Pangilinan, a graphic designer and illustrator, in a short bio for our event brochure. Keep it under sixty words and make it friendly.",
+    "expected": {
+      "names": [
+        "Joshua Pangilinan"
+      ],
+      "occupations": [
+        "graphic designer",
+        "illustrator"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-111",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 189,
+    "prompt": "Write a thank-you letter addressed to Ms. Charlene Dizon, my former teacher who I heard became a principal. I'm not sure of her current title, so suggest a salutation that works either way.",
+    "expected": {
+      "names": [
+        "Charlene Dizon"
+      ],
+      "occupations": [
+        "teacher",
+        "principal"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-112",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "my cousin ana liza is a midwife and her husband benjie is a fisherman in pangasinan, and i want to write a short story about their life together by the sea",
+    "expected": {
+      "names": [
+        "ana liza",
+        "benjie"
+      ],
+      "occupations": [
+        "midwife",
+        "fisherman"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase names; 'pangasinan' is a place"
+  },
+  {
+    "id": "C-113",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "dialogue",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 169,
+    "prompt": "My mother told me to call Dr. Ramil Evangelista, the dentist, to confirm my appointment. Write a short, polite script I can follow when I call his clinic this afternoon.",
+    "expected": {
+      "names": [
+        "Ramil Evangelista"
+      ],
+      "occupations": [
+        "dentist"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-114",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "name_is_occupation_word",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Write a short text to Mason Carpenter, who works as a mason, telling him the cement arrives tomorrow. Make it clear this is separate from the delivery for the other house.",
+    "expected": {
+      "names": [
+        "Mason Carpenter"
+      ],
+      "occupations": [
+        "mason"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "surname 'Carpenter' and first name 'Mason' collide with occupation words; only 'mason' (job) should be OCC"
+  },
+  {
+    "id": "C-115",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 152,
+    "prompt": "I work as a software engineer at Accenture Philippines and want to ask for a raise. Help me list my achievements from the past year in a persuasive way.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "software engineer"
+      ],
+      "organizations": [
+        "Accenture Philippines"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-116",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "As a teacher at the Department of Education, I need a simple way to track student attendance without spending money on new software or buying extra devices.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "teacher"
+      ],
+      "organizations": [
+        "Department of Education"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-117",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "A nurse at St. Luke's Medical Center told me that night differentials can be negotiated. Is that true, and how should I raise the topic with the HR office?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "nurse"
+      ],
+      "organizations": [
+        "St. Luke's Medical Center"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'HR office' generic"
+  },
+  {
+    "id": "C-118",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "imperative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "Write a short job post for a pharmacist at Mercury Drug that highlights the benefits, the schedule, and the requirements for new licensed applicants in the province.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "pharmacist"
+      ],
+      "organizations": [
+        "Mercury Drug"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-119",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "My cousin is a security guard at SM City Tarlac and he works twelve-hour shifts. Is that legal under the labor code, and what overtime pay should he receive?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "security guard"
+      ],
+      "organizations": [
+        "SM City Tarlac"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-120",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "two_orgs",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 162,
+    "prompt": "The accountant of Ayala Land and the auditor from SGV & Co. disagree about how to record the deposit. Explain the two positions in neutral language for the board.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "accountant",
+        "auditor"
+      ],
+      "organizations": [
+        "Ayala Land",
+        "SGV & Co."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-121",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "My brother is an OFW seaman with Magsaysay Maritime Corporation, and he wants to understand how his allotment and savings should be set up for the next contract.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "seaman"
+      ],
+      "organizations": [
+        "Magsaysay Maritime Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "OFW is a status, seaman is the occupation"
+  },
+  {
+    "id": "C-122",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "passive",
+      "reversed_order",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Philippine General Hospital is hiring a medical technologist and a radiologic technologist. Rewrite this announcement so it is clearer and more inviting to applicants.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "medical technologist",
+        "radiologic technologist"
+      ],
+      "organizations": [
+        "Philippine General Hospital"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-123",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "question",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Does a call center agent at Concentrix or Teleperformance earn more than a customer service representative at a local bank, and are there night differentials for both?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "call center agent",
+        "customer service representative"
+      ],
+      "organizations": [
+        "Concentrix",
+        "Teleperformance"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-124",
+    "category": "OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "occupation_possessive_org",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 169,
+    "prompt": "The Bureau of Fire Protection's fire marshal and the city engineer disagree about the exit signs. Draft a neutral memo that lists both positions and suggests next steps.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "fire marshal",
+        "city engineer"
+      ],
+      "organizations": [
+        "Bureau of Fire Protection"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "occupation attached to org by possessive"
+  },
+  {
+    "id": "C-125",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "fragment",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 172,
+    "prompt": "Position: warehouse supervisor. Company: Pacific Harvest Foods Inc. Location: Tarlac City. Shift: night. Rewrite as a one-paragraph job summary for our internal newsletter.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "warehouse supervisor"
+      ],
+      "organizations": [
+        "Pacific Harvest Foods Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-126",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 172,
+    "prompt": "Hi, I'm Jennifer Salazar, a registered nurse at St. Luke's Medical Center, and I need a resignation letter template that thanks my colleagues and keeps a professional tone.",
+    "expected": {
+      "names": [
+        "Jennifer Salazar"
+      ],
+      "occupations": [
+        "registered nurse"
+      ],
+      "organizations": [
+        "St. Luke's Medical Center"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-127",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 177,
+    "prompt": "Please summarize this: Engr. Paolo Dimagiba, senior civil engineer at Megawide Construction Corporation, submitted the structural report for the new terminal building yesterday.",
+    "expected": {
+      "names": [
+        "Paolo Dimagiba"
+      ],
+      "occupations": [
+        "senior civil engineer"
+      ],
+      "organizations": [
+        "Megawide Construction Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-128",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "appositive",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "Atty. Rosario Gatchalian, partner at SyCip Salazar Hernandez & Gatchalian, represented the client in the hearing. Draft a short thank-you email for her time and effort.",
+    "expected": {
+      "names": [
+        "Rosario Gatchalian"
+      ],
+      "occupations": [
+        "partner"
+      ],
+      "organizations": [
+        "SyCip Salazar Hernandez & Gatchalian"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'partner' may be absent from gazetteer; org contains multiple surnames"
+  },
+  {
+    "id": "C-129",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "declarative",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "Dr. Benjamin Manalang, a professor at Tarlac State University, will give a talk on climate resilience. Write a short invitation that students can share on social media.",
+    "expected": {
+      "names": [
+        "Benjamin Manalang"
+      ],
+      "occupations": [
+        "professor"
+      ],
+      "organizations": [
+        "Tarlac State University"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-130",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "table",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 181,
+    "prompt": "Convert this into a paragraph:\n| Name | Role | Company |\n|---|---|---|\n| Ernesto Cabal | Welder | Mabuhay Steelworks Inc. |\n| Gina Ramos | Safety Officer | Mabuhay Steelworks Inc. |",
+    "expected": {
+      "names": [
+        "Ernesto Cabal",
+        "Gina Ramos"
+      ],
+      "occupations": [
+        "Welder",
+        "Safety Officer"
+      ],
+      "organizations": [
+        "Mabuhay Steelworks Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "markdown table"
+  },
+  {
+    "id": "C-131",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "list",
+      "bullets",
+      "no_please_opener",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "Rewrite these bullets as full sentences:\n- Liza Marquez, accountant, Ayala Land\n- Noel Tamayo, electrician, Meralco\n- Ivy Concepcion, pharmacist, Mercury Drug",
+    "expected": {
+      "names": [
+        "Liza Marquez",
+        "Noel Tamayo",
+        "Ivy Concepcion"
+      ],
+      "occupations": [
+        "accountant",
+        "electrician",
+        "pharmacist"
+      ],
+      "organizations": [
+        "Ayala Land",
+        "Meralco",
+        "Mercury Drug"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "3 triples in a bullet list"
+  },
+  {
+    "id": "C-132",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "json_unfenced",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "Explain this record to a non-technical colleague: {\"name\": \"Luis Montano\", \"job\": \"mechanic\", \"employer\": \"Toyota Motor Philippines\"} and tell me what each field means.",
+    "expected": {
+      "names": [
+        "Luis Montano"
+      ],
+      "occupations": [
+        "mechanic"
+      ],
+      "organizations": [
+        "Toyota Motor Philippines"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "JSON-looking text outside a code fence; normalization may or may not isolate it"
+  },
+  {
+    "id": "C-133",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "lowercase",
+      "run_on",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 182,
+    "prompt": "hi im rowena dizon a call center agent at concentrix. help me write a message asking my team leader for a schedule change because my commute from capas is getting too long and tiring",
+    "expected": {
+      "names": [
+        "rowena dizon"
+      ],
+      "occupations": [
+        "call center agent",
+        "team leader"
+      ],
+      "organizations": [
+        "concentrix"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase, informal"
+  },
+  {
+    "id": "C-134",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "conditional",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "If Mr. Rene Valdez, the chief financial officer of Aboitiz Equity Ventures, agrees to the meeting, please prepare three questions about the dividend policy for me.",
+    "expected": {
+      "names": [
+        "Rene Valdez"
+      ],
+      "occupations": [
+        "chief financial officer"
+      ],
+      "organizations": [
+        "Aboitiz Equity Ventures"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-135",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "multi_entity",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 223,
+    "prompt": "Turn these meeting notes into a short thank-you announcement: Principal Armando Dizon of Tarlac National High School thanked teacher Rey Bautista and nurse Grace Dela Peña of the Rural Health Unit for the vaccination drive.",
+    "expected": {
+      "names": [
+        "Armando Dizon",
+        "Rey Bautista",
+        "Grace Dela Peña"
+      ],
+      "occupations": [
+        "Principal",
+        "teacher",
+        "nurse"
+      ],
+      "organizations": [
+        "Tarlac National High School",
+        "Rural Health Unit"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "3 triples compressed in one sentence; 'Grace' given-name vs common word"
+  },
+  {
+    "id": "C-136",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "interrogative",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 173,
+    "prompt": "Help me write a thank-you note for Maricel Soriano, a flight attendant at Cebu Pacific, who looked after my mother during a rough flight. I also want to copy her supervisor.",
+    "expected": {
+      "names": [
+        "Maricel Soriano"
+      ],
+      "occupations": [
+        "flight attendant",
+        "supervisor"
+      ],
+      "organizations": [
+        "Cebu Pacific"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-137",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "passive",
+      "reversed_order",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 220,
+    "prompt": "Rewrite this news blurb with a more upbeat tone: Pharmacist Carla Manuel was hired by Mercury Drug, while the Philippine Pharmacists Association congratulated her on social media for becoming the youngest branch manager.",
+    "expected": {
+      "names": [
+        "Carla Manuel"
+      ],
+      "occupations": [
+        "Pharmacist",
+        "branch manager"
+      ],
+      "organizations": [
+        "Mercury Drug",
+        "Philippine Pharmacists Association"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'Pharmacists' inside org name must not yield an extra OCC hit"
+  },
+  {
+    "id": "C-138",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "code_block",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 202,
+    "prompt": "Can you explain what this snippet does?\n```js\nconst user = { name: 'Juan Dela Cruz', job: 'nurse', org: 'BDO Unibank' };\nconsole.log(user.name);\n```\nI mostly want to understand how the object is logged.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "all entities inside a fenced code block; expected NO detections"
+  },
+  {
+    "id": "C-139",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "inline_code",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "Why does `name = \"Maria Santos\"` throw an error in my Python script when I try to concatenate it with an integer age? I am using Python 3 on a Windows laptop.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "entity inside inline code; expected NO detections"
+  },
+  {
+    "id": "C-140",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "code_block",
+      "mixed",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 178,
+    "prompt": "My teammate Roel Navarro wrote this function, and I do not understand it:\n```python\ndef greet():\n    return 'Hello, Dr. Elena Cruz of Meralco'\n```\nPlease explain it line by line.",
+    "expected": {
+      "names": [
+        "Roel Navarro"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "detect prose name only; ignore code string"
+  },
+  {
+    "id": "C-141",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "code_block",
+      "sql",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 182,
+    "prompt": "Why does this query return nothing?\n```sql\nSELECT * FROM employees WHERE name = 'Carlos Reyes' AND company = 'Globe Telecom' AND role = 'engineer';\n```\nThe table definitely has data.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "SQL literals in fence; expected NO detections"
+  },
+  {
+    "id": "C-142",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "code_block",
+      "mixed",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "Please review this config and also tell Ana Reyes of Smart Communications that it is ready:\n```yaml\nowner: Pedro Santos\ncompany: Globe Telecom\nrole: nurse\n```",
+    "expected": {
+      "names": [
+        "Ana Reyes"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Smart Communications"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "prose entities detected; YAML entities ignored"
+  },
+  {
+    "id": "C-143",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "recipe",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "I need a recipe for chicken adobo that uses vinegar, soy sauce, garlic, and bay leaves. Please keep it simple enough for a beginner cook with only one pot and a stove.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-144",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "math",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "A jeepney travels 45 kilometers in 90 minutes. What is its average speed in kilometers per hour, and how long would a 120 kilometer trip take at that same speed?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "jeepney is a vehicle, not an occupation"
+  },
+  {
+    "id": "C-145",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "coding",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Write a JavaScript function that removes duplicate values from an array and returns the result sorted in ascending order, with a short explanation of its time complexity.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-146",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "holiday",
+      "person_in_event_name",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "List the Philippine holidays in December, such as Christmas Day and Rizal Day, and suggest a long weekend plan that fits a limited budget for a family of five.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Rizal Day' contains a surname; decide whether it is expected to flag"
+  },
+  {
+    "id": "C-147",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "places",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 164,
+    "prompt": "Tarlac City, Capas, and Concepcion are all in Central Luzon. Which of them is the best base for a weekend trip that includes hiking, local food, and cultural spots?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "places are out of scope (no PLACE category)"
+  },
+  {
+    "id": "C-148",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "title_case",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 132,
+    "prompt": "How To Cook Sinigang Na Baboy With Fresh Tamarind And Kangkong For A Family Dinner That Everybody Will Enjoy Even On A Rainy Evening",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Title Case text can trigger Compromise proper-noun tagging"
+  },
+  {
+    "id": "C-149",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "cultural_terms",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 157,
+    "prompt": "Explain the meaning of Sinulog, Ati-Atihan, and Pahiyas festivals, and tell me which one is the best to visit with young kids who get tired easily in crowds.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "capitalized festival names"
+  },
+  {
+    "id": "C-150",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "kinship_terms",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "Should I call my older cousin Ate or Manang, and does Kuya or Dodong sound more natural in Pampanga? I want to be respectful at the family reunion next month.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "address terms capitalized mid-sentence; not names"
+  },
+  {
+    "id": "C-151",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "languages",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Translate this paragraph from English to Filipino, and then explain the difference between Tagalog, Kapampangan, and Ilocano speakers when they say good morning to elders.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "languages/ethnolinguistic groups, not entities"
+  },
+  {
+    "id": "C-152",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "weather",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "What is the typical weather like in Tarlac City during March, and what should I pack for a two-day visit if I plan to walk around the town for most of the day?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-153",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "numbers_dates",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "Convert 2,500 pesos to US dollars at 56.4, then split it among five people, and tell me how much each person pays if one person covers 20 percent of the total.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-154",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "greeting",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 174,
+    "prompt": "Dear Sir or Madam, I am writing to ask about the requirements for a scholarship application. Please advise me on the steps, the deadlines, and the documents I need to submit.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-155",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "relational_roles",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 173,
+    "prompt": "My boss keeps scheduling meetings after hours, and my co-worker thinks it is normal. How can I talk to my supervisor about boundaries without sounding like I am complaining?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "supervisor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'boss'/'co-worker' relational; 'supervisor' may be in gazetteer"
+  },
+  {
+    "id": "C-156",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "fictional_characters",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "Explain how Harry Potter and Hermione Granger differ in how they solve problems, and compare their approach with Athena and Zeus from Greek mythology for a class essay.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "fictional/mythological names; policy decision, Compromise will likely flag them"
+  },
+  {
+    "id": "C-157",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "long_general",
+      "no_please_opener",
+      "generic_en",
+      "len_600-1000"
+    ],
+    "length": 625,
+    "prompt": "Explain, in simple steps, how a family can prepare for a strong typhoon. Include what to put in an emergency bag, how to protect important papers from water, how to store drinking water and food for at least three days, how to check on elderly relatives, and how to stay informed when the power is out. Also explain how to decide whether to evacuate early, what to do with pets, and how to keep a battery-powered radio ready. Finally, add a short checklist that children can read and follow by themselves, using friendly words and very short sentences, so that everyone in the house knows their task before the storm arrives.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "long, entity-free prose (~700 chars)"
+  },
+  {
+    "id": "C-158",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 173,
+    "prompt": "I recently qualified as an anesthesiologst and I keep getting assigned to night shifts. How do people in this field manage sleep, meals, and family time without burning out?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "anesthesiologst",
+        "canonical": "anesthesiologist",
+        "kind": "occupation",
+        "sim_levenshtein": 0.938,
+        "sim_damerau": 0.938,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "1 deletion in a 16-char term"
+  },
+  {
+    "id": "C-159",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "transposition",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "My brother is an electricain and he keeps telling me that I should never touch the breaker panel. Can you explain in plain words why wiring work needs a license?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "electricain",
+        "canonical": "electrician",
+        "kind": "occupation",
+        "sim_levenshtein": 0.818,
+        "sim_damerau": 0.909,
+        "expected_fuzzy_result": "borderline_metric_dependent"
+      }
+    ],
+    "notes": "transposition: Levenshtein 0.818 vs Damerau 0.909; behaviour depends on the metric used"
+  },
+  {
+    "id": "C-160",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "I want to become an accountnt but I'm not sure if I should take the CPA board exam right after graduation or work for a couple of years first. What would you suggest?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "CPA"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "accountnt",
+        "canonical": "accountant",
+        "kind": "occupation",
+        "sim_levenshtein": 0.9,
+        "sim_damerau": 0.9,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "1 deletion in 10-char term = exactly 0.90 (boundary)"
+  },
+  {
+    "id": "C-161",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "imperative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "Please help me write a follow-up email to the Departmnt of Health about my permit application. It has been pending for three weeks and nobody has given me an update.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Departmnt of Health",
+        "canonical": "Department of Health",
+        "kind": "organization",
+        "sim_levenshtein": 0.95,
+        "sim_damerau": 0.95,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-162",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 158,
+    "prompt": "I opened a savings account at the Phillipine National Bank last week. Can you explain what documents I should keep, and how often I should update my passbook?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Phillipine National Bank",
+        "canonical": "Philippine National Bank",
+        "kind": "organization",
+        "sim_levenshtein": 0.917,
+        "sim_damerau": 0.917,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-163",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "short_term_miss",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "Meralko sent me a bill that is double the usual amount. Draft a calm message asking for a meter re-check and a clear explanation of the charges for this month.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Meralko",
+        "canonical": "Meralco",
+        "kind": "organization",
+        "sim_levenshtein": 0.857,
+        "sim_damerau": 0.857,
+        "expected_fuzzy_result": "miss"
+      }
+    ],
+    "notes": "7-char term: 1 substitution = 0.857, below threshold; expected MISS by fuzzy (Compromise may still tag as org/proper noun)"
+  },
+  {
+    "id": "C-164",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "short_term_miss",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "My sister is a nurce in Dubai and she says the work is tiring but rewarding. What questions should I ask her before I decide to apply abroad next year as well?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "nurce",
+        "canonical": "nurse",
+        "kind": "occupation",
+        "sim_levenshtein": 0.8,
+        "sim_damerau": 0.8,
+        "expected_fuzzy_result": "miss"
+      }
+    ],
+    "notes": "5-char term: 0.80; expected MISS"
+  },
+  {
+    "id": "C-165",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "Our jeepny driver told us the fare will go up again next month. Help me compute how much more I would spend per week if I commute five days to school and back.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "jeepny driver",
+        "canonical": "jeepney driver",
+        "kind": "occupation",
+        "sim_levenshtein": 0.929,
+        "sim_damerau": 0.929,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-166",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "imperative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 164,
+    "prompt": "Ask the pharmasist whether the antibiotic can be taken with milk, and write the question in a way that is easy to say out loud at the counter without sounding rude.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "pharmasist",
+        "canonical": "pharmacist",
+        "kind": "occupation",
+        "sim_levenshtein": 0.9,
+        "sim_damerau": 0.9,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "1 substitution in 10-char term = 0.90 (boundary)"
+  },
+  {
+    "id": "C-167",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "I have a payroll account with BDO Unibanc and I want to transfer my salary to a savings account in another bank. What fees or limits should I expect when doing this?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "BDO Unibanc",
+        "canonical": "BDO Unibank",
+        "kind": "organization",
+        "sim_levenshtein": 0.909,
+        "sim_damerau": 0.909,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-168",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 166,
+    "prompt": "We celebrated my daughter's birthday at a Jolibee Foods Corporation branch near the plaza, and I want to write a thank-you message to the crew for their warm service.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Jolibee Foods Corporation",
+        "canonical": "Jollibee Foods Corporation",
+        "kind": "organization",
+        "sim_levenshtein": 0.962,
+        "sim_damerau": 0.962,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-169",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "short_term_miss",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "I am a teachr in a small school and my students struggle with reading comprehension. Suggest simple weekly activities that do not need printing or expensive materials.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "teachr",
+        "canonical": "teacher",
+        "kind": "occupation",
+        "sim_levenshtein": 0.857,
+        "sim_damerau": 0.857,
+        "expected_fuzzy_result": "miss"
+      }
+    ],
+    "notes": "7-char term: 0.857; expected MISS"
+  },
+  {
+    "id": "C-170",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "two_typos",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "As a software enginer at Accenture Philipines, I want to negotiate a better remote work arrangement. Help me prepare three talking points for my manager meeting tomorrow.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "software enginer",
+        "canonical": "software engineer",
+        "kind": "occupation",
+        "sim_levenshtein": 0.941,
+        "sim_damerau": 0.941,
+        "expected_fuzzy_result": "detect"
+      },
+      {
+        "surface": "Accenture Philipines",
+        "canonical": "Accenture Philippines",
+        "kind": "organization",
+        "sim_levenshtein": 0.952,
+        "sim_damerau": 0.952,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-171",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "name_typo",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 186,
+    "prompt": "Write a short email to Mria Santos from Globe Telecom asking whether the fiber line in our subdivision will be available before the end of the year. Mention that I enjoyed our last call.",
+    "expected": {
+      "names": [
+        "Mria Santos"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Globe Telecom"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "misspelled name; Compromise relies on capitalization, not fuzzy"
+  },
+  {
+    "id": "C-172",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "three_typos",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "Hello, I'm Jonh Reyes, a registerd nurse at St. Luke's Medicl Center. I need a short resignation letter that thanks my colleagues and keeps a professional tone throughout.",
+    "expected": {
+      "names": [
+        "Jonh Reyes"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "registerd nurse",
+        "canonical": "registered nurse",
+        "kind": "occupation",
+        "sim_levenshtein": 0.938,
+        "sim_damerau": 0.938,
+        "expected_fuzzy_result": "detect"
+      },
+      {
+        "surface": "St. Luke's Medicl Center",
+        "canonical": "St. Luke's Medical Center",
+        "kind": "organization",
+        "sim_levenshtein": 0.96,
+        "sim_damerau": 0.96,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "name typo + two fuzzy items"
+  },
+  {
+    "id": "C-173",
+    "category": "ORG",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "uppercase",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "THE PHILIPPINE NATIONAL BNAK ANNOUNCED NEW SERVICE FEES. PLEASE SUMMARIZE WHAT CHANGED FOR STUDENT ACCOUNTS AND LIST THE EFFECTIVE DATES IN A SIMPLE TABLE.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "PHILIPPINE NATIONAL BNAK",
+        "canonical": "Philippine National Bank",
+        "kind": "organization",
+        "sim_levenshtein": 0.917,
+        "sim_damerau": 0.958,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "uppercase + transposition; requires case-insensitive fuzzy"
+  },
+  {
+    "id": "C-174",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "double_letter",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Ayalla Land is advertising condo units near Makati. Write a list of questions I should ask the sales agent about hidden fees, turnover dates, and the payment schedule.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Ayalla Land",
+        "canonical": "Ayala Land",
+        "kind": "organization",
+        "sim_levenshtein": 0.909,
+        "sim_damerau": 0.909,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "10-char term, 1 insertion = 0.909"
+  },
+  {
+    "id": "C-175",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 171,
+    "prompt": "I graduated from the Universty of the Philippines and I am applying for a research assistant post. Please improve the education section of my resume so it sounds stronger.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "research assistant"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Universty of the Philippines",
+        "canonical": "University of the Philippines",
+        "kind": "organization",
+        "sim_levenshtein": 0.966,
+        "sim_damerau": 0.966,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-176",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "The securty guard at our village gate asked every visitor for an ID, and some people got angry. Write a polite notice explaining why the new rule is necessary.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "securty guard",
+        "canonical": "security guard",
+        "kind": "occupation",
+        "sim_levenshtein": 0.929,
+        "sim_damerau": 0.929,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-177",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "declarative",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "I work as a call center agnt on the night shift and my sleep is a mess. Suggest a realistic daily routine for someone who starts work at ten in the evening.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "call center agnt",
+        "canonical": "call center agent",
+        "kind": "occupation",
+        "sim_levenshtein": 0.941,
+        "sim_damerau": 0.941,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-178",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "missing_space",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 169,
+    "prompt": "I'm looking for a softwareengineer who can build a simple booking site for my resort in Subic. Please write a short, clear job post with the main requirements and tasks.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "softwareengineer",
+        "canonical": "software engineer",
+        "kind": "occupation",
+        "sim_levenshtein": 0.941,
+        "sim_damerau": 0.941,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "missing space"
+  },
+  {
+    "id": "C-179",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "typo",
+      "extra_letter",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 176,
+    "prompt": "Complaints about the Philippine Nationall Bank mobile app keep increasing. Summarize the usual issues customers mention and suggest what a good response from the bank would be.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "Philippine Nationall Bank",
+        "canonical": "Philippine National Bank",
+        "kind": "organization",
+        "sim_levenshtein": 0.96,
+        "sim_damerau": 0.96,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "id": "C-180",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "short_term_miss",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 165,
+    "prompt": "My cousin, a plummer, charged us double for fixing the kitchen sink. Is it rude to ask for an itemized receipt, and how can I phrase the request politely and calmly?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "plummer",
+        "canonical": "plumber",
+        "kind": "occupation",
+        "sim_levenshtein": 0.857,
+        "sim_damerau": 0.857,
+        "expected_fuzzy_result": "miss"
+      }
+    ],
+    "notes": "7-char term: 0.857; expected MISS"
+  },
+  {
+    "id": "C-181",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "transposition",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 156,
+    "prompt": "My aunt is a regsitered nurse and works in Riyadh. Can you suggest a gift that would be useful for her night shifts but still feels personal and thoughtful?",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "regsitered nurse",
+        "canonical": "registered nurse",
+        "kind": "occupation",
+        "sim_levenshtein": 0.875,
+        "sim_damerau": 0.938,
+        "expected_fuzzy_result": "borderline_metric_dependent"
+      }
+    ],
+    "notes": "transposition inside multi-word term"
+  },
+  {
+    "id": "C-182",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "typo",
+      "long",
+      "multi_typo",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 547,
+    "prompt": "Subject: Request for Clearance\n\nGood day. This is Maribel Tolentino, a medcal technologist at the Philippine General Hospitl. I am transferring to a clinic in Subic next month, and I would like to ask what documents I need from the HR department before my last day. My supervisor, Dr. Edgardo Quimson, a patholgist, has agreed to sign my clearance. Please help me rewrite this email in a respectful, concise tone, and add a polite reminder that the certificate of employment should show my position, my length of service, and my last salary grade.",
+    "expected": {
+      "names": [
+        "Maribel Tolentino",
+        "Edgardo Quimson"
+      ],
+      "occupations": [
+        "supervisor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "medcal technologist",
+        "canonical": "medical technologist",
+        "kind": "occupation",
+        "sim_levenshtein": 0.95,
+        "sim_damerau": 0.95,
+        "expected_fuzzy_result": "detect"
+      },
+      {
+        "surface": "Philippine General Hospitl",
+        "canonical": "Philippine General Hospital",
+        "kind": "organization",
+        "sim_levenshtein": 0.963,
+        "sim_damerau": 0.963,
+        "expected_fuzzy_result": "detect"
+      },
+      {
+        "surface": "patholgist",
+        "canonical": "pathologist",
+        "kind": "occupation",
+        "sim_levenshtein": 0.909,
+        "sim_damerau": 0.909,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "long prompt with 3 typos"
+  },
+  {
+    "id": "C-183",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "long",
+      "email",
+      "multi_line",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 692,
+    "prompt": "Subject: Request for Employment Verification\n\nGood day,\n\nThis is Jennifer Salazar, a registered nurse at St. Luke's Medical Center in Quezon City. I am applying for a work visa and my prospective employer, the Cleveland Medical Group, requires a certificate of employment from our HR department. My supervisor, Dr. Rafael Montenegro, a pulmonologist and department head, has already agreed to sign my clearance. Could you please help me rewrite this email so that it sounds formal, concise, and respectful? I also want to add a polite reminder that the certificate must indicate my position, my length of service, and my monthly salary range. Thank you very much for your time and assistance.",
+    "expected": {
+      "names": [
+        "Jennifer Salazar",
+        "Rafael Montenegro"
+      ],
+      "occupations": [
+        "registered nurse",
+        "pulmonologist",
+        "department head"
+      ],
+      "organizations": [
+        "St. Luke's Medical Center",
+        "Cleveland Medical Group"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~700 chars; 2 names, 3 occupations, 2 orgs"
+  },
+  {
+    "id": "C-184",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "long",
+      "report",
+      "chronological",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 703,
+    "prompt": "Incident report draft: On the evening of March 3, security guard Rodrigo Manalastas, who works for Sentinel Shield Security Agency, reported a minor fire near the loading dock of Pacific Harvest Foods Inc. in Tarlac City. The warehouse supervisor, Cynthia Ablaza, ordered an immediate evacuation while electrician Wilfredo Samonte shut down the main breaker. The Bureau of Fire Protection arrived within twelve minutes and confirmed that the cause was a damaged extension cord. No one was injured. Please convert this draft into a formal, chronological report with numbered paragraphs, and keep every person's role clearly stated so the management team can follow up with each of them without confusion.",
+    "expected": {
+      "names": [
+        "Rodrigo Manalastas",
+        "Cynthia Ablaza",
+        "Wilfredo Samonte"
+      ],
+      "occupations": [
+        "security guard",
+        "warehouse supervisor",
+        "electrician"
+      ],
+      "organizations": [
+        "Sentinel Shield Security Agency",
+        "Pacific Harvest Foods Inc.",
+        "Bureau of Fire Protection"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~780 chars; 3 triples"
+  },
+  {
+    "id": "C-185",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "long",
+      "resume",
+      "multi_line",
+      "no_please_opener",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 601,
+    "prompt": "Proofread this resume summary and fix grammar only:\n\nAlvin Jay Dela Rosa\nSenior Accountant | CPA\nCurrently employed at SGV & Co. since 2019. Previously an audit associate at Punongbayan & Araullo and a bookkeeper at a small trading company in Pampanga. Handled audits for clients such as Ayala Land, Globe Telecom, and Aboitiz Equity Ventures. Mentored three junior auditors, including Mary Grace Santiago and Kevin Soriano. Completed leadership training at the Asian Institute of Management. References available upon request, including my former manager, Atty. Imelda Roque of Punongbayan & Araullo.",
+    "expected": {
+      "names": [
+        "Alvin Jay Dela Rosa",
+        "Mary Grace Santiago",
+        "Kevin Soriano",
+        "Imelda Roque"
+      ],
+      "occupations": [
+        "Senior Accountant",
+        "CPA",
+        "audit associate",
+        "bookkeeper",
+        "auditors",
+        "manager"
+      ],
+      "organizations": [
+        "SGV & Co.",
+        "Punongbayan & Araullo",
+        "Ayala Land",
+        "Globe Telecom",
+        "Aboitiz Equity Ventures",
+        "Asian Institute of Management"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~800 chars; dense entity stress test; repeated org (Punongbayan & Araullo x2)"
+  },
+  {
+    "id": "C-186",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "long",
+      "narrative",
+      "ph",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 803,
+    "prompt": "My name is Rosalinda Esperanza and I work as a public school teacher at Tarlac National High School. Last week our principal, Mr. Armando Dizon, announced that the Department of Education will pilot a new reading program, and the district supervisor, Dr. Josefina Macapagal, will visit our school to observe. My co-teacher, Rey Bautista, who is also the school's guidance counselor, thinks we should invite parents from the Parents-Teachers Association to help. I am worried because I have only two weeks to prepare, and I still have to check forty-two exam papers. Can you help me create a two-week plan, a short announcement for parents, and a polite message to Mr. Dizon asking for extra support from the staff? Please keep the tone warm, practical, and realistic for a school with limited resources.",
+    "expected": {
+      "names": [
+        "Rosalinda Esperanza",
+        "Armando Dizon",
+        "Josefina Macapagal",
+        "Rey Bautista"
+      ],
+      "occupations": [
+        "public school teacher",
+        "principal",
+        "district supervisor",
+        "co-teacher",
+        "guidance counselor"
+      ],
+      "organizations": [
+        "Tarlac National High School",
+        "Department of Education",
+        "Parents-Teachers Association"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~900 chars; narrative Filipino school context"
+  },
+  {
+    "id": "C-187",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "long",
+      "distractors",
+      "ph",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 869,
+    "prompt": "Hello! I am planning a community event in Tarlac City this December and I need help with the program flow. The event is called Pasko sa Barangay, and it will include a gift-giving activity, a short parade along Rizal Street, and a free medical check-up. I already talked to Dr. Lorna Pineda, a family physician from the Tarlac Provincial Hospital, and Mr. Jun Dela Vega, who is a barangay tanod and the head of our youth group. They both agreed to help, but I still need to invite the Philippine Red Cross and a few sponsors. Please write an invitation letter that I can adapt for each sponsor, and a one-page schedule that keeps the morning activities short because many senior citizens will attend. Also remind me to bring chairs, tents, and extra water, since the weather in December can still be warm in the afternoon, and everyone will be standing for a long time.",
+    "expected": {
+      "names": [
+        "Lorna Pineda",
+        "Jun Dela Vega"
+      ],
+      "occupations": [
+        "family physician",
+        "barangay tanod"
+      ],
+      "organizations": [
+        "Tarlac Provincial Hospital",
+        "Philippine Red Cross"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~950 chars; mixed entities with capitalized non-entities (Pasko sa Barangay, Rizal Street, Tarlac City, December)"
+  },
+  {
+    "id": "C-188",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "long",
+      "memo",
+      "multi_line",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 759,
+    "prompt": "Memo draft:\n\nTo all staff, please note that effective next month the finance office will follow the new reimbursement process required by the Bureau of Internal Revenue and the Securities and Exchange Commission. Receipts from accredited suppliers such as Mercury Drug, National Book Store, and Puregold must now include the supplier's tax identification details. Expenses processed through BDO Unibank or Metrobank corporate cards will be reconciled weekly. Employees who are members of SSS, PhilHealth, or Pag-IBIG do not need to submit additional forms for their contributions, but should verify their records online. Please rewrite this memo so that it is shorter, friendlier, and easier to read, and keep every agency and company name exactly as written.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Bureau of Internal Revenue",
+        "Securities and Exchange Commission",
+        "Mercury Drug",
+        "National Book Store",
+        "Puregold",
+        "BDO Unibank",
+        "Metrobank",
+        "SSS",
+        "PhilHealth",
+        "Pag-IBIG"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~730 chars; 10 orgs, no names/occupations"
+  },
+  {
+    "id": "C-189",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "long",
+      "list",
+      "ph",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 585,
+    "prompt": "I am helping my barangay create a livelihood directory. So far we have listed a tricycle driver, a sari-sari store owner, two carpenters, a seamstress, a barber, a mechanic, a vulcanizing shop owner, a baker, a fisherman, a market vendor, and a freelance video editor. We also have a midwife, a barangay health worker, and a retired teacher who offers tutoring. I need you to group them into categories, suggest a simple way to display them on a poster for the community hall, and recommend a few missing services that would help residents who work from home or run small online shops.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "tricycle driver",
+        "sari-sari store owner",
+        "carpenters",
+        "seamstress",
+        "barber",
+        "mechanic",
+        "vulcanizing shop owner",
+        "baker",
+        "fisherman",
+        "market vendor",
+        "video editor",
+        "midwife",
+        "barangay health worker",
+        "teacher"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "~600 chars; 14 occupations, many not likely in gazetteer"
+  },
+  {
+    "id": "C-190",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "long",
+      "guest_list",
+      "ph",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 656,
+    "prompt": "We are finalizing the guest list for my parents' fortieth anniversary and I need help with the seating chart. Table one will have Lola Remedios Alonzo, Lolo Carmelo Alonzo, Tita Beth Alonzo-Reyes, and her husband Rodolfo Reyes. Table two will have my cousins Jasmine Faith Alonzo, Mikael Dave Alonzo, and Princess Anne Alonzo, plus their friend Joaquin Dela Rosa. Table three is for our neighbors, Aling Perla Santiago and Mang Ernie Santiago, together with the Manalo family. Please make the layout friendly for elders, avoid placing people who had disagreements near each other, and give me a short script to welcome everyone at the start of the program.",
+    "expected": {
+      "names": [
+        "Remedios Alonzo",
+        "Carmelo Alonzo",
+        "Beth Alonzo-Reyes",
+        "Rodolfo Reyes",
+        "Jasmine Faith Alonzo",
+        "Mikael Dave Alonzo",
+        "Princess Anne Alonzo",
+        "Joaquin Dela Rosa",
+        "Perla Santiago",
+        "Ernie Santiago"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "~700 chars; 10 names with Lola/Lolo/Tita/Aling/Mang kinship honorifics; 'Manalo family' is a family reference"
+  },
+  {
+    "id": "C-191",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "declarative",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 416,
+    "prompt": "I've been meaning to reach out to my former classmate, Katrina Joy Mallari, because she helped me a lot during our thesis defense and I never properly thanked her. We have not talked in almost three years, and I am nervous that the message will sound awkward. Can you help me write something sincere, short, and not too emotional, so that it feels natural and gives her an easy way to reply if she wants to catch up?",
+    "expected": {
+      "names": [
+        "Katrina Joy Mallari"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-192",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "narrative",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 389,
+    "prompt": "Here is what happened: Gerald Fontanilla borrowed my laptop on Monday, and when I asked about it on Wednesday, his sister Mikaela Fontanilla said he had already left for Baguio. I do not want to start a fight, but I need the laptop back before my submission on Friday. Please draft a calm message to Gerald that is firm but friendly, and a second one to Mikaela in case he does not answer.",
+    "expected": {
+      "names": [
+        "Gerald Fontanilla",
+        "Mikaela Fontanilla",
+        "Gerald",
+        "Mikaela"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "full names + later first-name-only mentions"
+  },
+  {
+    "id": "C-193",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "comparison",
+      "ph",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 468,
+    "prompt": "I'm trying to decide on a career change and I would like your honest comparison. Right now I'm a call center agent earning decent pay, but the night shift is wearing me down. I'm considering becoming a medical coder, a virtual assistant, or a licensed nurse. Please compare the three in terms of training time, cost in the Philippines, typical starting salary, and long-term growth, and then suggest how I can test one of them part-time before quitting my current job.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "call center agent",
+        "medical coder",
+        "virtual assistant",
+        "licensed nurse"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-194",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "list",
+      "ph",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 447,
+    "prompt": "Our family is trying to decide where to open savings accounts for the kids. We looked at BDO Unibank, Bank of the Philippine Islands, Metrobank, and Landbank of the Philippines, and the branches near us in Tarlac City are all crowded on weekends. Please make a comparison checklist covering minimum balance, ATM fees, mobile app reliability, and whether the bank offers youth accounts, and keep the language simple enough for my parents to follow.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "BDO Unibank",
+        "Bank of the Philippine Islands",
+        "Metrobank",
+        "Landbank of the Philippines"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-195",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "imperative",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 400,
+    "prompt": "Please help me prepare for tomorrow's interview. The panel will include Ms. Evelyn Castillo from Ayala Land and Mr. Dominic Uy from Globe Telecom, and I have been told they like candidates who ask thoughtful questions. I have a background in operations, but I'm worried about sounding too rehearsed. Give me ten sample questions I could ask them and a few tips on how to listen and respond naturally.",
+    "expected": {
+      "names": [
+        "Evelyn Castillo",
+        "Dominic Uy"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Ayala Land",
+        "Globe Telecom"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-196",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "ph",
+      "multi_entity",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 405,
+    "prompt": "My daughter's class adviser, Ma'am Rochelle Dimagiba, a Grade 4 teacher, sent a message about a school project, and the school nurse, Mrs. Clarita Buenaventura, also wants parents to submit updated health forms. I'm confused about which deadline comes first. Can you help me create a simple checklist and a short reply to both of them, thanking them and confirming that I will submit everything by Friday?",
+    "expected": {
+      "names": [
+        "Rochelle Dimagiba",
+        "Clarita Buenaventura"
+      ],
+      "occupations": [
+        "teacher",
+        "school nurse"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Ma'am / Mrs. honorifics"
+  },
+  {
+    "id": "C-197",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "ph",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 410,
+    "prompt": "I'm an electrician working for Meralco contractors, and a lot of customers ask me why their bills suddenly jump. I want to prepare a short, friendly explanation that I can send on messenger, covering meter readings, appliance usage, and what to do if they suspect an error. Please keep it under 150 words and avoid technical terms, because many of my clients are senior citizens who prefer simple explanations.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "electrician"
+      ],
+      "organizations": [
+        "Meralco"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-198",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "imperative",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 435,
+    "prompt": "I would like to nominate my colleague, Hannah Louise Pagsanjan, a senior data analyst at Smart Communications, for the company's employee of the year award. She led the churn analysis project, trained two interns, and stayed late during the system migration. Please write a nomination letter of around 250 words addressed to Mr. Vicente Layug, the HR director, that highlights her results without sounding exaggerated or overly formal.",
+    "expected": {
+      "names": [
+        "Hannah Louise Pagsanjan",
+        "Vicente Layug"
+      ],
+      "occupations": [
+        "senior data analyst",
+        "HR director"
+      ],
+      "organizations": [
+        "Smart Communications"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "'interns' may be in gazetteer"
+  },
+  {
+    "id": "C-199",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "medium",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 410,
+    "prompt": "I want to plan a simple weekend routine that includes cleaning the house, cooking in batches, and exercising for thirty minutes a day. My schedule is tight because I wake up early, and I tend to feel tired in the evenings. Please create a Saturday and Sunday plan with realistic time slots, short breaks, and one fun activity each day so that I do not burn out by Monday morning, and keep the tone encouraging.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "days of week are distractors"
+  },
+  {
+    "id": "C-200",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "medium",
+      "tech_terms",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 342,
+    "prompt": "I'm learning web development and I keep getting confused between HTML, CSS, and JavaScript. Can you explain what each one does using an analogy about building a house? After that, please give me a small project idea for beginners that uses all three, with a rough list of steps I can follow over two weeks, and a few common mistakes to avoid.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "capitalized tech terms are distractors"
+  },
+  {
+    "id": "C-201",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "typo",
+      "possessive",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 375,
+    "prompt": "Good afternoon. I am writing about my brother, Dennis Lacsamana, who works as an electricain at Philippine Nationall Bank's head office. He was injured at work last week, and we are trying to understand what benefits the company should provide. Please help me draft a polite inquiry to the HR department that asks for the correct process and the documents we need to prepare.",
+    "expected": {
+      "names": [
+        "Dennis Lacsamana"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "electricain",
+        "canonical": "electrician",
+        "kind": "occupation",
+        "sim_levenshtein": 0.818,
+        "sim_damerau": 0.909,
+        "expected_fuzzy_result": "borderline_metric_dependent"
+      },
+      {
+        "surface": "Philippine Nationall Bank",
+        "canonical": "Philippine National Bank",
+        "kind": "organization",
+        "sim_levenshtein": 0.96,
+        "sim_damerau": 0.96,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "typo directly before possessive 's"
+  },
+  {
+    "id": "C-202",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "ambiguous_words",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 340,
+    "prompt": "Mark my words: Will Hunter Baker is not the person we should hire, even though his resume says he used to cook for a big hotel. Grace Joy Rose, on the other hand, has the right attitude and a strong portfolio. Please help me write a short rejection note for the first and an offer email for the second, keeping both polite and legally safe.",
+    "expected": {
+      "names": [
+        "Will Hunter Baker",
+        "Grace Joy Rose"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "real names made of common words; 'Mark' and 'cook' are verbs here; Baker is a surname not an occupation"
+  },
+  {
+    "id": "C-203",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "lowercase",
+      "casual",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 302,
+    "prompt": "hey can you help me reply to this guy from lazada? his name is jericho tan and he keeps saying my parcel was delivered but i never received anything. i already checked with our guard and the neighbors. i want to sound firm but not rude, and i want to ask for a refund or a replacement within three days",
+    "expected": {
+      "names": [
+        "jericho tan"
+      ],
+      "occupations": [
+        "guard"
+      ],
+      "organizations": [
+        "lazada"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "all lowercase; 'guard' is a (security guard) occupation mention"
+  },
+  {
+    "id": "C-204",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "ph",
+      "narrative",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 378,
+    "prompt": "A friend of mine is a seafarer, and her husband works as a construction foreman, so their children mostly stay with their grandmother. She asked me to help create a monthly budget and a communication schedule so that the kids can talk to her during her contract. Please include savings for emergencies and a small allowance for the grandmother, and keep the calculations simple.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "seafarer",
+        "construction foreman"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-205",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "interrogative",
+      "public_figure",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 321,
+    "prompt": "Who is Imelda Marcos, and why do people still argue about her legacy? I read two very different articles last week and I cannot tell which one is more accurate. Please explain the main arguments from both sides in a neutral way, and suggest how I can check sources when reading about political figures in the Philippines.",
+    "expected": {
+      "names": [
+        "Imelda Marcos"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "public/political figure; name is still PII-pattern by NER"
+  },
+  {
+    "id": "C-206",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "plural",
+      "ph",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 343,
+    "prompt": "Hospitals like Makati Medical Center and The Medical City are hiring nurses, medical technologists, and radiologic technologists. I'm a fresh graduate and I do not know which role fits me. Please give me a short guide on the typical responsibilities, work hours, and growth for each role, and mention which one tends to have the lowest stress.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "nurses",
+        "medical technologists",
+        "radiologic technologists"
+      ],
+      "organizations": [
+        "Makati Medical Center",
+        "The Medical City"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "plural occupations vs 0.9 fuzzy; 'The' inside org name"
+  },
+  {
+    "id": "C-207",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "random_capitalization",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 265,
+    "prompt": "On Monday morning, Everyone is expected to bring Their ID, and Please remember that Tuesday is a holiday. After That, The Office will close early on Friday. Help me rewrite this announcement so the capitalization is correct and the tone is polite for all employees.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "random capitalization of common words; Compromise may mis-tag as proper nouns"
+  },
+  {
+    "id": "C-208",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "medium",
+      "passive",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 346,
+    "prompt": "It was Dr. Teodoro Sevilla, an orthopedic surgeon at The Medical City, who recommended physical therapy after my knee operation. The therapist assigned to me, Bea Marie Ledesma, has been very patient, and I want to write a thank-you card that mentions both of them and the hospital staff in general, but I do not want it to sound like a template.",
+    "expected": {
+      "names": [
+        "Teodoro Sevilla",
+        "Bea Marie Ledesma"
+      ],
+      "occupations": [
+        "orthopedic surgeon",
+        "therapist"
+      ],
+      "organizations": [
+        "The Medical City"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-209",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "code_block",
+      "mixed",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 384,
+    "prompt": "I'm reviewing code written by our intern, Paolo Medina, who works at Accenture Philippines as a junior developer. He put sample data in the file and I want to know if it is safe to commit:\n```json\n{\"employee\": \"Anna Lim\", \"role\": \"accountant\", \"company\": \"SGV & Co.\"}\n```\nIs it okay to share this repo with other teams if the data is fake? Please explain what to check before sharing.",
+    "expected": {
+      "names": [
+        "Paolo Medina"
+      ],
+      "occupations": [
+        "intern",
+        "junior developer"
+      ],
+      "organizations": [
+        "Accenture Philippines"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "prose entities detected; JSON inside fence ignored"
+  },
+  {
+    "id": "C-210",
+    "category": "OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "medium",
+      "typo",
+      "multi_typo",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 314,
+    "prompt": "I'm a pharmasist at Mercury Drug and I want to apply as a medical representative at Pfizer Philipines next year. Please help me rewrite my objective statement so it highlights my customer service background, my knowledge of prescription drugs, and my willingness to travel to different provinces for client visits.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "medical representative"
+      ],
+      "organizations": [
+        "Mercury Drug"
+      ]
+    },
+    "fuzzy_checks": [
+      {
+        "surface": "pharmasist",
+        "canonical": "pharmacist",
+        "kind": "occupation",
+        "sim_levenshtein": 0.9,
+        "sim_damerau": 0.9,
+        "expected_fuzzy_result": "detect"
+      },
+      {
+        "surface": "Pfizer Philipines",
+        "canonical": "Pfizer Philippines",
+        "kind": "organization",
+        "sim_levenshtein": 0.944,
+        "sim_damerau": 0.944,
+        "expected_fuzzy_result": "detect"
+      }
+    ],
+    "notes": "two typos in one sentence"
+  },
+  {
+    "id": "C-211",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "cover_letter",
+      "lowercase_start",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 186,
+    "prompt": "write a cover letter for a customer service job at Globe Telecom. my name is Angelica Torres, I was a call center agent at Concentrix for 3 years and I'm good at handling angry customers",
+    "expected": {
+      "names": [
+        "Angelica Torres"
+      ],
+      "occupations": [
+        "call center agent"
+      ],
+      "organizations": [
+        "Globe Telecom",
+        "Concentrix"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "terse, lowercase opener, no 'please'"
+  },
+  {
+    "id": "C-212",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "proofread",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 207,
+    "prompt": "Proofread my LinkedIn About section: I'm Dennis Ocampo, a senior civil engineer at Megawide with 10 years of experience in high-rise construction. I love mentoring juniors and sharing lessons from site work.",
+    "expected": {
+      "names": [
+        "Dennis Ocampo"
+      ],
+      "occupations": [
+        "senior civil engineer"
+      ],
+      "organizations": [
+        "Megawide"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "pasted text after instruction"
+  },
+  {
+    "id": "C-213",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "summarize",
+      "email_thread",
+      "multi_line",
+      "ph",
+      "len_250-599"
+    ],
+    "length": 297,
+    "prompt": "summarize this email thread for me\n\nFrom: Liza Montes (Finance Manager, Ayala Land)\nHi team, the quarterly reports are due Friday. Please send your numbers by Thursday noon.\n\nFrom: Carlo Bautista (Accountant, Ayala Land)\nNoted. I'll send mine tomorrow but I'm still waiting on the vendor invoices.",
+    "expected": {
+      "names": [
+        "Liza Montes",
+        "Carlo Bautista"
+      ],
+      "occupations": [
+        "Finance Manager",
+        "Accountant"
+      ],
+      "organizations": [
+        "Ayala Land"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "pasted multi-sender thread; roles in parentheses"
+  },
+  {
+    "id": "C-214",
+    "category": "NAME+ORG",
+    "label": "EDGE",
+    "tags": [
+      "claude_style",
+      "translate",
+      "surname_only",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 145,
+    "prompt": "translate to Tagalog: Dear Mr. Santos, thank you for choosing Mercury Drug. Your prescription from Dr. Reyes is ready for pick up at the counter.",
+    "expected": {
+      "names": [
+        "Santos",
+        "Reyes"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Mercury Drug"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "surname-only with honorifics; English source text"
+  },
+  {
+    "id": "C-215",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "claude_style",
+      "grammar_errors",
+      "non_normalized",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 139,
+    "prompt": "can you check my grammar: me and my friend Jasmine Reyes works at BPI as tellers and we is planning to open a savings program for the staff",
+    "expected": {
+      "names": [
+        "Jasmine Reyes"
+      ],
+      "occupations": [
+        "tellers"
+      ],
+      "organizations": [
+        "BPI"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "user text has grammar errors; violates normalization assumption on purpose"
+  },
+  {
+    "id": "C-216",
+    "category": "NAME+OCC+ORG",
+    "label": "EDGE",
+    "tags": [
+      "claude_style",
+      "advice",
+      "lowercase",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 145,
+    "prompt": "what's a good gift for my boss? she's the branch manager at BDO and her name is Ma'am Celia, she likes plants and coffee, budget around 500 pesos",
+    "expected": {
+      "names": [
+        "Celia"
+      ],
+      "occupations": [
+        "branch manager"
+      ],
+      "organizations": [
+        "BDO"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "single first name preceded by 'Ma'am'"
+  },
+  {
+    "id": "C-217",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "recommendation",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 189,
+    "prompt": "Write a LinkedIn recommendation for my colleague Mark Joseph Villamor, who is a data analyst at Smart Communications. Keep it under 120 words and make it sound genuine, not like a template.",
+    "expected": {
+      "names": [
+        "Mark Joseph Villamor"
+      ],
+      "occupations": [
+        "data analyst"
+      ],
+      "organizations": [
+        "Smart Communications"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-218",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "scam_check",
+      "quoted_message",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 186,
+    "prompt": "I got this text from someone claiming to be from the BIR. Is it a scam?\n\n\"Dear taxpayer, your TIN is flagged for review. Contact Officer Ramon Dela Torre immediately to avoid penalties.\"",
+    "expected": {
+      "names": [
+        "Ramon Dela Torre"
+      ],
+      "occupations": [
+        "Officer"
+      ],
+      "organizations": [
+        "BIR"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "scam-check is a very common Claude use; 'Officer' as title"
+  },
+  {
+    "id": "C-219",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "startup",
+      "unknown_org",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 192,
+    "prompt": "make a pitch deck outline for my startup, Kapitbahay Foods Inc. We sell frozen Filipino meals to OFW families abroad. I'm the founder, Ana Beatriz Lim, and we are raising our first seed round.",
+    "expected": {
+      "names": [
+        "Ana Beatriz Lim"
+      ],
+      "occupations": [
+        "founder"
+      ],
+      "organizations": [
+        "Kapitbahay Foods Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "unknown org, not in gazetteer"
+  },
+  {
+    "id": "C-220",
+    "category": "OCC",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "eli5",
+      "ph",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 152,
+    "prompt": "ELI5 what a barangay captain does. Also, is a barangay captain the same as a kagawad? I keep hearing both words during election season and I'm confused.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "barangay captain",
+        "kagawad"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-221",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "claude_style",
+      "rewrite_tone",
+      "honorific_single_name",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 174,
+    "prompt": "Rewrite in a more formal tone: hey Sir Ramon, sorry for the late reply, I was in the clinic all day. I'm a dentist so my schedule is crazy. Can we move the meeting to Friday?",
+    "expected": {
+      "names": [
+        "Ramon"
+      ],
+      "occupations": [
+        "dentist"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Sir' + first name; casual source text"
+  },
+  {
+    "id": "C-222",
+    "category": "ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "compare",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 167,
+    "prompt": "Compare Jollibee and McDonald's for a case study on fast food in the Philippines. Include market share, menu localization, and pricing strategy, and put it in a table.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": [
+        "Jollibee",
+        "McDonald's"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-223",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "claude_style",
+      "coding",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Write a Python function that validates Philippine mobile numbers like 0917 123 4567 and returns True or False, with a few test cases I can run in pytest.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "no entities; capitalized Python/Philippine are distractors"
+  },
+  {
+    "id": "C-224",
+    "category": "OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "legal_advice",
+      "ph",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 185,
+    "prompt": "My employer, Pacific Harvest Foods Inc., didn't pay my overtime for 3 months. I'm a warehouse supervisor. What are my options under Philippine labor law and where do I file a complaint?",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "warehouse supervisor"
+      ],
+      "organizations": [
+        "Pacific Harvest Foods Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": ""
+  },
+  {
+    "id": "C-225",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "roleplay",
+      "interview",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 178,
+    "prompt": "Act as an HR manager at Jollibee Foods Corporation and interview me for a marketing associate position. My name is Paolo Reyes. Ask one question at a time and wait for my answer.",
+    "expected": {
+      "names": [
+        "Paolo Reyes"
+      ],
+      "occupations": [
+        "HR manager",
+        "marketing associate"
+      ],
+      "organizations": [
+        "Jollibee Foods Corporation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "role-play prompt; entity is the role the AI plays"
+  },
+  {
+    "id": "C-226",
+    "category": "OCC",
+    "label": "EDGE",
+    "tags": [
+      "claude_style",
+      "roleplay",
+      "tutor",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 168,
+    "prompt": "Act as my English tutor. I'm a Grade 9 student and I keep mixing up 'their', 'there', and 'they're'. Give me five practice sentences and check my answers after I reply.",
+    "expected": {
+      "names": [],
+      "occupations": [
+        "student",
+        "tutor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "dictionary-dependent: student/tutor"
+  },
+  {
+    "id": "C-227",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "summarize",
+      "complaint",
+      "medium",
+      "generic_en",
+      "len_250-599"
+    ],
+    "length": 327,
+    "prompt": "Summarize this customer complaint in three bullet points and suggest a reply: \"My name is Cristina Bañaga. I ordered a refrigerator from Robinsons Appliances two weeks ago and it still has not been delivered. I called the hotline four times and nobody could tell me where it is. I want a refund or a delivery date by tomorrow.\"",
+    "expected": {
+      "names": [
+        "Cristina Bañaga"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Robinsons Appliances"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "pasted complaint; customer self-identifies"
+  },
+  {
+    "id": "C-228",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "resume",
+      "bullets",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 173,
+    "prompt": "Improve these resume bullets for me:\n- Managed a team of 8 agents as team leader\n- Trained new hires\nName: Joyce Ann Palma\nObjective: apply for an operations supervisor role",
+    "expected": {
+      "names": [
+        "Joyce Ann Palma"
+      ],
+      "occupations": [
+        "team leader",
+        "operations supervisor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "resume fragments with labels"
+  },
+  {
+    "id": "C-229",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "claude_style",
+      "explain_name",
+      "interrogative",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 142,
+    "prompt": "Is Dela Cruz a common surname in the Philippines? Also, how do Filipinos usually write names like Juan Miguel Dela Cruz Jr. on official forms?",
+    "expected": {
+      "names": [
+        "Juan Miguel Dela Cruz Jr."
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Dela Cruz' alone is a surname-only mention"
+  },
+  {
+    "id": "C-230",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Write a thank-you email to my thesis adviser, Ramon Sumulat, for guiding me through the final revisions. Keep it humble and under 150 words.",
+    "expected": {
+      "names": [
+        "Ramon Sumulat"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Sumulat' = wrote / to write"
+  },
+  {
+    "id": "C-231",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 148,
+    "prompt": "Congratulate Fernando Manalo on winning the barangay chess tournament. Draft a short Facebook post that plays with his surname without being cringy.",
+    "expected": {
+      "names": [
+        "Fernando Manalo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Manalo' = to win"
+  },
+  {
+    "id": "C-232",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Summarize in two sentences: Maricar Magsaysay filed the request on Monday and the office approved it on Wednesday, with a note to follow up in two weeks.",
+    "expected": {
+      "names": [
+        "Maricar Magsaysay"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Magsaysay' derives from the verb 'to tell / narrate'"
+  },
+  {
+    "id": "C-233",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 176,
+    "prompt": "Proofread this short bio for a program booklet: Ernesto Sumilang was born in Tarlac and has been teaching literature for thirty years. He enjoys gardening and old radio dramas.",
+    "expected": {
+      "names": [
+        "Ernesto Sumilang"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Sumilang' = was born; bio sentence also says 'was born' in English"
+  },
+  {
+    "id": "C-234",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Draft a recommendation letter for my classmate, Beatriz Mangahas, who is applying for a scholarship abroad. She is hardworking, organized, and a great team leader.",
+    "expected": {
+      "names": [
+        "Beatriz Mangahas"
+      ],
+      "occupations": [
+        "team leader"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Mangahas' = to dare"
+  },
+  {
+    "id": "C-235",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 153,
+    "prompt": "Help me write a short speech for the retirement of Mr. Alfredo Sumulong, who worked with us for thirty-five years. I want it to be funny but also moving.",
+    "expected": {
+      "names": [
+        "Alfredo Sumulong"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Sumulong' = to move forward"
+  },
+  {
+    "id": "C-236",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "lowercase",
+      "casual",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 152,
+    "prompt": "i need to message carlo sumulong about the group project but i dont know how to start. can you give me a polite opening line that doesnt sound desperate",
+    "expected": {
+      "names": [
+        "carlo sumulong"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase name whose surname is a verb form"
+  },
+  {
+    "id": "C-237",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "grammar_errors",
+      "non_normalized",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 148,
+    "prompt": "Fix the grammar: Jasmine Maglaya and her brother Dante Maglaya was invited to the opening of the new library, and they brings their grandmother too.",
+    "expected": {
+      "names": [
+        "Jasmine Maglaya",
+        "Dante Maglaya"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Maglaya' from 'laya' (free); user text has grammar errors"
+  },
+  {
+    "id": "C-238",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Explain in simple terms what a notary public does, then tell me how to prepare for my appointment with Atty. Gloria Magtanggol next Tuesday.",
+    "expected": {
+      "names": [
+        "Gloria Magtanggol"
+      ],
+      "occupations": [
+        "notary public"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Magtanggol' = to defend"
+  },
+  {
+    "id": "C-239",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Write a short message to Mr. Samuel Magalang asking if he can reschedule our meeting to Friday morning. Our team has a deadline on Thursday.",
+    "expected": {
+      "names": [
+        "Samuel Magalang"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Magalang' = respectful"
+  },
+  {
+    "id": "C-240",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Add a witty closing line for the wedding invitation of Isabella Dalisay and Miguel Matapang. Their surnames mean 'pure' and 'brave' in Filipino, so play on that.",
+    "expected": {
+      "names": [
+        "Isabella Dalisay",
+        "Miguel Matapang"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Dalisay = pure, Matapang = brave"
+  },
+  {
+    "id": "C-241",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 148,
+    "prompt": "Write a birthday greeting for my tita, Nenita Maganda. Yes, that's her real surname, and everyone jokes about it, so make it light and affectionate.",
+    "expected": {
+      "names": [
+        "Nenita Maganda"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Maganda = beautiful"
+  },
+  {
+    "id": "C-242",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "List three interview questions for Ricardo Masipag, who is applying as a warehouse supervisor. Focus on teamwork and safety, and keep the questions short.",
+    "expected": {
+      "names": [
+        "Ricardo Masipag"
+      ],
+      "occupations": [
+        "warehouse supervisor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Masipag = hardworking"
+  },
+  {
+    "id": "C-243",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "grammar_errors",
+      "non_normalized",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 159,
+    "prompt": "Check this sentence for errors: Rosario Mahal and her husband Teodoro Mahal opened a small bakery near the plaza last month and they sells bread every morning.",
+    "expected": {
+      "names": [
+        "Rosario Mahal",
+        "Teodoro Mahal"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Mahal = dear / expensive / love"
+  },
+  {
+    "id": "C-244",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 140,
+    "prompt": "Help me write an apology message to Lorna Malaya, my former teammate. I missed her farewell party last week and I want to make it up to her.",
+    "expected": {
+      "names": [
+        "Lorna Malaya"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Malaya = free"
+  },
+  {
+    "id": "C-245",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "noun_first_name",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 194,
+    "prompt": "Create a short introduction for our guest speaker, Bayani Cruz, who has been volunteering in disaster response for twenty years. Mention that his first name means hero without making it awkward.",
+    "expected": {
+      "names": [
+        "Bayani Cruz"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Bayani = hero (first name)"
+  },
+  {
+    "id": "C-246",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "noun_first_name",
+      "noun_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Ligaya Buhay is joining our team next week. Write a friendly welcome message for the group chat that doesn't joke about her name, because she has heard every pun already.",
+    "expected": {
+      "names": [
+        "Ligaya Buhay"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Ligaya = joy, Buhay = life; both words"
+  },
+  {
+    "id": "C-247",
+    "category": "NAME",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "noun_first_name",
+      "noun_surname",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 147,
+    "prompt": "Draft an email to Liwayway Bituin asking about the delayed reimbursement. Be polite and mention the receipt I submitted on the fifth of this month.",
+    "expected": {
+      "names": [
+        "Liwayway Bituin"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Liwayway = dawn, Bituin = star"
+  },
+  {
+    "id": "C-248",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "hyphenated",
+      "noun_first_name",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 138,
+    "prompt": "Rewrite this LinkedIn headline: Pag-asa Lakas | Community Organizer | Helping families rebuild after typhoons. Make it sound less generic.",
+    "expected": {
+      "names": [
+        "Pag-asa Lakas"
+      ],
+      "occupations": [
+        "Community Organizer"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Pag-asa = hope, Lakas = strength; hyphenated first name"
+  },
+  {
+    "id": "C-249",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "noun_first_name",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "My cousin Kalayaan Dimagiba is running for SK chairperson. Write a one-paragraph campaign introduction that highlights youth programs, sports, and clean-up drives.",
+    "expected": {
+      "names": [
+        "Kalayaan Dimagiba"
+      ],
+      "occupations": [
+        "chairperson"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Kalayaan = freedom; 'chairperson' is dictionary-dependent"
+  },
+  {
+    "id": "C-250",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "noun_first_name",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 155,
+    "prompt": "Dakila Reyes and Mutya Santos are the emcees for our school event. Write a short opening script for them that introduces the program and thanks the guests.",
+    "expected": {
+      "names": [
+        "Dakila Reyes",
+        "Mutya Santos"
+      ],
+      "occupations": [
+        "emcees"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Dakila = great, Mutya = muse/pearl; 'emcees' is dictionary-dependent"
+  },
+  {
+    "id": "C-251",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "occupation_word_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 135,
+    "prompt": "Write a short note thanking Rolando Panday, our welder, for fixing the gate so quickly. Mention that the whole team noticed his effort.",
+    "expected": {
+      "names": [
+        "Rolando Panday"
+      ],
+      "occupations": [
+        "welder"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Panday' = blacksmith (an occupation word); must NOT yield an extra OCC hit"
+  },
+  {
+    "id": "C-252",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "occupation_word_surname",
+      "title_collision",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 172,
+    "prompt": "Draft a polite email to Pastor Villareal about moving our youth retreat to March. Then write a second version for Jose Pastor, our youth coordinator, with the same request.",
+    "expected": {
+      "names": [
+        "Villareal",
+        "Jose Pastor"
+      ],
+      "occupations": [
+        "Pastor",
+        "youth coordinator"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Pastor' is both a title (occupation) and a surname/first name"
+  },
+  {
+    "id": "C-253",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "occupation_word_surname",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 163,
+    "prompt": "Help me write a message to Sofia Sastre, our tailor, asking if the barong will be ready by Friday. Keep it friendly because she always helps us at the last minute.",
+    "expected": {
+      "names": [
+        "Sofia Sastre"
+      ],
+      "occupations": [
+        "tailor"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Sastre' = tailor (Spanish loan, common PH surname); only 'tailor' should be OCC"
+  },
+  {
+    "id": "C-254",
+    "category": "NAME+OCC",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "occupation_word_surname",
+      "honorific",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 151,
+    "prompt": "Write a Google Maps review for the shop of Mang Isko Zapatero, a shoemaker in Marikina. He repaired my shoes in one afternoon and charged a fair price.",
+    "expected": {
+      "names": [
+        "Isko Zapatero"
+      ],
+      "occupations": [
+        "shoemaker"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Zapatero' = shoemaker (Spanish loan); 'Mang' honorific"
+  },
+  {
+    "id": "C-255",
+    "category": "NAME+ORG",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "org_filipino_word",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 154,
+    "prompt": "Write an email to Nenita Dalisay of Bayanihan Financial Services Inc. asking for a copy of my loan statement. Mention that my details are already on file.",
+    "expected": {
+      "names": [
+        "Nenita Dalisay"
+      ],
+      "occupations": [],
+      "organizations": [
+        "Bayanihan Financial Services Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "Filipino-word surname + Filipino-word org (not in gazetteer)"
+  },
+  {
+    "id": "C-256",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "org_filipino_word",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 185,
+    "prompt": "Introduce Jun Magbanua, a cashier at Liwanag Electric Cooperative, in the staff newsletter as our employee of the month. Add a fun fact that he runs a small sari-sari store on weekends.",
+    "expected": {
+      "names": [
+        "Jun Magbanua"
+      ],
+      "occupations": [
+        "cashier"
+      ],
+      "organizations": [
+        "Liwanag Electric Cooperative"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "Liwanag = light"
+  },
+  {
+    "id": "C-257",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "org_filipino_word",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 174,
+    "prompt": "Summarize this announcement: Dr. Salvacion Manalastas, a pediatrician at Tulong Kabuhayan Foundation, will lead a free check-up for children on Saturday at the barangay hall.",
+    "expected": {
+      "names": [
+        "Salvacion Manalastas"
+      ],
+      "occupations": [
+        "pediatrician"
+      ],
+      "organizations": [
+        "Tulong Kabuhayan Foundation"
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "Tulong Kabuhayan = help/livelihood"
+  },
+  {
+    "id": "C-258",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "word_and_name_together",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 183,
+    "prompt": "Write a headline for the school paper: Ramon Manalo wins the municipal chess tournament. The editor likes puns, so give me three that play on 'manalo', the Filipino word for 'to win'.",
+    "expected": {
+      "names": [
+        "Ramon Manalo"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "full name should be flagged; standalone quoted 'manalo' is a vocabulary word"
+  },
+  {
+    "id": "C-259",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "word_and_name_together",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 161,
+    "prompt": "Explain why 'Sumulat' works as both a surname and a verb in Filipino, using Ramon Sumulat as an example, and keep the explanation simple for a high school class.",
+    "expected": {
+      "names": [
+        "Ramon Sumulat"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "standalone capitalized 'Sumulat' is a word under discussion; policy decision whether to flag"
+  },
+  {
+    "id": "C-260",
+    "category": "NAME",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "last_first_format",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 139,
+    "prompt": "Alphabetize this attendee list and number the lines: Dalisay, Nenita; Manalo, Fernando; Mahal, Rosario; Sumulat, Ramon; Magsaysay, Maricar.",
+    "expected": {
+      "names": [
+        "Dalisay, Nenita",
+        "Manalo, Fernando",
+        "Mahal, Rosario",
+        "Sumulat, Ramon",
+        "Magsaysay, Maricar"
+      ],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Last, First format where every surname is a Filipino word"
+  },
+  {
+    "id": "C-261",
+    "category": "NAME+OCC",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "adjective_surname",
+      "comparison",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 170,
+    "prompt": "Who is the better fit for the receptionist job: Gina Matapang or Gina Maganda? Both have the same experience. Give me a fair way to compare them using only their resumes.",
+    "expected": {
+      "names": [
+        "Gina Matapang",
+        "Gina Maganda"
+      ],
+      "occupations": [
+        "receptionist"
+      ],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "same first name, adjective surnames"
+  },
+  {
+    "id": "C-262",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 151,
+    "prompt": "What does the Filipino word 'mahal' mean? I've seen it used for both 'love' and 'expensive' and I want to know how native speakers tell the difference.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase vocabulary word; no person"
+  },
+  {
+    "id": "C-263",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "verb_list",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 145,
+    "prompt": "Translate these Filipino verbs to English: sumulat, manalo, sumulong, magsaya, maglaro, sumayaw. Then give one example sentence for each of them.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "verb forms that are also surnames, lowercase, no person"
+  },
+  {
+    "id": "C-264",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 131,
+    "prompt": "Give me ten Filipino words that mean strong or brave, like matapang, malakas, and magiting, with their English meanings in a table.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "adjectives that double as surnames, no person"
+  },
+  {
+    "id": "C-265",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 120,
+    "prompt": "Write a short poem in English about bayani, bayanihan, and the spirit of helping neighbors move a house in the province.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'bayani' as a common noun"
+  },
+  {
+    "id": "C-266",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "greeting",
+      "claude_style",
+      "generic_en",
+      "len_100-249"
+    ],
+    "length": 127,
+    "prompt": "Write a welcome speech that starts with 'Mabuhay!' and greets guests from Japan visiting our school. Keep it under two minutes.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "capitalized Filipino greeting; not a name"
+  },
+  {
+    "id": "C-267",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 139,
+    "prompt": "Explain the difference between 'Malaya' as a Filipino word, as a first name, and as a historical place name, for my Filipino culture class.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "'Malaya' discussed as a concept, not a specific person; policy decision"
+  },
+  {
+    "id": "C-268",
+    "category": "NONE",
+    "label": "TN",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 151,
+    "prompt": "Make a vocabulary quiz about Filipino adjectives such as maganda, masipag, mabait, and matapang, with five multiple-choice questions and an answer key.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "lowercase adjectives; no person"
+  },
+  {
+    "id": "C-269",
+    "category": "NONE",
+    "label": "EDGE",
+    "tags": [
+      "filipino_word_name",
+      "vocab_only",
+      "kinship_terms",
+      "claude_style",
+      "ph",
+      "len_100-249"
+    ],
+    "length": 142,
+    "prompt": "Which is more polite in Filipino: using 'po' and 'opo', or using a person's name with Ate or Kuya? Explain with a couple of everyday examples.",
+    "expected": {
+      "names": [],
+      "occupations": [],
+      "organizations": []
+    },
+    "fuzzy_checks": [],
+    "notes": "Ate/Kuya capitalized as address terms; not names"
+  },
+  {
+    "id": "C-270",
+    "category": "NAME+OCC+ORG",
+    "label": "TP",
+    "tags": [
+      "filipino_word_name",
+      "verb_surname",
+      "adjective_surname",
+      "long",
+      "roster",
+      "claude_style",
+      "ph",
+      "len_600-1000"
+    ],
+    "length": 640,
+    "prompt": "I'm organizing a community clean-up and need help with the volunteer schedule. The team leads are Ramon Sumulat (logistics), Nenita Dalisay (food), Fernando Manalo (security), and Maricar Magsaysay (registration). Our partner, Bayanihan Financial Services Inc., will provide the shirts, and the municipal health officer, Dr. Salvacion Manalastas, will send two nurses. Make a one-page schedule from 6 AM to noon, assign each lead a time slot, write a short message I can send to all four, and add a reminder to bring gloves, trash bags, and drinking water, because last year many people forgot and we had to buy supplies at the last minute.",
+    "expected": {
+      "names": [
+        "Ramon Sumulat",
+        "Nenita Dalisay",
+        "Fernando Manalo",
+        "Maricar Magsaysay",
+        "Salvacion Manalastas"
+      ],
+      "occupations": [
+        "municipal health officer",
+        "nurses"
+      ],
+      "organizations": [
+        "Bayanihan Financial Services Inc."
+      ]
+    },
+    "fuzzy_checks": [],
+    "notes": "~640 chars; 5 names, all with Filipino-word surnames"
+  }
+]

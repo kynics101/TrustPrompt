@@ -245,7 +245,7 @@ const TrustNormalizer = (() => {
     const commonFirstNames = /\b(?:John|Mary|James|David|Robert|Michael|William|Richard|Charles|Joseph|Thomas|Alice|Bob|Charlie|Maria|Jose|Anna|Juan|Carlos|Luis|Pedro|Miguel|Jennifer|Jessica|Sarah|Laura|Susan|Karen|Nancy|Lisa|Sandra|Betty|Patricia|Margaret|Barbara|Dorothy|Kyleen|Maricel|Jerralyn)$/i;
     const languagesAndSubjects = /\b(?:Filipino|English|Spanish|French|German|Mandarin|Japanese|Korean|Arabic|Portuguese|Italian|Russian|Chinese|Algebra|Geometry|Biology|Chemistry|Physics|History|Geography|Literature|Mathematics|Science|Economics|Philosophy|Art|Music|Design)$/i;
     
-    text = text.replace(/(\b[a-z]+)( )([A-Z][a-z]{2,})/g, (full, word, sp, start) => {
+    text = text.replace(/((?<!['’])\b[a-z]+)( )([A-Z][a-z]{2,})/g, (full, word, sp, start) => {
       if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word) || languagesAndSubjects.test(start)) {
         return full;  // Don't insert period
       }

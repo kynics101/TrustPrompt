@@ -1,0 +1,20 @@
+BENIGN job words (assistant-written, 30): prompts with a job_title finding = 2
+   What is the best way to clean a driver for my printer? => ["printer"]
+   My laptop driver keeps crashing after the update => ["laptop driver"]
+TEMPLATE positive cues: 252/252 frames report the title
+TEMPLATE negative frames (no personal cue, expected silent): 36/36
+TEMPLATE case variants (sentence/lower/UPPER) of employer-at: 12/36
+   MISS please draft a note for veronika halden, electrician at kestrel dynami
+   MISS PLEASE DRAFT A NOTE FOR VERONIKA HALDEN, ELECTRICIAN AT KESTREL DYNAMI
+   MISS please draft a note for veronika halden, accountant at kestrel dynamic
+   MISS PLEASE DRAFT A NOTE FOR VERONIKA HALDEN, ACCOUNTANT AT KESTREL DYNAMIC
+   MISS please draft a note for veronika halden, pharmacist at kestrel dynamic
+   MISS PLEASE DRAFT A NOTE FOR VERONIKA HALDEN, PHARMACIST AT KESTREL DYNAMIC
+TEMPLATE head extension (modifier+head reported whole): 37/42
+   MISS warehouse nurse => ["nurse"]
+   MISS warehouse accountant => ["accountant"]
+   MISS warehouse teacher => ["teacher"]
+   MISS warehouse driver => ["driver"]
+   MISS warehouse counselor => ["counselor"]
+TEMPLATE extension does not absorb ordinary adjectives/determiners: 24/24
+HEADINGS (Title Case, assistant-written, 6): with a job_title finding = 0

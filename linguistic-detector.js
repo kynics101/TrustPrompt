@@ -15,6 +15,18 @@
 
 /* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA */
 
+// KNOWN LIMITATIONS (intentional, documented):
+// 1. Lowercase names: names written entirely in lowercase (e.g. after "cousin" or "brother" in casual text)
+//    are not detected because all name regexes require [A-Z] as the first character.
+//    normalizePath_C sentence-cases fully-lowercase prompts but not mixed-case ones.
+// 2. ALL-CAPS names: capsGuard in normalizePath_C sentence-cases ALL-CAPS prompts, which produces
+//    "Ricardo antonio bautista" — only the first word is capitalized, so multi-word names are split.
+// 3. Trade words inside names: names like "Mason Carpenter" contain tokens that are also job-title words.
+//    The detector may emit the trade word as a spurious extra finding or miss the name-vs-job ambiguity.
+// 4. Departments without a dedicated tag: there is no nlp_department patternId. Departments are only
+//    detected as nlp_organization when present in ORGANIZATIONS_DATA or matched by the structural pass.
+//    Informal department names absent from both sources are not detected.
+
 const TrustLinguisticDetector = (() => {
 
   // ── Module initialization ──────────────────────────────────────────────────
@@ -408,7 +420,19 @@ const TrustLinguisticDetector = (() => {
       "he's a ", "she's a ", "she's an "     // ★ FIX: Added he/she contractions
     ];
     
-    return jobTriggers.some(trigger => before.includes(trigger));
+    // Group 5: a trigger must start at a word boundary (otherwise "his " matches
+    // inside "this " and "my " inside "enemy ").
+    return jobTriggers.some(trigger => {
+      for (let i = before.indexOf(trigger); i !== -1; i = before.indexOf(trigger, i + 1)) {
+        if (i !== 0 && /[a-z0-9]/.test(before[i - 1])) continue;
+        // Group 5: the trigger must sit right before the title: at most 3 words
+        // in between ("am a very experienced <title>"), not anywhere in the last 50 chars.
+        const gap = before.slice(i + trigger.length).trim();
+        if (/[.,;:!?]/.test(gap)) continue;                // punctuation breaks the link to the title
+        if (gap === '' || gap.split(/\s+/).length <= 3) return true;
+      }
+      return false;
+    });
   }
 
   /**
@@ -1577,11 +1601,21 @@ const TrustLinguisticDetector = (() => {
     // ────────────────────────────────────────────────────────────────────────
     // PASS 1: Exact substring match (case-insensitive, word boundaries)
     // ────────────────────────────────────────────────────────────────────────
+    // D5 FIX: For org names that end in a non-word character (e.g. a trailing
+    // period in "SGV & Co."), the trailing \b requires the next character to be
+    // a word character, which fails when the org is followed by whitespace or
+    // end-of-string.  Replace the trailing \b with a lookahead that accepts
+    // whitespace, end-of-string, or common punctuation — while keeping the
+    // leading \b so we still require a word boundary at the start.
     console.debug(`[PATH_C/CSV_ORG] PASS 1: Testing ${EXTENSIVE_ORGANIZATIONS_ARRAY.length} organizations for exact match`);
     for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
       const orgLower = org.toLowerCase();
       const escaped = escapeRegex(orgLower);
-      const pattern = new RegExp(`\\b${escaped}\\b`, 'gi');
+      // Use a trailing lookahead instead of \b when the org name ends in a
+      // non-word character (e.g. "Inc." ends with ".").
+      const endsInNonWord = /\W$/.test(orgLower);
+      const trailingBoundary = endsInNonWord ? '(?=[\\s,;:.!?\'"\\)]|$)' : '\\b';
+      const pattern = new RegExp(`\\b${escaped}${trailingBoundary}`, 'gi');
       
       if (pattern.test(text)) {
         const normalized = orgLower;
@@ -1848,28 +1882,160 @@ const TrustLinguisticDetector = (() => {
    * @returns {Array} filtered/validated findings
    * @private
    */
+  // ── Group 5: structural job-title cues (D9) and head-noun extension (D10) ──
+
+  // Closed-class words that can never be part of a job-title modifier phrase.
+  const JOB_MOD_STOP = new Set((
+    'a an the this that these those my your our their his her its i we you he she they it who whom whose which what ' +
+    'and or but nor of in on at for to from by with as into onto over under about after before between through ' +
+    'is are was were be been being am do does did has have had will would can could should may might must shall ' +
+    'not no yes new good best great old other more most very just also only some any each every all both many much few ' +
+    'than then so if when while because since although'
+  ).split(' '));
+  // Closed set of qualification / seniority / status adjectives that commonly
+  // prefix a job head noun (adjectives in general are NOT accepted: "good", "new").
+  const JOB_MOD_ADJ = new Set((
+    'senior junior chief head lead assistant associate deputy acting interim registered certified licensed ' +
+    'public private civil virtual online general executive staff resident visiting part-time full-time ' +
+    'freelance independent professional sworn charge'
+  ).split(' '));
+  const JOB_NOT_NAME_START = /^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December)\b/;
+
+  /** All whole-word, case-insensitive occurrences of span in text as [start,end]. */
+  function jobOccurrences(text, span) {
+    const out = [], hay = text.toLowerCase(), n = span.toLowerCase();
+    if (!n) return out;
+    for (let i = hay.indexOf(n); i !== -1; i = hay.indexOf(n, i + 1)) {
+      const b = i === 0 ? ' ' : hay[i - 1], a = i + n.length >= hay.length ? ' ' : hay[i + n.length];
+      if (!/[a-z0-9]/.test(b) && !/[a-z0-9]/.test(a)) out.push([i, i + n.length]);
+    }
+    return out;
+  }
+
+  /**
+   * D9: does this occurrence of a dictionary title show a STRUCTURAL sign that
+   * it describes a person's job (as opposed to a common noun)?  Cues:
+   *   1. multi-word title (specific enough on its own)
+   *   2. a job label right before it ("job:", "position -", "role =")
+   *   3. "as / hired as / promoted to [a|the]" right before it
+   *   4. followed by "at|of|for|with|under|from [the] Capitalized" (an employer)
+   *   5. directly followed by a full capitalised name ("Title First Last")
+   *   6. directly after "First Last," (appositive), optionally with a/an/the
+   *   7. next to a list/résumé delimiter ("|", "•")
+   */
+  function hasStructuralJobCue(text, s, e) {
+    const before = text.slice(Math.max(0, s - 60), s);
+    const after = text.slice(e, e + 70);
+    const span = text.slice(s, e);
+    // Heading guard: when most other words in the sentence are Capitalised (Title
+    // Case headings, ALL-CAPS), capitalisation carries no information, so the
+    // name/employer cues (4, 5, 6) are disabled for this occurrence.
+    const capsUseless = (() => {
+      const sentStart = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('?', s - 1)) + 1;
+      let sentEnd = text.length;
+      for (const ch of ['.', '!', '?']) { const k = text.indexOf(ch, e); if (k !== -1 && k < sentEnd) sentEnd = k; }
+      const words = (text.slice(sentStart, s) + ' ' + text.slice(e, sentEnd)).match(/[A-Za-z][A-Za-z'’-]*/g) || [];
+      const rest = words.slice(1);                                   // ignore the sentence-initial word
+      if (rest.length < 4) return false;
+      return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
+    })();
+    const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
+    if (/\s/.test(span.trim()) && !definiteBefore) return true;                         // 1 (multi-word, not a bare definite description)
+    if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
+    if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before)) return true;      // 3
+    if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
+    if (!capsUseless) {
+      const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
+      if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
+      // (an optional "." is tolerated: normalizePath_C inserts one between a lowercase word and a Title-case word)
+      if (/^[.,]?\s+[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/.test(after) &&
+          !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
+      if (/(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;               // 6
+    }
+    if (/[|•]\s*$/.test(before) || /^\s*[|•]/.test(after)) return true;                                              // 7
+    return false;
+  }
+
+  /**
+   * D10: extend an accepted title leftwards over up to 3 modifier words
+   * ("registered nurse", "jeepney driver", "public school teacher").
+   * A modifier is a non-closed-class word that Compromise tags as a noun, or a
+   * word from the small closed qualification/seniority adjective set; hyphen
+   * prefixes ("co-teacher") are attached directly. Returns the new start index.
+   */
+  function extendJobHeadLeft(text, s) {
+    let start = s;
+    for (let k = 0; k < 3; k++) {
+      const pre = text.slice(0, start);
+      let m = pre.match(/([A-Za-z]+)-$/);                     // attached prefix: co-, vice-
+      if (m) { start -= m[0].length; continue; }
+      m = pre.match(/([A-Za-z][A-Za-z'-]*)\s$/);              // single preceding word
+      if (!m) break;
+      const w = m[1], lw = w.toLowerCase();
+      if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
+      let ok = JOB_MOD_ADJ.has(lw);
+      if (!ok && window.nlp) {
+        try {
+          const d = window.nlp(w);
+          ok = d.has('#Noun') && !d.has('#Pronoun') && !d.has('#Value') && !d.has('#Person') &&
+               !d.has('#Adjective');
+        } catch (_) { ok = false; }
+      }
+      if (!ok) break;
+      start -= m[0].length;
+    }
+    return start;
+  }
+
   function validateJobTitlesWithCompromise(csvFindings, text, doc) {
     if (!COMPROMISE_AVAILABLE || csvFindings.length === 0) {
       // If no compromise or no findings, return all CSV findings
       return csvFindings;
     }
-    
+
     const validated = [];
-    
+
     for (const finding of csvFindings) {
       const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
-      
+
       try {
-        // High-confidence CSV matches (exact) bypass most validation
-        if (finding.source === 'csv_exact_match' && finding.confidence === 'high') {
-          // Still check context - must appear in job-related context
-          if (checkJobContext(text, actualSpan)) {
-            validated.push(finding);
-            console.debug(`[PATH_C/VAL_JOB] PASS (high-conf + context): "${finding.name}"`);
-          } else {
-            // Even exact matches should have job context to be flagged
-            console.debug(`[PATH_C/VAL_JOB] FILTER (no context): "${finding.name}"`);
+        // Exact / phrase dictionary hits (high confidence)
+        if ((finding.source === 'csv_exact_match' || finding.source === 'csv_phrase_match') && finding.confidence === 'high') {
+          // Group 5 (D9): keep when a trigger phrase OR any occurrence shows a
+          // structural personal-job cue; a bare common noun with neither stays out.
+          const occs = jobOccurrences(text, actualSpan);
+          let keepStart = -1, keepEnd = -1;
+          if (checkJobContext(text, actualSpan)) { keepStart = occs.length ? occs[0][0] : -1; keepEnd = occs.length ? occs[0][1] : -1; }
+          if (keepStart < 0 || !occs.length) {
+            for (const [s, e] of occs) {
+              if (hasStructuralJobCue(text, s, e)) { keepStart = s; keepEnd = e; break; }
+            }
           }
+          const trig = checkJobContext(text, actualSpan);
+          let keepStructural = -1;
+          for (const [s2, e2] of occs) { if (hasStructuralJobCue(text, s2, e2)) { keepStructural = s2; break; } }
+          if (!trig && keepStart < 0) {
+            console.debug(`[PATH_C/VAL_JOB] FILTER (no context/cue): "${finding.name}"`);
+            continue;
+          }
+          // A lone adjective-only word ("former", "extra") is not a title, unless a
+          // strong structural cue (not just a trigger phrase) vouches for it.
+          if (keepStructural < 0 && !/\s/.test(actualSpan.trim()) && window.nlp) {
+            const d = window.nlp(actualSpan);
+            if (d.has('#Adjective') && !d.has('#Noun')) { console.debug(`[PATH_C/VAL_JOB] FILTER (adjective): "${finding.name}"`); continue; }
+          }
+          // Group 5 (D10): head-noun extension to the left.
+          if (keepStart >= 0) {
+            const ns = extendJobHeadLeft(text, keepStart);
+            if (ns < keepStart) {
+              const ext = text.slice(ns, keepEnd);
+              validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));
+              console.debug(`[PATH_C/VAL_JOB] PASS (extended head): "${ext}"`);
+              continue;
+            }
+          }
+          validated.push(finding);
+          console.debug(`[PATH_C/VAL_JOB] PASS (high-conf + context/cue): "${finding.name}"`);
           continue;
         }
         
@@ -1891,8 +2057,30 @@ const TrustLinguisticDetector = (() => {
         validated.push(finding);
       }
     }
-    
-    return validated;
+
+    // Group 5: containment dedup — drop a title whose every occurrence lies
+    // inside an occurrence of a longer kept title ("agent" in "call center
+    // agent"), and collapse identical spans produced by head extension.
+    const seenSpan = new Set();
+    const unique = validated.filter(f => {
+      const k = (f.rawMatch || f.name).toLowerCase();
+      if (seenSpan.has(k)) return false;
+      seenSpan.add(k);
+      return true;
+    });
+    return unique.filter(f => {
+      const short = f.rawMatch || f.name;
+      const sOcc = jobOccurrences(text, short);
+      if (!sOcc.length) return true;
+      const lOcc = [];
+      for (const g of unique) {
+        const longer = g.rawMatch || g.name;
+        if (g !== f && longer.length > short.length && longer.toLowerCase().includes(short.toLowerCase())) {
+          lOcc.push(...jobOccurrences(text, longer));
+        }
+      }
+      return !(lOcc.length && sOcc.every(([s, e]) => lOcc.some(([ls, le]) => s >= ls && e <= le)));
+    });
   }
 
   /**
@@ -2691,6 +2879,334 @@ const TrustLinguisticDetector = (() => {
     return findings;
   }
 
+  // ── D3: Structural organization detection (suffix + head-word patterns) ──────
+
+  /**
+   * D3 FIX: Detect organization names that are NOT in ORGANIZATIONS_DATA by
+   * matching structural patterns — either a recognized corporate suffix or a
+   * recognized head word — instead of relying on the CSV whitelist alone.
+   *
+   * Two sub-patterns:
+   *   (a) SUFFIX pattern  — capitalized phrase ending with a corporate/legal
+   *       suffix such as "Corporation", "Inc.", "Ltd.", "LLC", "& Co."
+   *   (b) HEAD pattern    — capitalized phrase starting with a recognized
+   *       org head word such as "Bureau", "Department of", "Foundation", etc.
+   *
+   * Guards (to prevent common-phrase false positives):
+   *   1. Minimum span: at least 2 words total.
+   *   2. Deduplication against CSV findings (already captured).
+   *   3. shouldFilterCommonOrganization: standard common-word filter.
+   *   4. looksLikePlaceName: place heuristic (all structural matches are non-CSV).
+   *
+   * Structural findings skip validateOrganizationsWithCompromise because that
+   * validator tests CSV membership context (checkOrgContext looks for triggers
+   * that most non-CSV orgs will lack) and would reject most valid hits.
+   *
+   * @param {string} text - The normalized text to search.
+   * @param {Set<string>} alreadyFoundLower - Lower-cased rawMatches already
+   *   detected by findOrganizationsCSVFirst (for deduplication).
+   * @returns {Array} structural org findings (source: 'structural_match').
+   * @private
+   */
+  function findOrganizationsStructural(text, alreadyFoundLower) {
+    const found = [];
+    if (!text || text.length === 0) return found;
+
+    // ── (a) SUFFIX pattern ───────────────────────────────────────────────────
+    // Matches: "[Name Fragment] <suffix>"  where the name fragment is a
+    // sequence of one or more "name tokens" joined by spaces, " & ", or " and ".
+    //
+    // A name token is:  [A-Z][A-Za-z'.-]*(?:-[A-Za-z'.-]+)*
+    //   • starts with uppercase
+    //   • may contain apostrophes (O'Brien), periods (St., Dr.), hyphens (Santos-Lim)
+    //   • hyphenated extensions are allowed (e.g. "Santos-Lim", "Luke's")
+    //
+    // The comma-before-suffix case is handled by an optional ",\s*" immediately
+    // before the suffix word (e.g. "Southpoint Supplies, Inc.").
+    //
+    // Stop-word filter: at least one token in the name fragment must NOT be a
+    // pure stop word ("The", "A", "An") so bare "The Inc." is never emitted.
+    //
+    // NAME_TOKEN:  an individual name word — starts uppercase, may contain
+    //   apostrophes (O'Brien), periods (St., Ltd.), hyphens (Santos-Lim).
+    //   Note: a trailing period is absorbed into the token (e.g. "Ltd.").
+    //
+    // The leading negative lookahead and the per-continuation-token lookahead both
+    // block title-cased conjunctions/articles from being matched as name tokens.
+    // This prevents normalizer sentence-casing ("Ltd. And Southpoint") from
+    // causing a cross-org greedy match.
+    //
+    // SUFFIX_RE structure:
+    //   \b (?!TITLE_STOP) <fragment: NAME_TOKENs> ,?\s+ <SUFFIX_WORD> \b
+    //   Trailing comma-space before the suffix handles "Supplies, Inc."
+    // TITLE_STOP: single-word conjunctions/articles that the normalizer may
+    // sentence-case (e.g. "And" after a period).  Used as:
+    //   1. A negative lookahead inside NAME_FRAG to prevent continuation tokens
+    //      from being title-cased conjunctions ("Eastwind Packaging Ltd. And Southpoint")
+    //   2. A guard at the START of SUFFIX_RE to prevent a match from beginning
+    //      with a title-cased conjunction ("And Southpoint Supplies, Inc")
+    const TITLE_STOP_PAT = '(?:And|Or|But|The|A|An|Of|For|In|At|On|By|To)(?=[^A-Za-z\'.-]|$)';
+    const NAME_TOKEN  = '[A-Z][A-Za-z\'.-]*(?:-[A-Za-z\'.-]+)*';
+    // Leading token: blocked from being a stand-alone title-stop word.
+    // Continuation tokens: also blocked from starting at a title-stop word.
+    // The connector between tokens allows an optional " & " (ampersand) so
+    // "O'Brien & Associates Ltd" is captured as a single fragment, but ONLY
+    // when the & is NOT immediately followed by "Co" (which starts a suffix).
+    const NAME_FRAG   = `(?!${TITLE_STOP_PAT})${NAME_TOKEN}(?:\\s+(?:&(?!\\s*Co)\\s+)?(?!${TITLE_STOP_PAT})${NAME_TOKEN})*`;
+    const SUFFIX_WORD = '(?:Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|LLC|LLP|&\\s*Co\\.?)';
+    const SUFFIX_RE = new RegExp(
+      `\\b(${NAME_FRAG}),?\\s+(${SUFFIX_WORD})\\b`, 'g'
+    );
+
+    // Stop words that alone are not meaningful name fragments
+    const FRAG_STOP_WORDS = new Set(['the', 'a', 'an', 'of', 'for', 'in', 'and', 'or', 'but', 'at', 'on', 'by', 'to']);
+
+    /**
+     * Returns true when the name fragment before the suffix contains at
+     * least one capitalised token that is not a stop word.
+     */
+    function hasNonStopToken(fragment) {
+      return fragment.split(/[\s&]+/).some(
+        tok => tok.length > 0 && !FRAG_STOP_WORDS.has(tok.toLowerCase())
+      );
+    }
+
+    let m;
+    while ((m = SUFFIX_RE.exec(text)) !== null) {
+      const fragment = m[1].trim();
+      const suffixWord = m[2].trim();
+      // Reconstruct the full match, preserving the original comma-space if present
+      const rawText = m[0].trim();
+      const full = rawText.replace(/\s+/g, ' ');
+      if (!hasNonStopToken(fragment)) continue;            // stop-word guard (Fix 3)
+      if (full.split(/\s+/).length < 2) continue;          // guard 1: ≥ 2 words
+      const lowerFull = full.toLowerCase();
+      if (alreadyFoundLower.has(lowerFull)) continue;      // guard 2: dedup
+      if (shouldFilterCommonOrganization(full)) continue;  // guard 3
+      if (looksLikePlaceName(full)) continue;              // guard 4
+      alreadyFoundLower.add(lowerFull);                    // mark seen
+      found.push({
+        name: full,
+        rawMatch: full,
+        confidence: 'medium',
+        source: 'structural_match',
+        csvValidated: false,
+        validated: false
+      });
+      console.debug(`[PATH_C/STRUCTURAL] Suffix match: "${full}"`);
+    }
+
+    // ── (b) HEAD pattern ─────────────────────────────────────────────────────
+    // Split into two sub-patterns based on whether the head word appears at
+    // the START or END of the name phrase:
+    //
+    // (b1) HEAD_PREPOSITION_RE — head words that appear at the START and MUST
+    //      be followed by a linking preposition (of/on/for/in) before the name.
+    //      Without the preposition, these are ordinary English words that appear
+    //      in many non-org phrases (e.g. "Unit Testing Basics", "Center Stage").
+    //
+    // (b2) HEAD_SUFFIX_RE — head words that appear at the END of a phrase,
+    //      preceded by a proper-name fragment. These are already suffix-like and
+    //      do not need a preposition gate.
+    //
+    // (b3) DEPT_RE — "Department of [Name]" (two-word trigger, already gated).
+
+    // (b1) Preposition-gated head-first patterns
+    // Pattern: [optional leading modifiers] <HeadWord> <prep> [the|a|an] <Capitalized words>
+    //
+    // FIX A — Leading-modifier back-extension:
+    //   Optionally captures 1–3 leading capitalized modifier words that precede the
+    //   head word, e.g. "Federal" in "Federal Bureau of Investigation" or "National"
+    //   in "National Commission on Indigenous Peoples".
+    //
+    //   A leading-modifier token is a capitalized word that is NOT any of the
+    //   excluded function words: The, A, An, This, That, And, Or, But, Of, On,
+    //   For, In, At, By, With, From, To.  The negative lookahead ensures these
+    //   purely functional words are never consumed as modifiers.
+    //
+    // Note: "in" is intentionally excluded from the preposition alternatives — it
+    // is a spatial preposition that commonly appears after head words in benign
+    // phrases like "Center in Quezon City" or "School in Manila" but rarely forms
+    // an org name (unlike "of", "on", "for" which are structural org-name connectors).
+    //
+    // The pattern stops before a possessive "'s" by using [A-Za-z-]* in the
+    // name-word component (no apostrophe, to prevent consuming "'s' at phrase end).
+    //
+    // LEADING_MOD: one capitalized word that is not a function word, repeated 1–3 times.
+    const LEADING_MOD_EXCL = '(?:The|A|An|This|That|And|Or|But|Of|On|For|In|At|By|With|From|To)\\b';
+    const LEADING_MOD      = `(?:(?!${LEADING_MOD_EXCL})[A-Z][A-Za-z'.-]+\\s+){1,3}`;
+    const HEAD_PREPOSITION_RE = new RegExp(
+      `\\b((?:${LEADING_MOD})?(?:Bureau|Office|Commission|Council|Agency|Authority|Center|Unit|School)\\s+(?:of|on|for)\\s+(?:(?:the|a|an)\\s+)?[A-Z][A-Za-z-]*(?:\\s+[A-Z][A-Za-z-]*){0,5})(?='s\\b|[^A-Za-z'-]|$)`,
+      'g'
+    );
+
+    while ((m = HEAD_PREPOSITION_RE.exec(text)) !== null) {
+      const span = m[1].trim();
+      if (span.split(/\s+/).length < 3) continue;           // guard 1: head + prep + at-least-one-name-word
+      const lowerSpan = span.toLowerCase();
+      if (alreadyFoundLower.has(lowerSpan)) continue;       // guard 2: dedup
+      if (shouldFilterCommonOrganization(span)) continue;   // guard 3
+      if (looksLikePlaceName(span)) continue;               // guard 4
+      alreadyFoundLower.add(lowerSpan);
+      found.push({
+        name: span,
+        rawMatch: span,
+        confidence: 'medium',
+        source: 'structural_match',
+        csvValidated: false,
+        validated: false
+      });
+      console.debug(`[PATH_C/STRUCTURAL] Head match (preposition-gated): "${span}"`);
+    }
+
+    // (b2) Head-suffix patterns — head word at the END, preceded by a name fragment
+    // Pattern: <Capitalized name fragment> <SuffixHeadWord>
+    // At least one preceding capitalized word is required.
+    // Guard: the fragment must not begin with a title-stop word ("The", "A", etc.)
+    // since "The Philippine Nurses Association" would otherwise match starting from "The".
+    const TITLE_STOP_START = /^(?:The|A|An|Of|For|In|At|On|By|To|And|Or|But)\s/i;
+    const HEAD_SUFFIX_RE = /\b([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*)*\s+(?:Association|Cooperative|Foundation|Federation|Society))\b/g;
+
+    while ((m = HEAD_SUFFIX_RE.exec(text)) !== null) {
+      const span = m[1].trim();
+      if (span.split(/\s+/).length < 2) continue;           // guard 1: ≥ 2 words
+      if (TITLE_STOP_START.test(span)) continue;            // guard 1b: no stop-word fragment start
+      const lowerSpan = span.toLowerCase();
+      if (alreadyFoundLower.has(lowerSpan)) continue;       // guard 2: dedup
+      if (shouldFilterCommonOrganization(span)) continue;   // guard 3
+      if (looksLikePlaceName(span)) continue;               // guard 4
+      alreadyFoundLower.add(lowerSpan);
+      found.push({
+        name: span,
+        rawMatch: span,
+        confidence: 'medium',
+        source: 'structural_match',
+        csvValidated: false,
+        validated: false
+      });
+      console.debug(`[PATH_C/STRUCTURAL] Head match (suffix-style): "${span}"`);
+    }
+
+    // (b3) "Department of [Name]" — two-word trigger, at least one following word
+    // Stops before possessive 's to avoid "Department of Education's" → use non-apostrophe in name-word.
+    const DEPT_RE = /\b(Department\s+of(?:\s+(?:the\s+)?[A-Z][A-Za-z-]*(?:\s+[A-Z][A-Za-z-]*){0,4})?)(?='s\b|[^A-Za-z-]|$)/g;
+
+    while ((m = DEPT_RE.exec(text)) !== null) {
+      const span = m[1].trim();
+      if (span.split(/\s+/).length < 3) continue;           // guard 1: ≥ 3 words (Dept + of + name)
+      const lowerSpan = span.toLowerCase();
+      if (alreadyFoundLower.has(lowerSpan)) continue;       // guard 2: dedup
+      if (shouldFilterCommonOrganization(span)) continue;   // guard 3
+      if (looksLikePlaceName(span)) continue;               // guard 4
+      alreadyFoundLower.add(lowerSpan);
+      found.push({
+        name: span,
+        rawMatch: span,
+        confidence: 'medium',
+        source: 'structural_match',
+        csvValidated: false,
+        validated: false
+      });
+      console.debug(`[PATH_C/STRUCTURAL] Head match (dept): "${span}"`);
+    }
+
+    // ── (c) INSTITUTION_RE — institution-ending words ─────────────────────
+    // FIX B: Detect organization names that end in a well-known institution
+    // type word (Hospital, University, College, School, Bank, Clinic,
+    // Institute, Academy) or the two-word ending "Medical Center".
+    //
+    // Pattern: <name fragment> <institution ending>
+    //
+    // The name fragment uses the same generalized name-token definition as
+    // SUFFIX_RE: starts uppercase, allows hyphens, apostrophes, periods,
+    // ampersands.  Minimum: at least one name token before the ending
+    // (the institution ending itself counts as the second word, giving ≥ 2
+    // words total).
+    //
+    // A bare institution ending word with no preceding proper-name fragment
+    // (e.g. "Hospital" alone) is blocked because the fragment requires ≥ 1
+    // non-stop-word token.
+    //
+    // "School" overlap: HEAD_PREPOSITION_RE captures "School of X" (head first).
+    // INSTITUTION_RE captures "X School" (ending last).  Both can fire
+    // independently; deduplication handles the rare overlap.
+    //
+    // "Medical Center" is a two-word ending handled by an alternative branch.
+    //
+    // INST_ENDING: the institution-type keyword (single or two-word).
+    const INST_NAME_TOKEN = '[A-Z][A-Za-z\'.-]*(?:-[A-Za-z\'.-]+)*';
+    // Connector between name tokens: space, or " & " (ampersand connector).
+    const INST_NAME_FRAG  = `(?!${TITLE_STOP_PAT})${INST_NAME_TOKEN}(?:\\s+(?:&(?!\\s*Co)\\s+)?(?!${TITLE_STOP_PAT})${INST_NAME_TOKEN})*`;
+    const INST_ENDING_PAT = '(?:Hospital|University|College|School|Bank|Clinic|Institute|Academy|Medical\\s+Center)';
+    const INSTITUTION_RE  = new RegExp(
+      // Optional "of/for/on [the] Name…" tail (group 2) completes names like "X Institute of Y";
+      // it is kept only for endings that take such a complement (see EXT_ENDINGS below).
+      `\\b(${INST_NAME_FRAG}\\s+${INST_ENDING_PAT})(\\s+(?:of|for|on)\\s+(?:(?:the|a|an)\\s+)?[A-Z][A-Za-z-]*(?:\\s+[A-Z][A-Za-z-]*){0,3})?\\b`,
+      'g'
+    );
+
+    while ((m = INSTITUTION_RE.exec(text)) !== null) {
+      const span = m[1].trim();                            // name fragment + ending word
+      const extTail = (m[2] || '').replace(/\s+/g, ' ').trim();   // optional "of/for/on …" tail
+      const EXT_ENDINGS = /(?:University|College|School|Bank|Institute|Academy)$/;
+      // Guard 1: require ≥ 2 words total
+      if (span.split(/\s+/).length < 2) continue;
+      // Guard 2: the name fragment (everything before the ending word) must
+      // contain at least one non-stop-word token, to block bare endings.
+      // Extract fragment by removing the ending from the tail.
+      const endingMatch = span.match(new RegExp(`\\s+${INST_ENDING_PAT}$`));
+      if (!endingMatch) continue;
+      const fragment = span.slice(0, span.length - endingMatch[0].length).trim();
+      if (!fragment || !hasNonStopToken(fragment)) continue;
+      // Guard 3 (Group 2c fix): an institution ending cannot directly follow
+      // another institution ending ("X University College"): the earlier ending
+      // already closed the name.  Emit the shorter span instead of the run-on.
+      // Guard 4: bound the name fragment to its last 4 tokens so the match
+      // cannot absorb an unbounded run of capitalised words (e.g. a person's
+      // name written on the line before the org).
+      const fragTokens = fragment.split(/\s+/);
+      const followsEnding = new RegExp(`^${INST_ENDING_PAT}$`).test(fragTokens[fragTokens.length - 1]);
+      let finalSpan;
+      if (followsEnding) {
+        if (fragTokens.length < 2) continue;               // bare ending alone
+        finalSpan = fragTokens.slice(-5).join(' ');        // up to 4 name tokens + their ending
+      } else {
+        finalSpan = fragTokens.slice(-4).join(' ') + endingMatch[0];
+      }
+      // Guard 5: if the span ends with an org already verified by an earlier
+      // pass (dictionary), cut it back to that verified org; the leading
+      // tokens are then more likely neighbouring text than part of the name.
+      const lowerFinal = finalSpan.toLowerCase();
+      for (const known of alreadyFoundLower) {
+        if (known.length < lowerFinal.length && lowerFinal.endsWith(' ' + known)) {
+          finalSpan = finalSpan.slice(finalSpan.length - known.length);
+          break;
+        }
+      }
+      // Complement tail ("X Institute of Y"): only when the span was not cut back
+      // to a verified org and the ending is one that takes an "of" complement.
+      if (extTail && !followsEnding && finalSpan.toLowerCase() === (fragTokens.slice(-4).join(' ') + endingMatch[0]).toLowerCase() && EXT_ENDINGS.test(finalSpan)) {
+        finalSpan = finalSpan + ' ' + extTail;
+      }
+      const lowerSpan = finalSpan.toLowerCase();
+      if (alreadyFoundLower.has(lowerSpan)) continue;      // guard: dedup
+      if (shouldFilterCommonOrganization(finalSpan)) continue;  // common-word guard
+      if (looksLikePlaceName(finalSpan)) continue;              // place guard
+      alreadyFoundLower.add(lowerSpan);
+      found.push({
+        name: finalSpan,
+        rawMatch: finalSpan,
+        confidence: 'medium',
+        source: 'structural_match',
+        csvValidated: false,
+        validated: false
+      });
+      console.debug(`[PATH_C/STRUCTURAL] Institution match: "${finalSpan}"`);
+    }
+
+    return found;
+  }
+
   // ── Main scanning function ─────────────────────────────────────────────────
 
   /**
@@ -2963,6 +3479,16 @@ const TrustLinguisticDetector = (() => {
       
       let csvOrgFindings = findOrganizationsCSVFirst(textNLP);
       console.debug(`[TrustPrompt/PATH_C] CSV Organizations found: ${csvOrgFindings.length}`);
+
+      // D3: Structural org pass — runs after CSV to avoid re-detecting CSV hits.
+      // Build a set of lower-cased rawMatches already found so structural can
+      // skip them.  We pass the set by reference so structural can also mark its
+      // own hits (prevents duplicate structural matches within the same call).
+      const csvOrgFoundLower = new Set(
+        csvOrgFindings.map(o => (o.rawMatch || o.name).toLowerCase())
+      );
+      const structuralOrgFindings = findOrganizationsStructural(textNLP, csvOrgFoundLower);
+      console.debug(`[TrustPrompt/PATH_C] Structural Org Findings: ${structuralOrgFindings.length}`);
       
       // ═══════════════════════════════════════════════════════════════════════
       // STAGE 3: COMPROMISE.JS VALIDATION GATE
@@ -3013,8 +3539,12 @@ const TrustLinguisticDetector = (() => {
           console.debug(`[TrustPrompt/PATH_C] Filtered CSV org (common word): "${orgRaw}"`);
           continue;
         }
-        if (looksLikePlaceName(orgRaw)) {
-          console.debug(`[TrustPrompt/PATH_C] Filtered CSV org (place name): "${orgRaw}"`);
+        // D4 FIX: CSV exact-match findings are trusted over the place heuristic.
+        // "Cebu Pacific" is a real registered org in the CSV; dropping it because
+        // "cebu" is in PLACE_NAME_WORDS produces a false negative.  We only apply
+        // the place filter to non-exact findings (fuzzy / keyword / structural).
+        if (org.source !== 'csv_exact_match' && looksLikePlaceName(orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered non-exact CSV org (place name): "${orgRaw}"`);
           continue;
         }
         findings.push({
@@ -3030,6 +3560,75 @@ const TrustLinguisticDetector = (() => {
       }
       
       console.debug(`[TrustPrompt/PATH_C] Total findings: ${findings.length} (names: ${nameCount}, jobs: ${validatedJobTitles.length}, orgs: ${validatedOrganizations.length})`);
+
+      // D3: Push structural org findings (not run through Compromise validation).
+      // Apply the same shouldFilterCommonOrganization and looksLikePlaceName
+      // guards that CSV findings pass above.
+      for (const org of structuralOrgFindings) {
+        const orgRaw = org.rawMatch || org.name;
+        if (shouldFilterCommonOrganization(orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered structural org (common word): "${orgRaw}"`);
+          continue;
+        }
+        if (looksLikePlaceName(orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered structural org (place name): "${orgRaw}"`);
+          continue;
+        }
+        // Skip if already present as any finding (name or org) with the same rawMatch
+        if (findings.some(f => f.rawMatch.toLowerCase() === orgRaw.toLowerCase())) {
+          console.debug(`[TrustPrompt/PATH_C] Skipped structural org (duplicate in findings): "${orgRaw}"`);
+          continue;
+        }
+        findings.push({
+          patternId: 'nlp_organization',
+          label: 'Organization (structural_match)',
+          risk: 'low',
+          rawMatch: orgRaw,
+          safeVersion: '[ORGANIZATION REDACTED]',
+          source: 'C_linguistic',
+          confidence: org.confidence,
+          csvValidated: false
+        });
+        console.debug(`[TrustPrompt/PATH_C] Added structural org: "${orgRaw}"`);
+      }
+      console.debug(`[TrustPrompt/PATH_C] Structural orgs added: ${structuralOrgFindings.length}`);
+
+      // Group 2c fix: containment dedup.  Drop an org finding whose every
+      // occurrence in the text lies inside an occurrence of a longer org
+      // finding ("Asian Institute" inside "Asian Institute of Management").
+      // A short org that also appears on its own elsewhere is kept.
+      {
+        const occ = (needle) => {
+          const out = [], hay = textNLP.toLowerCase(), n = needle.toLowerCase();
+          if (!n) return out;
+          for (let i = hay.indexOf(n); i !== -1; i = hay.indexOf(n, i + 1)) {
+            const before = i === 0 ? ' ' : hay[i - 1], after = i + n.length >= hay.length ? ' ' : hay[i + n.length];
+            if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) out.push([i, i + n.length]);
+          }
+          return out;
+        };
+        const orgIdx = findings.map((f, i) => (f.patternId === 'nlp_organization' ? i : -1)).filter(i => i >= 0);
+        const drop = new Set();
+        for (const i of orgIdx) {
+          const short = findings[i].rawMatch;
+          const shortOcc = occ(short);
+          if (!shortOcc.length) continue;
+          const longerOcc = [];
+          for (const j of orgIdx) {
+            const longer = findings[j].rawMatch;
+            if (j !== i && longer.length > short.length && longer.toLowerCase().includes(short.toLowerCase())) {
+              longerOcc.push(...occ(longer));
+            }
+          }
+          if (longerOcc.length && shortOcc.every(([s, e]) => longerOcc.some(([ls, le]) => s >= ls && e <= le))) drop.add(i);
+        }
+        if (drop.size) {
+          for (const i of [...drop].sort((a, b) => b - a)) {
+            console.debug(`[PATH_C/ORG_DEDUP] Dropped contained org: "${findings[i].rawMatch}"`);
+            findings.splice(i, 1);
+          }
+        }
+      }
       
       // ═══════════════════════════════════════════════════════════════════════
       // STAGE 5: METHOD 4.5 - Names in directive contexts (object position)

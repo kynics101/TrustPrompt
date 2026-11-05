@@ -1,0 +1,15 @@
+BENIGN (assistant-written, 40 prompts): prompts with any nlp_* finding = 10, with an organization finding = 0
+   What is the difference between a list and a tuple? => person_name:What
+   Quarterly Report Template Draft => person_name:Quarterly Report Template
+   Introduction To Machine Learning Course Outline => person_name:Learning Course Outline
+   Why does my sourdough starter smell like vinegar? => job_title:starter
+   What are good questions to ask at the end of an in => person_name:What
+   The meeting is moved to Friday afternoon, please u => person_name:Friday
+   What is a good stretching routine after running? => person_name:What
+   Annual Science Fair Registration Form => person_name:Annual Science Fair; person_name:Registration Form
+   Student Council Election Poster Ideas => person_name:Poster Ideas
+   Community Garden Volunteer Schedule => person_name:Community Garden Volunteer
+TEMPLATE institution-ending: 200/200 frames report the exact entity
+TEMPLATE no-run-on (ending after ending): 30/30 frames avoid a merged span
+TEMPLATE containment dedup: 8/8
+TEMPLATE St./possessive: 24/24

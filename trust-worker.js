@@ -204,6 +204,144 @@ const SENSITIVE_CONTEXT_IDS = new Set([
 
 const RISK_ORDER = { none: 0, low: 1, moderate: 2, high: 3 };
 
+// ── Scoring-unit grouping (mirror of scanner.js) ──────────────────────────────
+//
+// Closely related fields collapse into one "scoring unit" so the distinct-type
+// count and base total are not inflated when several fields describe the same
+// information category. Detection stays field-specific; only the risk
+// calculation counts the unit once.
+//   Contact Information       → email and/or phone number  (base 5)
+//   Organizational Affiliation → org name, job title, dept  (base 2)
+const SCORING_UNIT_GROUPS = {
+  contact_information: new Set([
+    "email",
+    "ph_mobile",
+    "phone_intl",
+  ]),
+  organizational_affiliation: new Set([
+    "trigger_employer",
+    "nlp_organization",
+    "nlp_job_title",
+  ]),
+};
+
+const SCORING_UNIT_BASE = {
+  contact_information:        5,
+  organizational_affiliation: 2,
+};
+
+function scoringUnitKey(patternId) {
+  for (const unitKey in SCORING_UNIT_GROUPS) {
+    if (SCORING_UNIT_GROUPS[unitKey].has(patternId)) return unitKey;
+  }
+  return patternId;
+}
+
+function scoringUnitBase(unitKey) {
+  if (unitKey in SCORING_UNIT_BASE) return SCORING_UNIT_BASE[unitKey];
+  return BASE_SCORES[unitKey] ?? 0;
+}
+
+// ── Rule 2 — First-person self-attribution anchor (mirror of scanner.js) ──────
+//
+// Explicit first-person self-attribution acts ONLY as an alternative Rule 2
+// trigger. It is never scored and never changes the numeric base score.
+const FIRST_PERSON_ANCHORS = [
+  /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
+  /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
+  /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
+  /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
+  /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
+  /\bi\s+(?:earn|owe|make)\b/i,
+  /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
+  /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
+];
+
+// ── Rule 2 — Contextual exclusion filter (mirror of scanner.js) ───────────────
+//
+// Deterministic non-disclosure patterns. When the relevant sentence matches one
+// of these and NO attribution pattern overrides it, the Rule 2 escalation is
+// suppressed. Only the escalation is suppressed — identifiers, context terms,
+// and the numeric base score are unchanged.
+const EXCLUSION_PATTERNS = [
+  // Research / academic reference
+  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper))\b/i,
+  // Educational / informational inquiry
+  /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about)\b/i,
+  // General discussion
+  /\b(?:commonly\s+affects|refers?\s+to|is\s+defined\s+as|are\s+defined\s+as|examples?\s+of|generally\s+known\s+as)\b/i,
+  // Hypothetical reference
+  /\b(?:imagine\s+if|suppose\s+that|for\s+example|hypothetically|let's\s+say|what\s+if)\b/i,
+];
+
+// ── Rule 2 — Positive attribution override patterns (mirror of scanner.js) ────
+//
+// A clear personal disclosure/attribution overrides any exclusion phrase in the
+// same sentence and keeps the Rule 2 escalation.
+const ATTRIBUTION_PATTERNS = [
+  /\bi\s+(?:have|had)\b/i,
+  /\bi\s+(?:was|were|got|am|been)\s+diagnosed\s+(?:with|for)?\b/i,
+  /\bmy\s+diagnosis\s+is\b/i,
+  /\bi\s+(?:take|am\s+taking|am\s+on)\b/i,
+  /\bmy\s+(?:salary|income|wage|debt|loan)\s+(?:is|was)\b/i,
+  /\b[A-Z][a-z]+\s+(?:was|were|got|is|has\s+been)\s+diagnosed\s+(?:with|for)?\b/,
+  /\b[A-Z][a-z]+(?:'s)?\s+(?:salary|income|diagnosis|condition)\s+(?:is|was)\b/,
+];
+
+function splitSentences(text) {
+  if (!text || typeof text !== "string") return [];
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function findSentenceContaining(fullText, needle) {
+  if (!fullText || !needle) return fullText || "";
+  const sentences = splitSentences(fullText);
+  const lowNeedle = String(needle).toLowerCase();
+  for (const s of sentences) {
+    if (s.toLowerCase().includes(lowNeedle)) return s;
+  }
+  return fullText;
+}
+
+function hasFirstPersonAnchor(text) {
+  if (!text) return false;
+  return FIRST_PERSON_ANCHORS.some(re => re.test(text));
+}
+
+function matchesExclusion(text) {
+  if (!text) return false;
+  return EXCLUSION_PATTERNS.some(re => re.test(text));
+}
+
+function matchesAttribution(text) {
+  if (!text) return false;
+  return ATTRIBUTION_PATTERNS.some(re => re.test(text));
+}
+
+function shouldSuppressContextEscalation(findings, fullText) {
+  if (!fullText) return false;
+
+  const contextFindings = findings.filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
+  const sentences = [];
+  for (const cf of contextFindings) {
+    const sentence = findSentenceContaining(fullText, cf.rawMatch);
+    if (sentence) sentences.push(sentence);
+  }
+  if (sentences.length === 0) sentences.push(fullText);
+
+  for (const sentence of sentences) {
+    const excluded   = matchesExclusion(sentence);
+    const attributed = matchesAttribution(sentence);
+    if (!excluded || attributed) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ── STEP 2: Distinct entity-type multiplier ───────────────────────────────────
 
 function getMultiplier(distinctTypeCount) {
@@ -247,7 +385,7 @@ function preliminaryClass(score) {
 //
 // Rule 4 — No governance rule applies → retain preliminary
 
-function evaluateGovernance(findings, preliminary) {
+function evaluateGovernance(findings, preliminary, fullText) {
 
   // ── Rule 1: validated critical entity → HIGH ────────────────────────────
   const hasValidatedCritical = findings.some(
@@ -257,20 +395,30 @@ function evaluateGovernance(findings, preliminary) {
     return { rule: "critical_entity", result: "high" };
   }
 
-  // ── Rule 2: any scored entity + sensitive context → raise one level ──────
-  // Condition 1: at least one finding with BASE_SCORES > 0 (any impact tier)
+  // ── Rule 2: (scored entity OR first-person anchor) + sensitive context ───
+  // Condition 1: at least one scored entity (BASE_SCORES > 0) OR an explicit
+  //              first-person self-attribution anchor (trigger only, unscored).
   const hasScoredEntity = findings.some(
     f => (BASE_SCORES[f.patternId] ?? 0) > 0
   );
+  const hasAnchor = hasFirstPersonAnchor(fullText);
+  const triggerPresent = hasScoredEntity || hasAnchor;
+
   // Condition 2: at least one non-scoring context indicator present
   const hasSensitiveContext = findings.some(
     f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
   );
-  if (hasScoredEntity && hasSensitiveContext) {
-    const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
-      ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
-      : "high";
-    return { rule: "sensitive_context", result: raised };
+  if (triggerPresent && hasSensitiveContext) {
+    // Contextual exclusion filter — suppress escalation for academic,
+    // informational, general-discussion, or hypothetical references unless an
+    // explicit attribution overrides the exclusion.
+    const suppress = shouldSuppressContextEscalation(findings, fullText);
+    if (!suppress) {
+      const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
+        ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
+        : "high";
+      return { rule: "sensitive_context", result: raised };
+    }
   }
 
   // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
@@ -305,28 +453,52 @@ function finalClass(preliminary, governance) {
 
 // ── Main scoring function ─────────────────────────────────────────────────────
 
-function computeRiskScore(findings) {
+function computeRiskScore(findings, fullText) {
   const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
-  if (scorable.length === 0) return { score: 0, riskLevel: "none", governance: "none" };
 
-  const seenTypes = new Set();
+  // ── No scored entities ──────────────────────────────────────────────────
+  // Normally No Detected Risk — except the Rule 2 anchor-only path: an
+  // explicit first-person self-attribution anchor (unscored) co-occurring
+  // with a sensitive context indicator must still be evaluated so governance
+  // can raise No Detected Risk → Low (e.g. "I was diagnosed with diabetes").
+  if (scorable.length === 0) {
+    const hasAnchor = hasFirstPersonAnchor(fullText);
+    const hasSensitiveContext = findings.some(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
+    if (!(hasAnchor && hasSensitiveContext)) {
+      return { score: 0, riskLevel: "none", governance: "none" };
+    }
+    const preliminary = "none";
+    const governance  = evaluateGovernance(findings, preliminary, fullText);
+    const riskLevel   = finalClass(preliminary, governance);
+    console.log(
+      `[TrustPrompt/worker/scorer] anchor-only path | base:0 ×1.00 = 0.00`,
+      `| prelim:none | gov:${governance.rule}(${governance.result}) | final:${riskLevel}`
+    );
+    return { score: 0, riskLevel, governance: governance.rule };
+  }
+
+  // ── Scoring-unit grouping ──────────────────────────────────────────────
+  // Count each distinct SCORING UNIT once (grouped fields collapse into a
+  // single unit), feeding both the base total and the distinct-type count.
+  const seenUnits = new Set();
   let baseTotal   = 0;
   for (const f of scorable) {
-    if (!seenTypes.has(f.patternId)) {
-      seenTypes.add(f.patternId);
-      baseTotal += BASE_SCORES[f.patternId] ?? 0;
+    const unitKey = scoringUnitKey(f.patternId);
+    if (!seenUnits.has(unitKey)) {
+      seenUnits.add(unitKey);
+      baseTotal += scoringUnitBase(unitKey);
     }
   }
 
-  const distinctTypeCount = seenTypes.size;
+  const distinctTypeCount = seenUnits.size;
   const multiplier        = getMultiplier(distinctTypeCount);
   const preScore          = baseTotal * multiplier;
   const preliminary       = preliminaryClass(preScore);
-  const governance        = evaluateGovernance(findings, preliminary);
+  const governance        = evaluateGovernance(findings, preliminary, fullText);
   const riskLevel         = finalClass(preliminary, governance);
 
   console.log(
-    `[TrustPrompt/worker/scorer] distinctTypes:${distinctTypeCount} [${[...seenTypes].join(", ")}]`,
+    `[TrustPrompt/worker/scorer] distinctUnits:${distinctTypeCount} [${[...seenUnits].join(", ")}]`,
     `| base:${baseTotal} ×${multiplier} = ${preScore.toFixed(2)}`,
     `| prelim:${preliminary} | gov:${governance.rule}(${governance.result})`,
     `| final:${riskLevel}`
@@ -536,7 +708,7 @@ self.onmessage = async function (e) {
   const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, []);
   const findings      = suppressPlaceholders(merged);  // TASK-4.4
 
-  const { score, riskLevel, governance } = computeRiskScore(findings);
+  const { score, riskLevel, governance } = computeRiskScore(findings, rawText);
 
   const elapsedMs = Math.round(performance.now() - t0);
 

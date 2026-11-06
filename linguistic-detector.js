@@ -3425,6 +3425,27 @@ const TrustLinguisticDetector = (() => {
   //       first names: measured recall about 0.66 on a fictional list) is dropped by this guard. Set
   //       PERSON_HEADING_GUARD_ENABLED to false to disable it.
   //   R7  a finding whose every occurrence lies inside a longer person finding is a duplicate fragment: dropped.
+  //   R8  a multi-word phrase made mostly of ordinary dictionary words, with no Person tag on any token and no cue, is
+  //       dropped ("Quarterly Report Template"). Compromise gives an unknown name only Noun/Singular and a known ordinary
+  //       word an extra Verb/Adjective/Uncountable/... tag; test-compromise-pin.js fails if that behaviour changes.
+  //   3b  Filipino honorific / kinship prefixes (Aling, Mang, Kapitan, Tita, Kuya...) and a leading preposition ("Per X Y")
+  //       are stripped like R1; Don, Dona, Ka, Kap are stripped only when Compromise does not tag them as a Person.
+  //       A span that is only honorifics / prefixes is re-bounded onto the Title-Case tokens that follow it.
+  //
+  // KNOWN LIMITATIONS (measured; see test-group3-names.js, test-group3b-r8.js, test-group3b-prefixes.js):
+  //   - Surname-as-leading-title: a leading word that is a dictionary title and not Person-tagged by Compromise
+  //     (Baker, Cook, Porter, Butler, Sawyer, Archer, Carpenter...) is stripped when two or more tokens follow, so
+  //     "Baker Anne Reyes" is reported as "Anne Reyes". Surname-last order ("Anne Reyes Baker") is not affected.
+  //   - Title Case-only prompts: the extractors do not find names at all in a prompt written entirely in Title Case
+  //     (the METHOD 4 regex consumes the words into overlapping chunks that the non-name filter then rejects). This was
+  //     0 of 16 before Group 3 and is still 0 of 16; Group 3 did not cause it and does not fix it.
+  //   - R6 (heading guard) depends on Compromise for Title Case recall: inside a Title-Case run a name survives only if
+  //     a cue exists or at least half of its tokens are Person-tagged, and Compromise misses about a third of Filipino
+  //     first names (measured recall about 0.66 on a fictional list). Set PERSON_HEADING_GUARD_ENABLED to false to disable.
+  //   - R8 can drop a real two-word name made only of ordinary words with no Person tag (measured: 2 of 140 findable
+  //     frames, e.g. Faith Hope and Ruby Rain in Title Case).
+  //   - Month names that are also first names are rejected only after a date preposition or before a digit: "Is May
+  //     the hottest month" style subjects are kept.
   const PERSON_HEADING_GUARD_ENABLED = true;
   const NAME_HONORIFIC_TOKENS = new Set([
     'mr', 'mrs', 'ms', 'miss', 'mx', 'dr', 'prof', 'atty', 'engr', 'arch', 'sir', 'madam', 'hon', 'fr', 'rev', 'sen', 'gov', 'esq'
@@ -3441,12 +3462,26 @@ const TrustLinguisticDetector = (() => {
     'still', 'sorry', 'dear', 'thanks', 'regards', 'tonight'
   ]);
   const AMBIGUOUS_MONTH_NAMES = new Set(['may', 'april', 'june', 'august', 'march', 'jun']);
-  const DATE_PREPOSITION_BEFORE = /\b(?:in|on|by|until|since|during|before|after|from|of|this|next|last)\s+$/i;
+  const DATE_PREPOSITION_BEFORE = /\b(?:in|on|by|until|since|during|before|after|of|this|next|last)\s+$/i;
+  // "from <Month>" is a date only when a range word or a digit follows within two tokens ("from May to August",
+  // "from May 5"); otherwise it may be a person ("a message from May").
+  function monthFromIsDate(text, s, e) {
+    if (!/\bfrom\s+$/i.test(text.slice(Math.max(0, s - 8), s))) return false;
+    const toks = (text.slice(e, e + 40).match(/\S+/g) || []).slice(0, 2).map(t => t.replace(/[.,;:]+$/, ''));
+    return toks.some(t => /^(?:to|until|through|till|-|–)$/i.test(t) || /^\d/.test(t));
+  }
   const TITLE_LEVEL_WORDS = new Set([
     'senior', 'junior', 'chief', 'head', 'assistant', 'associate', 'lead', 'deputy', 'executive', 'staff', 'general', 'principal'
   ]);
   const NAME_CLOSED_TAGS = ['QuestionWord', 'Determiner', 'Pronoun', 'Preposition', 'Conjunction', 'Adverb', 'Expression',
     'Value', 'Negative', 'Date', 'WeekDay', 'Month', 'Time'];
+  // Filipino honorifics and kinship / title prefixes. UNAMBIGUOUS ones are always stripped from a name span. The AMBIGUOUS
+  // ones are also real given names (Don, Dona, Ka, Kap): they are stripped only when Compromise does not tag the word as a
+  // Person, so "Don Santiago" keeps its first name while "Ka Ramon" loses the prefix.
+  const FILIPINO_NAME_PREFIXES = new Set([
+    'aling', 'aleng', 'mang', 'manong', 'manang', 'kapitan', 'ate', 'kuya', 'tita', 'tito', 'lola', 'lolo', 'ninong', 'ninang'
+  ]);
+  const FILIPINO_AMBIGUOUS_PREFIXES = new Set(['don', 'dona', 'ka', 'kap']);
   const COMMON_WORD_TAGS = ['Verb', 'Adjective', 'Adverb', 'Preposition', 'Uncountable', 'Gerund', 'Conjunction', 'Determiner', 'Pronoun', 'Modal', 'Auxiliary'];
   const PERSON_TAG_NAMES =['Person', 'FirstName', 'LastName', 'MaleName', 'FemaleName'];
   const RUN_FUNCTION_WORDS = new Set('of for and the a an to in on at by with from na ng sa y de del la los las or nor but vs'.split(' '));
@@ -3532,11 +3567,14 @@ const TrustLinguisticDetector = (() => {
       while (b - a >= 1) {
         const w = toks[a].w, lw = w.toLowerCase();
         if (!w) { a++; continue; }
-        if (NAME_HONORIFIC_TOKENS.has(lw)) { a++; continue; }
+        if (NAME_HONORIFIC_TOKENS.has(lw) || FILIPINO_NAME_PREFIXES.has(lw)) { a++; continue; }
         if (b - a >= 2) {
           if (NAME_LABEL_WORDS.has(lw)) { b = a; break; }
           const ctx = nameTagsFor(terms, w);
           const iso = isolatedNameTags(w);
+          if (FILIPINO_AMBIGUOUS_PREFIXES.has(lw) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) { a++; continue; }
+          // a leading preposition ("Per Elena Cruz") is stripped when at least two tokens remain ("Per Andersson" is kept)
+          if (b - a >= 3 && iso.includes('Preposition') && !nameHasPersonTag(iso)) { a++; continue; }
           if ((ctx.includes('Verb') || iso.includes('Verb')) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) {
             // "Hope Santiago will review it": the name is a subject (a verb follows it), so the first word is not an imperative
             const ti = terms.findIndex(x => x.text === toks[0].w);
@@ -3554,7 +3592,22 @@ const TrustLinguisticDetector = (() => {
         }
         break;
       }
-      if (b - a < 1) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (title/label/honorific only): "${raw}"`); return; }
+      if (b - a < 1) {
+        // Only honorifics / prefixes were captured (METHOD 4.5 takes one word: "to Dr.", "call Tita"): the Title-Case
+        // tokens that follow them (up to two) are the name, so re-bound onto those instead of dropping the finding.
+        if (a >= toks.length) {
+          let end = toks[toks.length - 1].e, startPos = -1, got = 0, fm;
+          while (got < 2 && (fm = text.slice(end).match(/^\.?[ ]+([A-Z][a-z'’-]+)(?![A-Za-z'’])/))) {
+            const lw2 = fm[1].toLowerCase();
+            if (NAME_HONORIFIC_TOKENS.has(lw2) || FILIPINO_NAME_PREFIXES.has(lw2) || NAME_LABEL_WORDS.has(lw2) || NON_NAME_WORDS.has(lw2) ||
+                EXTENSIVE_JOB_TITLES.has(lw2) || isolatedNameTags(fm[1]).some(t => NAME_CLOSED_TAGS.includes(t))) break;
+            if (startPos < 0) startPos = end + fm[0].length - fm[1].length;
+            end += fm[0].length; got++;
+          }
+          if (got) { console.debug(`[PATH_C/G3] Re-bounded bare prefix "${raw}" -> "${text.slice(startPos, end)}"`); f.rawMatch = text.slice(startPos, end); return; }
+        }
+        drop.add(f); console.debug(`[PATH_C/G3] Dropped person (title/label/honorific only): "${raw}"`); return;
+      }
       // ── trailing strip (R4): "<level word> <title>" or a 2+ word nlp_job_title span at the end
       if (b - a >= 2) {
         const last = toks[b - 1].w.toLowerCase();
@@ -3611,8 +3664,9 @@ const TrustLinguisticDetector = (() => {
         else if (INDEFINITE_PRONOUNS.has(lw)) why = 'indefinite pronoun';
         else {
           const t = isolatedNameTags(raw);
-          if (t.includes('Month') && AMBIGUOUS_MONTH_NAMES.has(lw)) {
-            if (occs.every(([s, e]) => /^\s*\d/.test(text.slice(e, e + 4)) || DATE_PREPOSITION_BEFORE.test(text.slice(Math.max(0, s - 14), s)))) why = 'month/date use';
+          // (the set is used directly: Compromise 14.12.0 tags april/june/august/jun as Month but NOT "may" (Modal) or "march" (Noun))
+          if (AMBIGUOUS_MONTH_NAMES.has(lw)) {
+            if (occs.every(([s, e]) => /^\s*\d/.test(text.slice(e, e + 4)) || DATE_PREPOSITION_BEFORE.test(text.slice(Math.max(0, s - 14), s)) || monthFromIsDate(text, s, e))) why = 'month/date use';
           } else if (t.some(x => NAME_CLOSED_TAGS.includes(x))) why = 'function/question/date word';
         }
         if (why) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (${why}): "${raw}"`); return; }

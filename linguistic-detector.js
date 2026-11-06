@@ -26,6 +26,17 @@
 // 4. Departments without a dedicated tag: there is no nlp_department patternId. Departments are only
 //    detected as nlp_organization when present in ORGANIZATIONS_DATA or matched by the structural pass.
 //    Informal department names absent from both sources are not detected.
+// 5. JOB-TITLE TYPO TOLERANCE (Group 6, D11): fuzzy (edit-distance-1) matching of job titles applies
+//    ONLY to dictionary titles of 9 or more letters (FUZZY_JOB_MIN_TITLE_LEN), and only when the first
+//    AND last letter of the text and of the title are equal. Shorter titles (e.g. teacher, plumber,
+//    mechanic) match only when spelled correctly (exact dictionary match is unaffected at every length).
+//    Reason: shorter titles are one letter away from many ordinary words (schedule/scheduler,
+//    service/servicer, master/caster, sister/sifter). Cost: a typo in the first or last letter of any
+//    title is never recovered. Measured: 14,691 ordinary words -> 831 fuzzy hits before, 3 after (all 3 are
+//    genuine misspellings).
+// 6. POSSESSIVE JOB WORDS: "my printer", "my boss", "my phone charger" are tagged as job titles because
+//    a possessive trigger plus an exact dictionary noun is indistinguishable (structurally) from
+//    "my nurse". No structural rule separates them without removing true positives; left as a limitation.
 
 const TrustLinguisticDetector = (() => {
 
@@ -392,12 +403,17 @@ const TrustLinguisticDetector = (() => {
     return text.slice(index, index + pattern.length);
   }
 
+  // Group 6: possessive triggers, which alone do not justify extending a title over noun modifiers.
+  const JOB_POSSESSIVE_TRIGGERS = new Set(['my ', 'your ', 'their ', 'her ', 'his ']);
+
   /**
    * Check if span appears in job context
    * Looks for job trigger phrases before the span
+   * @param {boolean} [nonPossessiveOnly] Group 6: when true, the possessive triggers
+   *   (my/your/their/her/his) are ignored, so only copular/role triggers count.
    * @private
    */
-  function checkJobContext(text, actualSpan) {
+  function checkJobContext(text, actualSpan, nonPossessiveOnly) {
     const index = text.toLowerCase().indexOf(actualSpan.toLowerCase());
     if (index === -1) return false;
     
@@ -423,6 +439,7 @@ const TrustLinguisticDetector = (() => {
     // Group 5: a trigger must start at a word boundary (otherwise "his " matches
     // inside "this " and "my " inside "enemy ").
     return jobTriggers.some(trigger => {
+      if (nonPossessiveOnly && JOB_POSSESSIVE_TRIGGERS.has(trigger)) return false;
       for (let i = before.indexOf(trigger); i !== -1; i = before.indexOf(trigger, i + 1)) {
         if (i !== 0 && /[a-z0-9]/.test(before[i - 1])) continue;
         // Group 5: the trigger must sit right before the title: at most 3 words
@@ -1742,6 +1759,10 @@ const TrustLinguisticDetector = (() => {
    * @returns {Array} array of job title findings
    * @private
    */
+  // Group 6 (D11): minimum dictionary-title length (letters, spaces included) for fuzzy job matching.
+  // Chosen as the lowest N (tested 6,7,8,9 on 14,691 ordinary words) with no ordinary-word false positive.
+  const FUZZY_JOB_MIN_TITLE_LEN = 9;
+
   function findJobTitlesCSVFirst(text) {
     const found = [];
     const seen = new Set();
@@ -1832,11 +1853,19 @@ const TrustLinguisticDetector = (() => {
     // ────────────────────────────────────────────────────────────────────────
     // ★ CRITICAL FIX: Prevent short words from fuzzy-matching to job titles
     // Only match if matched text is > 5 chars and reasonably sized relative to title
+    // Group 6 (D11): typo tolerance only for titles of FUZZY_JOB_MIN_TITLE_LEN+ letters, and only
+    // when the first AND last letter of the text and of the title are equal (so an end-of-word
+    // change such as scheduler/servicer/helper/handler is never treated as a typo).
     for (const title of EXTENSIVE_JOB_TITLES_ARRAY) {
-      if (title.length > 5) {  // Only fuzzy match longer titles
+      if (title.length >= FUZZY_JOB_MIN_TITLE_LEN) {  // Only fuzzy match longer titles
         const fuzzyMatches = fuzzyFind(text, title, 1);
-        
+        const titleLower = title.toLowerCase();
+
         for (const match of fuzzyMatches) {
+          if (match[0] !== titleLower[0] || match[match.length - 1] !== titleLower[titleLower.length - 1]) {
+            console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - first/last letter differs: "${match}" vs "${title}"`);
+            continue;
+          }
           // ★ NEW: Reject if matched text is too short
           if (match.length <= 5) {
             console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - matched text too short: "${match}" (${match.length} chars) → title: "${title}"`);
@@ -1899,6 +1928,23 @@ const TrustLinguisticDetector = (() => {
     'public private civil virtual online general executive staff resident visiting part-time full-time ' +
     'freelance independent professional sworn charge'
   ).split(' '));
+  // Group 6: closed-class (function) words. A capitalised function word at a sentence start
+  // ("The", "He", "In", "And", "Please") carries no evidence of being part of a person's name.
+  const JOB_FUNCTION_WORDS = new Set((
+    // determiners / quantifiers
+    'the a an this that these those my your his her its our their some any each every all both no another such several many much few more most other ' +
+    // pronouns / wh-words
+    'i me he him she it we us you they them who whom whose which what whatever whoever myself yourself himself herself itself ourselves themselves one ' +
+    // conjunctions
+    'and or but nor so yet for if because although though while when whenever whereas unless until since once than whether ' +
+    // prepositions
+    'of in on at to from by with as into onto over under about after before between through during without within across against among around behind beside beyond despite down except inside near off out outside past per toward towards upon via ' +
+    // auxiliaries / modals / copulas
+    'is are was were be been being am do does did has have had will would can could should may might must shall ' +
+    // adverbs / discourse words
+    'then there here also just only not now please thanks thank yes how why where however therefore thus still even too very really already again ever never always often sometimes ' +
+    'hello hi hey dear good'
+  ).split(' '));
   const JOB_NOT_NAME_START = /^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December)\b/;
 
   /** All whole-word, case-insensitive occurrences of span in text as [start,end]. */
@@ -1948,7 +1994,11 @@ const TrustLinguisticDetector = (() => {
       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
       if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
       // (an optional "." is tolerated: normalizePath_C inserts one between a lowercase word and a Title-case word)
-      if (/^[.,]?\s+[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/.test(after) &&
+      // Group 6: the first capitalised word must not be a function word (determiner, pronoun,
+      // conjunction, preposition, auxiliary...): "main breaker. The Bureau of Fire" is not a name,
+      // "nurse. Grace Cruz" still is.
+      const nameM = after.match(/^[.,]?\s+([A-Z][a-z'’-]+)(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/);
+      if (nameM && !JOB_FUNCTION_WORDS.has(nameM[1].toLowerCase()) &&
           !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
       if (/(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;               // 6
     }
@@ -1963,7 +2013,7 @@ const TrustLinguisticDetector = (() => {
    * word from the small closed qualification/seniority adjective set; hyphen
    * prefixes ("co-teacher") are attached directly. Returns the new start index.
    */
-  function extendJobHeadLeft(text, s) {
+  function extendJobHeadLeft(text, s, adjOnly) {
     let start = s;
     for (let k = 0; k < 3; k++) {
       const pre = text.slice(0, start);
@@ -1974,7 +2024,9 @@ const TrustLinguisticDetector = (() => {
       const w = m[1], lw = w.toLowerCase();
       if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
       let ok = JOB_MOD_ADJ.has(lw);
-      if (!ok && window.nlp) {
+      // Group 6: when the finding is backed only by a possessive trigger ("my sourdough starter"),
+      // extend over qualification adjectives only, never over noun modifiers.
+      if (!ok && !adjOnly && window.nlp) {
         try {
           const d = window.nlp(w);
           ok = d.has('#Noun') && !d.has('#Pronoun') && !d.has('#Value') && !d.has('#Person') &&
@@ -2026,7 +2078,9 @@ const TrustLinguisticDetector = (() => {
           }
           // Group 5 (D10): head-noun extension to the left.
           if (keepStart >= 0) {
-            const ns = extendJobHeadLeft(text, keepStart);
+            // Group 6: noun-modifier extension needs a non-possessive trigger or a structural cue.
+            const nounExtOk = keepStructural >= 0 || checkJobContext(text, actualSpan, true);
+            const ns = extendJobHeadLeft(text, keepStart, !nounExtOk);
             if (ns < keepStart) {
               const ext = text.slice(ns, keepEnd);
               validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));

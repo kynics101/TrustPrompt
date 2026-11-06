@@ -13,7 +13,7 @@
 // Graceful degradation: If compromise.js is unavailable, returns empty findings
 // without error, allowing scanner to continue with PATH A/B results only.
 
-/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA */
+/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA, PH_ADDRESS_DB */
 
 // KNOWN LIMITATIONS (intentional, documented):
 // 1. Lowercase names: names written entirely in lowercase (e.g. after "cousin" or "brother" in casual text)
@@ -3261,6 +3261,140 @@ const TrustLinguisticDetector = (() => {
     return found;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROUP 1 (D1/D2): organizations and places must not ALSO be person names
+  // ═══════════════════════════════════════════════════════════════════════
+  // One post-pass over all person findings (METHOD 1-4.5), run after every
+  // organization detector has finished, so the organization findings can be used as
+  // evidence. A person finding is dropped when one of these holds for ALL of its
+  // occurrences and no PERSON CUE protects the occurrence:
+  //   (a) the occurrence lies inside the span of an nlp_organization finding
+  //   (b) the phrase ends in an unambiguous street/campus head word (Street, Avenue, Campus...)
+  //   (c) a multi-word phrase has an internal preposition/conjunction/determiner
+  //       ("... Without ..."); surname particles (de, dela, van, von, bin, al, el, y...) are exempt
+  //   (e) the phrase contains an unmistakable institutional head word (STRONG_ORG_HEAD_WORDS). The full
+  //       classifyNameVsOrganization() is NOT used here: its explicit-org list also contains Bank, Group,
+  //       Foundation, Center, Office, Team..., which can be real surnames; those need organization evidence (a).
+  //   (d) a single word that is a known place name AND is used locatively
+  //       ("relocate to <Place>", "in <Place>") with no person cue
+  // PERSON CUES (keep the person finding): an honorific before, "my name is / I am / call me"
+  // before, a dictionary job title right before ("nurse Grace Cruz"), or an appositive job
+  // after ("Maria Santos, a nurse"). A cue does NOT override an organization found by the
+  // structural suffix pass (Inc, Corp, Foundation...), which is stronger evidence.
+  const PERSON_SURNAME_PARTICLES = new Set([
+    'de', 'del', 'dela', 'la', 'los', 'las', 'van', 'von', 'bin', 'al', 'el', 'y', 'der', 'den', 'di', 'da', 'le', 'du'
+  ]);
+  // Closed-class words that cannot be inside a person name. Auxiliaries and pronouns are left
+  // out on purpose: "Will", "May" are real given names.
+  const INTERNAL_FUNCTION_WORDS = new Set((
+    'the a an this that these those of in on at to from by with without for and or but nor over under into onto upon ' +
+    'about after before between through during within against among toward towards versus via'
+  ).split(' '));
+  // Head words that are never part of a person's name.
+  const STRONG_ORG_HEAD_WORDS = new Set([
+    'hospital', 'hospitals', 'university', 'universities', 'college', 'colleges', 'school', 'schools', 'academy', 'academies',
+    'institute', 'institutes', 'clinic', 'clinics', 'association', 'associations', 'cooperative', 'cooperatives',
+    'corporation', 'corporations', 'company', 'companies', 'department', 'dept', 'ministry', 'agency', 'administration',
+    'authority', 'organization', 'organizations', 'incorporated', 'inc', 'corp', 'ltd', 'llc', 'llp', 'gmbh', 'enterprises'
+  ]);
+  const STREET_HEAD_WORDS = new Set([
+    'street', 'avenue', 'boulevard', 'blvd', 'highway', 'road', 'expressway', 'campus', 'barangay', 'subdivision'
+  ]);
+  const GENERIC_PLACE_WORDS = new Set(['paris', 'london', 'tokyo', 'seoul', 'beijing', 'georgia', 'california', 'texas', 'new york']);
+  const PLACE_MOTION_WORDS = /\b(?:travel(?:l?ing)?|trip|route|relocat\w*|mov(?:e|es|ed|ing)|fly(?:ing)?|flight|driv(?:e|es|ing)|commut\w*|visit\w*|ship\w*|migrat\w*|transfer\w*|head(?:ing)?|go(?:ing)?|located|based|liv(?:e|es|ed|ing)|resid\w*)\b/i;
+
+  function isKnownPlaceWord(word) {
+    const lw = word.toLowerCase();
+    if (PLACE_NAME_WORDS.has(lw) || GENERIC_PLACE_WORDS.has(lw)) return true;
+    try {
+      if (typeof PH_ADDRESS_DB !== 'undefined' && PH_ADDRESS_DB && PH_ADDRESS_DB.isPlaceNameExact) {
+        return !!PH_ADDRESS_DB.isPlaceNameExact(word);
+      }
+    } catch (_) { /* optional data */ }
+    return false;
+  }
+
+  function isJobPhrase(words) {
+    // any contiguous window of 1-3 words is a dictionary job title
+    for (let i = 0; i < words.length; i++) {
+      for (let n = 1; n <= 3 && i + n <= words.length; n++) {
+        if (EXTENSIVE_JOB_TITLES.has(words.slice(i, i + n).join(' '))) return true;
+      }
+    }
+    return false;
+  }
+
+  function hasPersonCueAround(text, s, e) {
+    const before = text.slice(Math.max(0, s - 40), s);
+    if (/\b(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov)\.?\s+$/i.test(before)) return true;      // honorific
+    if (/\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|call\s+me)\s+$/i.test(before)) return true;                             // self-introduction
+    // job title right before ("nurse Grace Cruz"; the normalizer may have inserted a period: "nurse. Grace Cruz")
+    const beforeTrim = before.replace(/\.?\s+$/, '');
+    const prev = /[,;:!?]$/.test(beforeTrim) ? [] : beforeTrim.split(/\s+/).slice(-3).map(w => w.toLowerCase().replace(/[^a-z-]/g, '')).filter(Boolean);
+    for (let n = 1; n <= prev.length; n++) {
+      if (EXTENSIVE_JOB_TITLES.has(prev.slice(prev.length - n).join(' '))) return true;
+    }
+    // appositive job after the name ("Maria Santos, a nurse")
+    const am = text.slice(e, e + 70).match(/^\s*,\s*(?:an?|the)\s+([A-Za-z][A-Za-z -]*)/);
+    if (am) {
+      const w = am[1].toLowerCase().split(/\s+/).slice(0, 4).map(x => x.replace(/[^a-z-]/g, '')).filter(Boolean);
+      if (isJobPhrase(w)) return true;
+    }
+    return false;
+  }
+
+  function hasLocativeCue(text, s, e) {
+    if (/^['’]s\b/.test(text.slice(e, e + 2))) return false;                                    // possessive: a person
+    const before = text.slice(Math.max(0, s - 90), s);
+    if (/\b(?:in|at|near|around|within|outside|inside|toward|towards)\s+$/i.test(before)) return true;
+    if (/\b(?:to|from)\s+$/i.test(before)) {
+      const sentence = before.split(/[.!?]\s/).pop();
+      return PLACE_MOTION_WORDS.test(sentence);
+    }
+    return false;
+  }
+
+  function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
+    const orgs = findings
+      .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
+      .map(o => ({ o, spans: jobOccurrences(text, o.rawMatch) }));
+    const drop = new Set();
+    findings.forEach((f, idx) => {
+      if (f.patternId !== 'nlp_person_name' || !f.rawMatch) return;
+      const raw = f.rawMatch.trim();
+      const occs = jobOccurrences(text, raw);
+      if (!occs.length) return;
+      const words = raw.split(/\s+/);
+      const cued = occs.map(([s, e]) => hasPersonCueAround(text, s, e));
+      // (a) inside an organization span
+      const absorbed = occs.every(([s, e], i) => orgs.some(({ o, spans }) =>
+        spans.some(([os, oe]) => s >= os && e <= oe) && !(cued[i] && o.source !== 'structural_match')));
+      if (absorbed) { drop.add(idx); console.debug(`[PATH_C/G1] Dropped person inside organization: "${raw}"`); return; }
+      if (cued.some(Boolean)) return;
+      // (b) street / campus head word
+      if (words.length >= 2 && STREET_HEAD_WORDS.has(words[words.length - 1].toLowerCase())) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (street/campus head): "${raw}"`); return;
+      }
+      // (c) internal function word (not a surname particle)
+      if (words.length >= 2 && words.slice(1).some(w => {
+        const lw = w.toLowerCase();
+        return !PERSON_SURNAME_PARTICLES.has(lw) && INTERNAL_FUNCTION_WORDS.has(lw);
+      })) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (internal function word): "${raw}"`); return;
+      }
+      // (e) an unmistakable institutional head word (Hospital, University, Inc...) closes the question even when
+      //     no organization finding exists (METHOD 1/2/3/4.5 had no such guard).
+      if (words.length >= 2 && words.some(w => STRONG_ORG_HEAD_WORDS.has(w.toLowerCase().replace(/\.$/, '')))) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (institutional head word): "${raw}"`); return;
+      }
+      // (d) single-word place used locatively
+      if (words.length === 1 && isKnownPlaceWord(raw) && occs.every(([s, e]) => hasLocativeCue(text, s, e))) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (place in locative context): "${raw}"`);
+      }
+    });
+    return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller replaces the contents in place)
+  }
+
   // ── Main scanning function ─────────────────────────────────────────────────
 
   /**
@@ -3752,6 +3886,9 @@ const TrustLinguisticDetector = (() => {
         }
       }
       console.debug('[TrustPrompt/PATH_C] METHOD 4.5 found:', method45Count);
+
+      // Group 1 (D1/D2): organizations and places must not also be reported as person names.
+      { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       
     } catch (error) {
       console.error('[TrustPrompt/PATH_C] Scan error:', error);

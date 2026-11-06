@@ -31,6 +31,8 @@ console.warn = (...a) => _initLogs.push(['[warn]', ...a].map(x => typeof x === '
 // ── 3. Load terms data FIRST (detector reads these globals at init time) ─────
 require('./terms-organizations.js');   // defines globalThis.ORGANIZATIONS_DATA
 require('./terms-occupations.js');     // defines globalThis.OCCUPATIONS_DATA
+// The browser loads ph-address-db.js before the detector (it declares a top-level const, so plain require() would not expose it).
+require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, 'ph-address-db.js'), 'utf8') + ';globalThis.PH_ADDRESS_DB=PH_ADDRESS_DB;');
 
 // ── 4. Load compromise.js and wire it onto window.nlp ────────────────────────
 // compromise.min.js is UMD: in Node it takes the CommonJS branch
@@ -44,7 +46,7 @@ if (typeof global.window.nlp === 'undefined') {
 
 // ── 5. Normalizer + detector (detector reads window.nlp at load time) ───────
 require('./normalizer.js');            // defines globalThis.TrustNormalizer
-require('./linguistic-detector.js');   // defines globalThis.TrustLinguisticDetector
+require(process.env.DET ? require('path').resolve(process.env.DET) : './linguistic-detector.js');   // DET=<path> runs an older detector copy for before/after comparisons
 
 const D = globalThis.TrustLinguisticDetector;
 const N = globalThis.TrustNormalizer;

@@ -3395,6 +3395,268 @@ const TrustLinguisticDetector = (() => {
     return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller replaces the contents in place)
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROUP 3 (D6): names that are not names
+  // ═══════════════════════════════════════════════════════════════════════
+  // One post-pass over the person findings (METHOD 1-4.5), run before the Group 1 pass.
+  //   R1  a bare honorific (Mr, Dr, Ms...) is never a name; a leading honorific is stripped from a span.
+  //   R3  a leading verb is stripped from a span ("Tell X Y", "Thank X"): Compromise tags the first token as a
+  //       Verb and NOT as a Person, either in context or on its own. Real first names that are also verbs
+  //       (Mark, Will, Grace, Hope...) are tagged Person by Compromise and are kept.
+  //   R4  a leading dictionary job title is stripped ("Nurse X", "Engineer X Y") unless the word is itself tagged
+  //       Person (Mason, Miller, Taylor...), and only when at least two tokens remain or the next token is a
+  //       first name. A trailing "<level word> <title>" ("Senior Accountant") is stripped; a trailing title that
+  //       is already reported as a nlp_job_title span of 2+ words is stripped; a span lying wholly inside a
+  //       nlp_job_title finding is dropped. A single trailing title word is NEVER stripped (it may be a surname).
+  //   Re-bound: after leading tokens were stripped, the span is extended to the right by the same number of
+  //       Title-Case tokens, because the extractor's 3-word cap had cut the name ("Thank Nurse Karen" Tiongson).
+  //   R5  label words (Section, Grade, Class...) before a name-like word, or a single word followed by a digit
+  //       ("Grade 6"), are designations, not names.
+  //   R2  a single-word candidate is rejected when Compromise tags the lowercase word as a question word,
+  //       determiner, pronoun, preposition, conjunction, adverb, expression, number, weekday, month or date, or
+  //       when it is an indefinite pronoun (someone, everybody...). Month names that are also first names
+  //       (May, April, June, August, March, Jun) are rejected only after a date preposition or before a digit;
+  //       otherwise they are kept ("write to May"). A PERSON CUE (honorific before, "my name is", title before,
+  //       appositive job after) always keeps the candidate.
+  //   R6  heading guard: a candidate inside a run of Title-Case words (3+ other capitalised content words, run
+  //       broken by commas, periods, pipes, digits or lowercase content words) is dropped unless a person cue
+  //       exists or at least half of its tokens carry a Compromise Person/FirstName/LastName tag.
+  //       KNOWN LIMIT: in a prompt written ENTIRELY in Title Case, a name Compromise does not know (many Filipino
+  //       first names: measured recall about 0.66 on a fictional list) is dropped by this guard. Set
+  //       PERSON_HEADING_GUARD_ENABLED to false to disable it.
+  //   R7  a finding whose every occurrence lies inside a longer person finding is a duplicate fragment: dropped.
+  const PERSON_HEADING_GUARD_ENABLED = true;
+  const NAME_HONORIFIC_TOKENS = new Set([
+    'mr', 'mrs', 'ms', 'miss', 'mx', 'dr', 'prof', 'atty', 'engr', 'arch', 'sir', 'madam', 'hon', 'fr', 'rev', 'sen', 'gov', 'esq'
+  ]);
+  const NAME_LABEL_WORDS = new Set([
+    'section', 'grade', 'class', 'chapter', 'level', 'room', 'unit', 'batch', 'block', 'lot', 'phase', 'year', 'week',
+    'module', 'lesson', 'topic', 'item', 'column', 'figure', 'table'
+  ]);
+  const INDEFINITE_PRONOUNS = new Set([
+    'someone', 'somebody', 'anyone', 'anybody', 'everyone', 'everybody', 'nobody', 'something', 'anything', 'everything',
+    'nothing', 'whoever', 'whomever', 'whatever', 'whichever', 'somewhere', 'anywhere', 'everywhere', 'nowhere',
+    // quantifiers and discourse words that Compromise does not tag with a closed-class tag on their own
+    'many', 'most', 'other', 'another', 'several', 'few', 'some', 'any', 'all', 'both', 'each', 'every', 'here', 'there',
+    'still', 'sorry', 'dear', 'thanks', 'regards', 'tonight'
+  ]);
+  const AMBIGUOUS_MONTH_NAMES = new Set(['may', 'april', 'june', 'august', 'march', 'jun']);
+  const DATE_PREPOSITION_BEFORE = /\b(?:in|on|by|until|since|during|before|after|from|of|this|next|last)\s+$/i;
+  const TITLE_LEVEL_WORDS = new Set([
+    'senior', 'junior', 'chief', 'head', 'assistant', 'associate', 'lead', 'deputy', 'executive', 'staff', 'general', 'principal'
+  ]);
+  const NAME_CLOSED_TAGS = ['QuestionWord', 'Determiner', 'Pronoun', 'Preposition', 'Conjunction', 'Adverb', 'Expression',
+    'Value', 'Negative', 'Date', 'WeekDay', 'Month', 'Time'];
+  const COMMON_WORD_TAGS = ['Verb', 'Adjective', 'Adverb', 'Preposition', 'Uncountable', 'Gerund', 'Conjunction', 'Determiner', 'Pronoun', 'Modal', 'Auxiliary'];
+  const PERSON_TAG_NAMES =['Person', 'FirstName', 'LastName', 'MaleName', 'FemaleName'];
+  const RUN_FUNCTION_WORDS = new Set('of for and the a an to in on at by with from na ng sa y de del la los las or nor but vs'.split(' '));
+  const _isolatedTagCache = new Map();
+  const _contextTagCache = new Map();
+
+  function nameHasPersonTag(tags) { return !!tags && tags.some(t => PERSON_TAG_NAMES.includes(t)); }
+
+  function isolatedNameTags(word) {
+    const lw = word.toLowerCase();
+    if (_isolatedTagCache.has(lw)) return _isolatedTagCache.get(lw);
+    let tags = [];
+    try {
+      if (typeof window !== 'undefined' && window.nlp) {
+        const j = window.nlp(lw).json({ terms: { tags: true } });
+        tags = (j[0] && j[0].terms[0] && j[0].terms[0].tags) || [];
+      }
+    } catch (_) { tags = []; }
+    _isolatedTagCache.set(lw, tags);
+    return tags;
+  }
+
+  // Compromise tags of the terms in the sentence window that contains [s, e)
+  function contextNameTerms(text, s, e) {
+    const from = Math.max(0, Math.max(text.lastIndexOf('. ', s - 1), text.lastIndexOf('? ', s - 1), text.lastIndexOf('! ', s - 1), text.lastIndexOf('"', s - 1)) + 1);
+    const win = text.slice(from, Math.min(text.length, e + 60)).trim();
+    if (_contextTagCache.has(win)) return _contextTagCache.get(win);
+    let terms = [];
+    try {
+      if (typeof window !== 'undefined' && window.nlp) {
+        terms = window.nlp(win).json({ terms: { tags: true } }).reduce((acc, sent) => acc.concat(sent.terms || []), []);
+      }
+    } catch (_) { terms = []; }
+    _contextTagCache.set(win, terms);
+    return terms;
+  }
+
+  function nameTagsFor(terms, word) {
+    const t = terms.find(x => x.text === word) || terms.find(x => (x.text || '').toLowerCase() === word.toLowerCase());
+    return (t && t.tags) || [];
+  }
+
+  // true when [s, e) sits in a run of Title-Case words with 3+ OTHER capitalised content words
+  function inTitleCaseRun(text, s, e) {
+    const TOK = /[A-Za-z][A-Za-z'’-]*|:|[,.;!?|•\n\r\t]+|[0-9]+|[^\sA-Za-z0-9]/g;
+    const walk = (chunk, backwards) => {
+      const toks = chunk.match(TOK) || [];
+      if (backwards) toks.reverse();
+      let n = 0;
+      for (const t of toks) {
+        if (t === ':') continue;
+        if (/^[A-Za-z]/.test(t)) {
+          if (/^[A-Z]/.test(t)) { if (!RUN_FUNCTION_WORDS.has(t.toLowerCase())) n++; continue; }
+          if (RUN_FUNCTION_WORDS.has(t)) continue;
+        }
+        break;
+      }
+      return n;
+    };
+    const others = walk(text.slice(Math.max(0, s - 220), s), true) + walk(text.slice(e, e + 220), false);
+    return others >= 3;
+  }
+
+  function refinePersonCandidates(findings, text) {
+    const persons = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    if (!persons.length) return findings.slice();   // always a new array: the caller clears and refills the original in place
+    const core = w => w.replace(/^["'“‘(]+/, '').replace(/[.,;:!?)"”’]+$/, '');
+    const jobSpans = findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch)
+      .flatMap(j => jobOccurrences(text, j.rawMatch).map(([s, e]) => [s, e]));
+    const drop = new Set();
+
+    persons.forEach(f => {
+      const raw = f.rawMatch.trim();
+      const occs = jobOccurrences(text, raw);
+      if (!occs.length) return;
+      const [s0, e0] = occs[0];
+      const toks = []; { const re = /\S+/g, sub = text.slice(s0, e0); let m; while ((m = re.exec(sub)) !== null) toks.push({ w: core(m[0]), s: s0 + m.index, e: s0 + m.index + m[0].length }); }
+      if (!toks.length) return;
+      const cuedAt = (s, e) => hasPersonCueAround(text, s, e);
+      let a = 0, b = toks.length;
+      const terms = contextNameTerms(text, s0, e0);
+      // ── leading strip: honorific (R1), label (R5), verb (R3), dictionary title (R4)
+      while (b - a >= 1) {
+        const w = toks[a].w, lw = w.toLowerCase();
+        if (!w) { a++; continue; }
+        if (NAME_HONORIFIC_TOKENS.has(lw)) { a++; continue; }
+        if (b - a >= 2) {
+          if (NAME_LABEL_WORDS.has(lw)) { b = a; break; }
+          const ctx = nameTagsFor(terms, w);
+          const iso = isolatedNameTags(w);
+          if ((ctx.includes('Verb') || iso.includes('Verb')) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) {
+            // "Hope Santiago will review it": the name is a subject (a verb follows it), so the first word is not an imperative
+            const ti = terms.findIndex(x => x.text === toks[0].w);
+            const nt = ti >= 0 ? terms[ti + toks.length] : null;
+            const subjectUse = nt && (nt.tags || []).some(x => ['Verb', 'Modal', 'Auxiliary', 'Copula'].includes(x));
+            if (!subjectUse) { a++; continue; }
+          }
+          if (EXTENSIVE_JOB_TITLES.has(lw) && !nameHasPersonTag(isolatedNameTags(w))) {
+            const next = nameTagsFor(terms, toks[a + 1].w);
+            // tokens that remain after the title, counting adjacent Title-Case tokens beyond the extractor's 3-word cap
+            let follow = 0, fEnd = toks[b - 1].e, fm;
+            while (follow < 2 && (fm = text.slice(fEnd).match(/^ +([A-Z][a-z'’-]+)(?![A-Za-z'’])/))) { follow++; fEnd += fm[0].length; }
+            if (b - a - 1 + follow >= 2 || next.includes('FirstName')) { a++; continue; }
+          }
+        }
+        break;
+      }
+      if (b - a < 1) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (title/label/honorific only): "${raw}"`); return; }
+      // ── trailing strip (R4): "<level word> <title>" or a 2+ word nlp_job_title span at the end
+      if (b - a >= 2) {
+        const last = toks[b - 1].w.toLowerCase();
+        let k = b - 1;
+        if (EXTENSIVE_JOB_TITLES.has(last)) {
+          while (k - 1 >= a && TITLE_LEVEL_WORDS.has(toks[k - 1].w.toLowerCase())) k--;
+        }
+        if (k < b - 1 && k > a) b = k;
+        else {
+          for (const [js, je] of jobSpans) {
+            if (je === toks[b - 1].e && js > toks[a].s && js < toks[b - 1].s) {
+              const kk = toks.findIndex((t, i) => i >= a && t.s === js);
+              if (kk > a) { b = kk; break; }
+            }
+          }
+        }
+      }
+      // ── span wholly inside a nlp_job_title finding (e.g. "Safety Officer"), no person cue
+      const sA = toks[a].s, eB = toks[b - 1].e;
+      if (jobSpans.some(([js, je]) => sA >= js && eB <= je) && !cuedAt(sA, eB)) {
+        drop.add(f); console.debug(`[PATH_C/G3] Dropped person (inside a job-title span): "${raw}"`); return;
+      }
+      let newRaw = text.slice(sA, eB).replace(/[.,;:!?]+$/, '');
+      // ── re-bound: restore the token budget the stripped leading tokens used
+      if (a > 0) {
+        let extra = a, end = eB;
+        while (extra > 0) {
+          const m = text.slice(end).match(/^ +([A-Z][a-z'’-]+)(?![A-Za-z'’])/);
+          if (!m) break;
+          const lw = m[1].toLowerCase();
+          if (NAME_HONORIFIC_TOKENS.has(lw) || NAME_LABEL_WORDS.has(lw) || NON_NAME_WORDS.has(lw) || EXTENSIVE_JOB_TITLES.has(lw) ||
+              isolatedNameTags(m[1]).some(t => NAME_CLOSED_TAGS.includes(t))) break;
+          end += m[0].length; extra--;
+        }
+        newRaw = text.slice(sA, end);
+      }
+      if (newRaw !== raw) { console.debug(`[PATH_C/G3] Re-bounded person: "${raw}" -> "${newRaw}"`); f.rawMatch = newRaw; }
+    });
+
+    // ── single-word rules (R5 digit, R2) and heading guard (R6) on the (possibly trimmed) findings
+    persons.forEach(f => {
+      if (drop.has(f)) return;
+      const raw = f.rawMatch.trim();
+      const occs = jobOccurrences(text, raw);
+      if (!occs.length) return;
+      const cued = occs.some(([s, e]) => hasPersonCueAround(text, s, e));
+      const words = raw.split(/\s+/);
+      const lw = raw.toLowerCase();
+      if (words.length === 1 && !cued) {
+        let why = null;
+        if (NAME_HONORIFIC_TOKENS.has(lw)) why = 'honorific';
+        else if (NAME_LABEL_WORDS.has(lw)) why = 'label word';
+        else if (occs.every(([s, e]) => /^\s*\d/.test(text.slice(e, e + 4)))) why = 'followed by a digit';
+        else if (INDEFINITE_PRONOUNS.has(lw)) why = 'indefinite pronoun';
+        else {
+          const t = isolatedNameTags(raw);
+          if (t.includes('Month') && AMBIGUOUS_MONTH_NAMES.has(lw)) {
+            if (occs.every(([s, e]) => /^\s*\d/.test(text.slice(e, e + 4)) || DATE_PREPOSITION_BEFORE.test(text.slice(Math.max(0, s - 14), s)))) why = 'month/date use';
+          } else if (t.some(x => NAME_CLOSED_TAGS.includes(x))) why = 'function/question/date word';
+        }
+        if (why) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (${why}): "${raw}"`); return; }
+      }
+      // R8: a multi-word phrase made mostly of ordinary dictionary words and with no Person tag on any token
+      // ("Quarterly Report Template", "Rice Without"). Compromise gives an unknown name only Noun/Singular, and a
+      // known ordinary word an extra Verb/Adjective/Uncountable/... tag. A single Person tag or a cue protects.
+      if (words.length >= 2 && !cued) {
+        const terms8 = contextNameTerms(text, occs[0][0], occs[0][1]);
+        const per = words.map(w => ({ ctx: nameTagsFor(terms8, core(w)), iso: isolatedNameTags(w) }));
+        const anyPerson = per.some(t => nameHasPersonTag(t.ctx) || nameHasPersonTag(t.iso));
+        const common = per.filter(t => t.iso.some(x => COMMON_WORD_TAGS.includes(x))).length;
+        if (!anyPerson && common * 2 > words.length) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (phrase of ordinary words): "${raw}"`); return; }
+      }
+      // Inside a Title-Case run a job word before the name ("How To Cook Sinigang...") is not evidence, so only the strong
+      // cues count there: honorific, self-introduction, or a sign-off line ("Best regards, <Name>").
+      const strongCue = occs.some(([s, e]) => {
+        const before = text.slice(Math.max(0, s - 40), s);
+        return /\b(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov)\.?\s+$/i.test(before) ||
+          /\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|call\s+me)\s+$/i.test(before) ||
+          /\b(?:regards|sincerely|thanks|thank\s+you|cheers|respectfully|yours\s+truly|best|warmly|faithfully|gratefully)[,!]?\s*$/i.test(before);
+      });
+      // only occurrences written exactly like the finding count: a lowercase mention elsewhere is not evidence about a Title-Case one
+      const exactOccs = occs.filter(([s, e]) => text.slice(s, e) === raw);
+      if (PERSON_HEADING_GUARD_ENABLED && !strongCue && exactOccs.length && exactOccs.every(([s, e]) => inTitleCaseRun(text, s, e))) {
+        const terms = contextNameTerms(text, occs[0][0], occs[0][1]);
+        const tagged = words.filter(w => nameHasPersonTag(nameTagsFor(terms, core(w)))).length;
+        if (tagged < Math.ceil(words.length / 2)) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person (Title-Case heading run, no person evidence): "${raw}"`); }
+      }
+    });
+
+    // ── R7: exact duplicates, and fragments lying wholly inside a longer person finding
+    const live = persons.filter(f => !drop.has(f));
+    const seen = new Set();
+    live.forEach(f => { const k = f.rawMatch.trim().toLowerCase(); if (seen.has(k)) drop.add(f); else seen.add(k); });
+    const liveOcc = live.filter(f => !drop.has(f)).map(f => ({ f, occs: jobOccurrences(text, f.rawMatch.trim()) }));
+    liveOcc.forEach(({ f, occs }) => {
+      if (!occs.length) return;
+      const inside = occs.every(([s, e]) => liveOcc.some(o => o.f !== f && o.occs.some(([os, oe]) => s >= os && e <= oe && (oe - os) > (e - s))));
+      if (inside) { drop.add(f); console.debug(`[PATH_C/G3] Dropped person fragment inside a longer person finding: "${f.rawMatch}"`); }
+    });
+    return findings.filter(f => !drop.has(f));
+  }
+
   // ── Main scanning function ─────────────────────────────────────────────────
 
   /**
@@ -3887,6 +4149,8 @@ const TrustLinguisticDetector = (() => {
       }
       console.debug('[TrustPrompt/PATH_C] METHOD 4.5 found:', method45Count);
 
+      // Group 3 (D6): titles, honorifics, leading verbs and ordinary words must not be reported as person names.
+      { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       

@@ -8,7 +8,7 @@
  *   yes rows: strict clean = nothing missing AND nothing spurious
  *             loose clean  = nothing missing
  *   no rows:  clean = zero nlp_* findings
- * Dev = C-001..C-110, Hidden = C-111..C-161.
+ * Dev = C-001..C-110 + C-133, C-152, C-153, C-154, C-160 (no longer hidden); Hidden = remaining C-111..C-161.
  */
 'use strict';
 const fs = require('fs');
@@ -23,7 +23,9 @@ const load = f => JSON.parse(fs.readFileSync(f, 'utf8')).rows;
 const A = load(files[0]), B = load(files[1]);
 const mapA = new Map(A.map(r => [r.id, r]));
 const num = id => parseInt(id.replace(/\D/g, ''), 10);
-const split = id => (num(id) <= 110 ? 'dev' : 'hidden');
+// Rows promoted from hidden to dev (no longer hidden): used for tuning in Group 5.
+const UNHIDDEN = new Set(['C-160', 'C-133', 'C-152', 'C-153', 'C-154']);
+const split = id => (num(id) <= 110 || UNHIDDEN.has(id) ? 'dev' : 'hidden');
 
 function status(r) {
   const c = r.comparison, n = r.actualNlpFindings.length;
@@ -56,7 +58,7 @@ p(`## compare-runs: ${files[0]}  ->  ${files[1]}\n`);
 p('### 1. Clean-row counts');
 p('| set | rows | strict clean before | strict clean after | yes loose before | yes loose after | no-rows clean before | no-rows clean after |');
 p('|---|---|---|---|---|---|---|---|');
-for (const [name, pred] of [['ALL', () => true], ['dev C-001..110', r => split(r.id) === 'dev'], ['hidden C-111..161', r => split(r.id) === 'hidden']]) {
+for (const [name, pred] of [['ALL', () => true], ['dev C-001..110 + 133,152,153,154,160', r => split(r.id) === 'dev'], ['hidden (C-111..161 minus the 5)', r => split(r.id) === 'hidden']]) {
   const a = tally(A, pred), b = tally(B, pred);
   p(`| ${name} | ${b.n} | ${a.strictAll} | ${b.strictAll} | ${a.yesLoose}/${a.yesN} | ${b.yesLoose}/${b.yesN} | ${a.noClean}/${a.noN} | ${b.noClean}/${b.noN} |`);
 }

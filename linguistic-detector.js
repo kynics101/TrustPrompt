@@ -3432,6 +3432,12 @@ const TrustLinguisticDetector = (() => {
   //       are stripped like R1; Don, Dona, Ka, Kap are stripped only when Compromise does not tag them as a Person.
   //       A span that is only honorifics / prefixes is re-bounded onto the Title-Case tokens that follow it.
   //
+  //   3c  METHOD 4 no longer rejects a candidate whose ONLY non-name word is a leading person-directed verb (LEAD_PERSON_VERBS:
+  //       contact, email, called, told, asked, sent, gave, helped, named, thanked, met) when Compromise tags at least one
+  //       remaining word as a Person; the leading strip removes that verb (it also uses the list, because Compromise tags
+  //       "Email" as a noun). R10: after a verb strip, a 3+ token remainder with no Person tag and no cue is dropped.
+  //       A month name after "from" is a date only if a digit, a dash, or a range word + month/digit/date word follows.
+  //
   // KNOWN LIMITATIONS (measured; see test-group3-names.js, test-group3b-r8.js, test-group3b-prefixes.js):
   //   - Surname-as-leading-title: a leading word that is a dictionary title and not Person-tagged by Compromise
   //     (Baker, Cook, Porter, Butler, Sawyer, Archer, Carpenter...) is stripped when two or more tokens follow, so
@@ -3445,7 +3451,10 @@ const TrustLinguisticDetector = (() => {
   //   - R8 can drop a real two-word name made only of ordinary words with no Person tag (measured: 2 of 140 findable
   //     frames, e.g. Faith Hope and Ruby Rain in Title Case).
   //   - Month names that are also first names are rejected only after a date preposition or before a digit: "Is May
-  //     the hottest month" style subjects are kept.
+  //     the hottest month" style subjects are kept. "from <Month> until/through <non-date word>" is also kept as a possible name.
+  //   - Leading person-directed verb + a name Compromise does not know ("Contact Marites Dalisay"): not found, because a Person
+  //     tag on the remainder is required to keep headings like "Contact Lens Care Guide" out (measured: 4 of 22 frames for an
+  //     unknown name against 22 of 22 for names Compromise knows).
   const PERSON_HEADING_GUARD_ENABLED = true;
   const NAME_HONORIFIC_TOKENS = new Set([
     'mr', 'mrs', 'ms', 'miss', 'mx', 'dr', 'prof', 'atty', 'engr', 'arch', 'sir', 'madam', 'hon', 'fr', 'rev', 'sen', 'gov', 'esq'
@@ -3463,12 +3472,17 @@ const TrustLinguisticDetector = (() => {
   ]);
   const AMBIGUOUS_MONTH_NAMES = new Set(['may', 'april', 'june', 'august', 'march', 'jun']);
   const DATE_PREPOSITION_BEFORE = /\b(?:in|on|by|until|since|during|before|after|of|this|next|last)\s+$/i;
-  // "from <Month>" is a date only when a range word or a digit follows within two tokens ("from May to August",
-  // "from May 5"); otherwise it may be a person ("a message from May").
+  // "from <Month>" is a date only when, within the next two tokens, there is a digit, a dash, or a range word
+  // (to / until / through / till) that is itself followed by a month name, a digit or another date word:
+  // "from May to June", "from May 5", "from May - June" are dates; "from May to the team" and "a message from May"
+  // may be a person.
+  const MONTH_RANGE_DATE_WORD = /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|yesterday|tonight)\.?$|^\d/i;
   function monthFromIsDate(text, s, e) {
     if (!/\bfrom\s+$/i.test(text.slice(Math.max(0, s - 8), s))) return false;
-    const toks = (text.slice(e, e + 40).match(/\S+/g) || []).slice(0, 2).map(t => t.replace(/[.,;:]+$/, ''));
-    return toks.some(t => /^(?:to|until|through|till|-|–)$/i.test(t) || /^\d/.test(t));
+    const toks = (text.slice(e, e + 60).match(/\S+/g) || []).map(t => t.replace(/[.,;:]+$/, ''));
+    if (toks.slice(0, 2).some(t => /^[-–—]/.test(t) || /^\d/.test(t))) return true;                   // dash or digit
+    const i = toks.slice(0, 2).findIndex(t => /^(?:to|until|through|till)$/i.test(t));                // range word ...
+    return i >= 0 && !!toks[i + 1] && MONTH_RANGE_DATE_WORD.test(toks[i + 1]);                         // ... followed by a date word
   }
   const TITLE_LEVEL_WORDS = new Set([
     'senior', 'junior', 'chief', 'head', 'assistant', 'associate', 'lead', 'deputy', 'executive', 'staff', 'general', 'principal'
@@ -3482,6 +3496,9 @@ const TrustLinguisticDetector = (() => {
     'aling', 'aleng', 'mang', 'manong', 'manang', 'kapitan', 'ate', 'kuya', 'tita', 'tito', 'lola', 'lolo', 'ninong', 'ninang'
   ]);
   const FILIPINO_AMBIGUOUS_PREFIXES = new Set(['don', 'dona', 'ka', 'kap']);
+  // Person-directed verbs (several are on NON_NAME_WORDS because they are also nouns: "emergency contact", "his email").
+  // Used as a leading verb they introduce a person ("Contact Maria Santos about..."): see METHOD 4 and the Group 3 leading strip.
+  const LEAD_PERSON_VERBS = new Set(['contact', 'email', 'called', 'told', 'asked', 'sent', 'gave', 'helped', 'named', 'thanked', 'met']);
   const COMMON_WORD_TAGS = ['Verb', 'Adjective', 'Adverb', 'Preposition', 'Uncountable', 'Gerund', 'Conjunction', 'Determiner', 'Pronoun', 'Modal', 'Auxiliary'];
   const PERSON_TAG_NAMES =['Person', 'FirstName', 'LastName', 'MaleName', 'FemaleName'];
   const RUN_FUNCTION_WORDS = new Set('of for and the a an to in on at by with from na ng sa y de del la los las or nor but vs'.split(' '));
@@ -3561,7 +3578,7 @@ const TrustLinguisticDetector = (() => {
       const toks = []; { const re = /\S+/g, sub = text.slice(s0, e0); let m; while ((m = re.exec(sub)) !== null) toks.push({ w: core(m[0]), s: s0 + m.index, e: s0 + m.index + m[0].length }); }
       if (!toks.length) return;
       const cuedAt = (s, e) => hasPersonCueAround(text, s, e);
-      let a = 0, b = toks.length;
+      let a = 0, b = toks.length, verbStripped = false;
       const terms = contextNameTerms(text, s0, e0);
       // ── leading strip: honorific (R1), label (R5), verb (R3), dictionary title (R4)
       while (b - a >= 1) {
@@ -3575,12 +3592,12 @@ const TrustLinguisticDetector = (() => {
           if (FILIPINO_AMBIGUOUS_PREFIXES.has(lw) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) { a++; continue; }
           // a leading preposition ("Per Elena Cruz") is stripped when at least two tokens remain ("Per Andersson" is kept)
           if (b - a >= 3 && iso.includes('Preposition') && !nameHasPersonTag(iso)) { a++; continue; }
-          if ((ctx.includes('Verb') || iso.includes('Verb')) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) {
+          if ((ctx.includes('Verb') || iso.includes('Verb') || LEAD_PERSON_VERBS.has(lw)) && !nameHasPersonTag(ctx) && !nameHasPersonTag(iso)) {
             // "Hope Santiago will review it": the name is a subject (a verb follows it), so the first word is not an imperative
             const ti = terms.findIndex(x => x.text === toks[0].w);
             const nt = ti >= 0 ? terms[ti + toks.length] : null;
             const subjectUse = nt && (nt.tags || []).some(x => ['Verb', 'Modal', 'Auxiliary', 'Copula'].includes(x));
-            if (!subjectUse) { a++; continue; }
+            if (!subjectUse) { a++; verbStripped = true; continue; }
           }
           if (EXTENSIVE_JOB_TITLES.has(lw) && !nameHasPersonTag(isolatedNameTags(w))) {
             const next = nameTagsFor(terms, toks[a + 1].w);
@@ -3643,6 +3660,12 @@ const TrustLinguisticDetector = (() => {
           end += m[0].length; extra--;
         }
         newRaw = text.slice(sA, end);
+      }
+      // R10: after a leading verb was stripped, capitalisation is the only evidence left. A remainder of 3+ tokens with no
+      // Person tag on any token and no cue is a phrase of ordinary words ("Thanked Donors Appreciation Letter"), not a name.
+      if (verbStripped && newRaw.split(/\s+/).length >= 3 && !cuedAt(sA, eB) &&
+          !newRaw.split(/\s+/).some(w => nameHasPersonTag(nameTagsFor(terms, core(w))))) {
+        drop.add(f); console.debug(`[PATH_C/G3] Dropped person (no Person tag after leading verb strip): "${raw}"`); return;
       }
       if (newRaw !== raw) { console.debug(`[PATH_C/G3] Re-bounded person: "${raw}" -> "${newRaw}"`); f.rawMatch = newRaw; }
     });
@@ -3923,9 +3946,19 @@ const TrustLinguisticDetector = (() => {
         }
         
         // Check if it contains non-name words (adjectives, verbs, discourse markers)
-        if (words.some(w => NON_NAME_WORDS.has(w.toLowerCase()))) {
-          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
-          continue;
+        {
+          const nonNameHits = words.filter(w => NON_NAME_WORDS.has(w.toLowerCase()));
+          // Group 3c: a person-directed verb that is ONLY the first word ("Contact Maria Santos") is not evidence against a
+          // name, provided Compromise tags at least one of the remaining words as a Person. The Group 3 pass strips the verb.
+          let leadVerbPass = false;
+          if (nonNameHits.length === 1 && nonNameHits[0] === words[0] && words.length >= 2 && LEAD_PERSON_VERBS.has(words[0].toLowerCase())) {
+            const leadTerms = contextNameTerms(textNLP, standaloneMatch.index, standaloneMatch.index + candidateName.length);
+            leadVerbPass = words.slice(1).some(w => nameHasPersonTag(nameTagsFor(leadTerms, w)));
+          }
+          if (nonNameHits.length && !leadVerbPass) {
+            console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - contains non-name word: ${nonNameHits.join(', ')}`);
+            continue;
+          }
         }
 
         // ★ FIX (DEF-003/DEF-005): Reject organization names and place/country

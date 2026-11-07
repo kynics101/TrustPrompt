@@ -10,10 +10,10 @@
 const fs = require('fs'), vm = require('vm'), path = require('path');
 global.window = {}; global.globalThis = global; global.document = { title: 't' };
 const L = console.log; console.log = console.debug = console.warn = () => {};
-require('./terms-organizations.js'); require('./terms-occupations.js');
+require('./terms-organizations.js'); require('./terms-occupations.js'); require('./terms-names.js');
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, 'ph-address-db.js'), 'utf8') + ';globalThis.PH_ADDRESS_DB=PH_ADDRESS_DB;');
 global.window.nlp = require('./lib/compromise.min.js');
-require('./normalizer.js'); require(process.env.DET ? path.resolve(process.env.DET) : './linguistic-detector.js');
+require(process.env.NORM ? path.resolve(process.env.NORM) : './normalizer.js'); require(process.env.DET ? path.resolve(process.env.DET) : './linguistic-detector.js');
 const Det = globalThis.TrustLinguisticDetector, N = globalThis.TrustNormalizer;
 const scan = raw => Det.scan(N.normalizePath_C(raw)).filter(x => /^nlp_/.test(x.patternId));
 const P = raw => scan(raw).filter(x => x.patternId === 'nlp_person_name').map(x => x.rawMatch);
@@ -83,6 +83,39 @@ if (sel.includes('H')) {
   ];
   const bad = held.map(p => [p, P(p)]).filter(([, g]) => g.length);
   out.push(`[H] held-out benign phrases (words not on the list): ${held.length} prompts, person false positives = ${bad.length}` + (bad.length ? '\n' + bad.map(([p, g]) => `     FP ${JSON.stringify(p)} -> ${JSON.stringify(g)}`).join('\n') : ''));
+}
+
+if (sel.includes('D')) {
+  // Group 8 held-out: 40 NEW phrases (departments and functions) written after the dictionary design, not used to tune anything
+  const dep = [
+    'Contact Finance about the budget.', 'Email Payroll about the missing allowance.', 'Ask Procurement for a quotation.', 'Contact Compliance before you sign.',
+    'Email Legal about the contract.', 'Ask Facilities to fix the aircon.', 'Contact Operations about the delay.', 'Email Accounting for the invoice copy.',
+    'Ask Engineering to review the drawing.', 'Contact Admissions about the deadline.', 'Email Registrar for your transcript.', 'Ask Dispatch to send a driver.',
+    'Contact Maintenance about the elevator.', 'Email Logistics about the shipment.', 'Ask Treasury to release the funds.', 'Contact Housekeeping for extra towels.',
+    'Email Recruitment about the vacancy.', 'Ask Purchasing for a replacement.', 'Contact Planning about the schedule.', 'Email Research about the survey.',
+    'Ask Training to book the room.', 'Contact Warranty about the repair.', 'Email Subscriptions to cancel it.', 'Ask Shipping for the tracking number.',
+    'Contact Escalations if it is urgent.', 'Tell Dispatch we are ready.', 'Remind Accounting to close the books.', 'Notify Compliance about the incident.',
+    'Notify Security about the visitor.', 'Notify Operations of the change.', 'Thank Volunteers for their time.', 'Call Reservations to change the booking.',
+    'Call Dispatch for a pickup.', 'Email Newsroom with the tip.', 'Ask Concierge for a taxi.', 'Meet Procurement at ten.', 'Tell Engineering to hold the release.',
+    'Remind Payroll about the cutoff.', 'Contact Billing to dispute the charge.', 'Email Reception when you arrive.',
+  ];
+  const bad = dep.map(p => [p, P(p)]).filter(([, g]) => g.length);
+  fails += bad.length;
+  out.push(`[D] NEW held-out department/function phrases (Group 8): ${dep.length} prompts, person false positives = ${bad.length}` + (bad.length ? '\n' + bad.map(([p, g]) => `     FP ${JSON.stringify(p)} -> ${JSON.stringify(g)}`).join('\n') : ''));
+}
+
+if (sel.includes('X')) {
+  // Group 8 held-out: 40 NEW benign Title-Case phrases for the four remaining noun-suffixes (10 each)
+  const ph = [
+    'Mechanical Properties', 'Optical Properties', 'Nutritional Properties', 'Acoustic Properties', 'Electrical Properties', 'Material Properties', 'Surface Properties', 'Flow Properties', 'Antioxidant Properties', 'Healing Properties',
+    'Wireless Technologies', 'Renewable Technologies', 'Cloud Technologies', 'Medical Technologies', 'Sensor Technologies', 'Learning Technologies', 'Display Technologies', 'Battery Technologies', 'Quantum Technologies', 'Farming Technologies',
+    'Precision Manufacturing', 'Smart Manufacturing', 'Garment Manufacturing', 'Contract Manufacturing', 'Cement Manufacturing', 'Textile Manufacturing', 'Furniture Manufacturing', 'Steel Manufacturing', 'Automotive Manufacturing', 'Beverage Manufacturing',
+    'Forensic Laboratories', 'Teaching Laboratories', 'Dental Laboratories', 'Computer Laboratories', 'Chemistry Laboratories', 'Science Laboratories', 'Physics Laboratories', 'Government Laboratories', 'Veterinary Laboratories', 'Testing Laboratories',
+  ];
+  const bySuffix = {}; const bad = [];
+  for (const p of ph) { const o = O(`Explain ${p} to a beginner.`).concat(O(`${p} are covered in the next lesson.`)); if (o.length) { bad.push([p, o]); const s = p.split(' ').pop(); bySuffix[s] = (bySuffix[s] || 0) + 1; } }
+  fails += bad.length;
+  out.push(`[X] NEW held-out benign Title-Case phrases (Group 8): ${ph.length}, organization false positives = ${bad.length}` + (bad.length ? ` by suffix ${JSON.stringify(bySuffix)}\n` + bad.map(([p, o]) => `     FP ${JSON.stringify(p)} -> ${JSON.stringify(o)}`).join('\n') : ''));
 }
 
 if (sel.includes('S')) {

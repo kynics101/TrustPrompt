@@ -45,7 +45,7 @@ if (typeof global.window.nlp === 'undefined') {
 }
 
 // ── 5. Normalizer + detector (detector reads window.nlp at load time) ───────
-require('./normalizer.js');            // defines globalThis.TrustNormalizer
+require(process.env.NORM ? require('path').resolve(process.env.NORM) : './normalizer.js');   // defines globalThis.TrustNormalizer (NORM=<file> runs a scratch copy)
 require(process.env.DET ? require('path').resolve(process.env.DET) : './linguistic-detector.js');   // DET=<path> runs an older detector copy for before/after comparisons
 
 const D = globalThis.TrustLinguisticDetector;

@@ -29,7 +29,8 @@ const termFiles = [
   'terms-medical.js',
   'terms-financial.js',
   'terms-organizations.js',
-  'terms-occupations.js'
+  'terms-occupations.js',
+  'terms-names.js'
 ];
 
 for (const file of termFiles) {
@@ -48,11 +49,13 @@ const medicalTerms = sandbox.MEDICAL_TERMS_DATA || sandbox.globalThis.MEDICAL_TE
 const financialTerms = sandbox.FINANCIAL_TERMS_DATA || sandbox.globalThis.FINANCIAL_TERMS_DATA || [];
 const organizationTerms = sandbox.ORGANIZATIONS_DATA || sandbox.globalThis.ORGANIZATIONS_DATA || [];
 const occupationTerms = sandbox.OCCUPATIONS_DATA || sandbox.globalThis.OCCUPATIONS_DATA || [];
+const namesData = sandbox.NAMES_DATA || sandbox.globalThis.NAMES_DATA || { firstNames: [], surnames: [] };
 
 console.log(`  ✓ Medical terms: ${medicalTerms.length} items`);
 console.log(`  ✓ Financial terms: ${financialTerms.length} items`);
 console.log(`  ✓ Organization terms: ${organizationTerms.length} items`);
 console.log(`  ✓ Occupation terms: ${occupationTerms.length} items`);
+console.log(`  ✓ Name dictionary: ${namesData.firstNames.length} first names, ${namesData.surnames.length} surnames`);
 
 // Build the bundle - use minimal compression (no spaces) to reduce file size
 const bundle = `// worker-data-bundle.js
@@ -68,6 +71,8 @@ self.FINANCIAL_TERMS_DATA = ${JSON.stringify(financialTerms)};
 self.ORGANIZATIONS_DATA = ${JSON.stringify(organizationTerms)};
 
 self.OCCUPATIONS_DATA = ${JSON.stringify(occupationTerms)};
+
+self.NAMES_DATA = ${JSON.stringify(namesData)};
 
 // Signal that worker data is ready
 if (typeof self !== 'undefined') {

@@ -13,7 +13,7 @@
 // Graceful degradation: If compromise.js is unavailable, returns empty findings
 // without error, allowing scanner to continue with PATH A/B results only.
 
-/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA, PH_ADDRESS_DB */
+/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA, NAMES_DATA, PH_ADDRESS_DB */
 
 // KNOWN LIMITATIONS (intentional, documented):
 // 1. Lowercase names: names written entirely in lowercase (e.g. after "cousin" or "brother" in casual text)
@@ -45,6 +45,24 @@ const TrustLinguisticDetector = (() => {
   const COMPROMISE_AVAILABLE = typeof window !== 'undefined' && window.nlp !== undefined;
 
   // ── Constants & heuristic data ─────────────────────────────────────────────
+
+  // ── Group 8: common-names dictionary (terms-names.js), used ONLY as an anchor ("this word is plausibly a person's name") ──────────
+  // Two Sets built once at load time; every lookup is one Set.has() (lowercase, accents stripped). If terms-names.js is not loaded
+  // (NAMES_DICT_AVAILABLE false) every check below behaves as before the dictionary existed.
+  const NAMES_FIRST = new Set(), NAMES_SURNAMES = new Set();
+  let NAMES_DICT_AVAILABLE = false;
+  try {
+    if (typeof NAMES_DATA !== 'undefined' && NAMES_DATA && Array.isArray(NAMES_DATA.firstNames) && Array.isArray(NAMES_DATA.surnames)) {
+      NAMES_DATA.firstNames.forEach(n => NAMES_FIRST.add(n));
+      NAMES_DATA.surnames.forEach(n => NAMES_SURNAMES.add(n));
+      NAMES_DICT_AVAILABLE = NAMES_FIRST.size > 0;
+    }
+  } catch (_) { /* optional data */ }
+  function isKnownNameWord(word) {
+    if (!NAMES_DICT_AVAILABLE || !word) return false;
+    const k = word.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return NAMES_FIRST.has(k) || NAMES_SURNAMES.has(k);
+  }
 
   // Group 4c: placeholders only. A common first name ("John", "Mary") no longer disqualifies a name: "John Reyes" is a real name.
   // Only these placeholder words (as the first word) and these complete placeholder names are filtered.
@@ -629,10 +647,7 @@ const TrustLinguisticDetector = (() => {
     'solutions', 'company', 'corporation'
   ]);
   // Group 4c: the safer corporate words added to the structural organization pass (common-noun suffixes are left for Group 7)
-  const RUN_NEW_SUFFIX_WORDS = new Set(['holdings', 'enterprises', 'industries', 'ventures', 'technologies', 'manufacturing',
-    'properties', 'laboratories', 'pharmaceuticals', 'airlines', 'motors']);
-  // the suffixes among them that are also ordinary nouns
-  const RUN_NOUN_SUFFIX_WORDS = new Set(['properties', 'technologies', 'manufacturing', 'laboratories']);
+  const RUN_NEW_SUFFIX_WORDS = new Set(['holdings', 'enterprises', 'industries', 'ventures', 'pharmaceuticals', 'airlines', 'motors']);
   function classifyPersonRun(candidate, textAfter) {
     const toks = candidate.split(/\s+/);
     let core = toks.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase()) && !/^\p{Lu}\.$/u.test(t) && !/^(?:III|II|IV)$/.test(t));
@@ -3303,7 +3318,7 @@ const TrustLinguisticDetector = (() => {
     const NAME_FRAG   = `(?!${TITLE_STOP_PAT})${NAME_TOKEN}(?:\\s+(?:&(?!\\s*Co)\\s+)?(?!${TITLE_STOP_PAT})${NAME_TOKEN})*`;
     // Group 4c: the safer corporate words (rarely ordinary words after a Title-Case name). Common-noun suffixes (Group, Partners,
     // Services, Solutions, Systems, Capital, Media...) are left for Group 7.
-    const SUFFIX_WORD = '(?:Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|LLC|LLP|&\\s*Co\\.?|Holdings|Enterprises|Industries|Ventures|Technologies|Manufacturing|Properties|Laboratories|Pharmaceuticals|Airlines|Motors)';
+    const SUFFIX_WORD = '(?:Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|LLC|LLP|&\\s*Co\\.?|Holdings|Enterprises|Industries|Ventures|Pharmaceuticals|Airlines|Motors)';
     // (Group 4d removed Insurance, Trading, Logistics and Realty again: with the "one unknown word" gate they matched ordinary phrases
     //  such as "Health Insurance", "Stock Trading", "Military Logistics", "Luxury Realty". They go to Group 7.)
     const SUFFIX_RE = new RegExp(
@@ -3338,14 +3353,14 @@ const TrustLinguisticDetector = (() => {
       if (looksLikePlaceName(full)) continue;              // guard 4
       // guard 5 (Group 4c): for the corporate words that are also ordinary words (Trading, Insurance, Technologies...), a fragment that
       // contains an adjective / gerund / determiner ("New Technologies", "Modern Manufacturing") is a phrase, not a company name
-      // Group 4d: for the suffixes that are also ordinary nouns (RUN_NOUN_SUFFIX_WORDS) at least one preceding token must be a word
-      // Compromise does not know as an ordinary word (the R8 unknown-word signal); for the others no preceding token may be one.
+      // Group 4d/8: no preceding token may be an ordinary word (adjective, gerund, determiner...). Group 8 removed Technologies, Manufacturing,
+      // Properties and Laboratories again: they matched 14 of 40 new benign Title-Case phrases even with the unknown-word gate.
       {
         const sfxLow = suffixWord.toLowerCase();
         if (RUN_NEW_SUFFIX_WORDS.has(sfxLow)) {
           const isCommonW = w => { const tg = isolatedNameTags(w); return !nameHasPersonTag(tg) && tg.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t)); };
           const fw = fragment.split(/\s+/);
-          if (RUN_NOUN_SUFFIX_WORDS.has(sfxLow) ? !fw.some(w => !isCommonW(w)) : fw.some(isCommonW)) continue;
+          if (fw.some(isCommonW)) continue;
         }
       }
       alreadyFoundLower.add(lowerFull);                    // mark seen
@@ -3665,21 +3680,18 @@ const TrustLinguisticDetector = (() => {
   }
 
   // Group 4d: words people address with "Ask/Tell/Thank/Call/Email ..." that are not a person's name
-  const ADDRESSEE_NON_NAME_WORDS = new Set([
-    'alexa', 'siri', 'cortana', 'bixby', 'google', 'claude', 'gpt', 'chatgpt', 'gemini', 'copilot', 'bard', 'bing',
-    'mom', 'dad', 'mum', 'mommy', 'daddy', 'mama', 'papa', 'nanay', 'tatay', 'god', 'lord', 'jesus', 'allah',
-    'support', 'help', 'helpdesk', 'admin', 'everyone', 'everybody', 'someone', 'anyone', 'nobody', 'team', 'staff', 'all', 'both',
-    'me', 'you', 'us', 'them', 'him', 'her', 'it', 'again', 'now', 'later', 'back', 'here', 'there', 'sir', 'madam',
-    // objects of idioms with these verbs (ask permission / questions / advice, tell stories / the truth, thank goodness / heaven,
-    // call home / back / off, email customer service). Compromise gives these the same tags as an unfamiliar name, so a list is the only signal.
-    'permission', 'question', 'questions', 'advice', 'story', 'stories', 'joke', 'jokes', 'truth', 'lies', 'goodness', 'heaven', 'heavens',
-    'home', 'customer', 'customers', 'service', 'services', 'office', 'work', 'off', 'out', 'up', 'away', 'around'
-  ]);
+  // Group 8: shrunk from 78 entries to the 4 that are still needed. With the dictionary anchor, a word after a person-directed verb is
+  // accepted only if it has a Person tag or is a dictionary name, so words such as 'permission', 'home', 'mom', 'support', 'technology' are
+  // rejected without being listed. What remains are words that DO carry a Person tag / dictionary entry but are addressed as a
+  // thing: a voice assistant (Alexa), an AI model (Claude), a deity (Jesus), a form of address (sir).
+  const ADDRESSEE_NON_NAME_WORDS = new Set(['alexa', 'claude', 'jesus', 'sir']);
   // true when the word following a person-directed verb is evidently not a person's name (see ADDRESSEE_NON_NAME_WORDS)
   function isAddresseeNonName(word) {
     const lc = word.toLowerCase(), tg = isolatedNameTags(word);
     if (ADDRESSEE_NON_NAME_WORDS.has(lc)) return true;
     if (nameHasPersonTag(tg)) return false;
+    // Group 8: any single word after a person-directed verb needs an anchor (Compromise Person tag or dictionary name)
+    if (NAMES_DICT_AVAILABLE) return true;
     return EXTENSIVE_JOB_TITLES.has(lc) || tg.includes('Plural') || tg.some(t => NAME_CLOSED_TAGS.includes(t));
   }
   const PERSON_DIRECTED_VERB_RE =/^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)$/i;
@@ -3862,6 +3874,8 @@ const TrustLinguisticDetector = (() => {
         tags = (j[0] && j[0].terms[0] && j[0].terms[0].tags) || [];
       }
     } catch (_) { tags = []; }
+    // Group 8: a word in the common-names dictionary counts as a Person word, exactly like Compromise's own Person tag
+    if (isKnownNameWord(word) && !tags.includes('Person')) tags = tags.concat(['Person', 'NameDictionary']);
     _isolatedTagCache.set(lw, tags);
     return tags;
   }
@@ -3883,7 +3897,8 @@ const TrustLinguisticDetector = (() => {
 
   function nameTagsFor(terms, word) {
     const t = terms.find(x => x.text === word) || terms.find(x => (x.text || '').toLowerCase() === word.toLowerCase());
-    return (t && t.tags) || [];
+    const tags = (t && t.tags) || [];
+    return isKnownNameWord(word) && !tags.includes('Person') ? tags.concat(['Person', 'NameDictionary']) : tags;   // Group 8
   }
 
   // true when [s, e) sits in a run of Title-Case words with 3+ OTHER capitalised content words

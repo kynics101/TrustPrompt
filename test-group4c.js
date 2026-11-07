@@ -9,10 +9,10 @@
 const fs = require('fs'), vm = require('vm'), path = require('path');
 global.window = {}; global.globalThis = global; global.document = { title: 't' };
 const L = console.log; console.log = console.debug = console.warn = () => {};
-require('./terms-organizations.js'); require('./terms-occupations.js');
+require('./terms-organizations.js'); require('./terms-occupations.js'); require('./terms-names.js');
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, 'ph-address-db.js'), 'utf8') + ';globalThis.PH_ADDRESS_DB=PH_ADDRESS_DB;');
 global.window.nlp = require('./lib/compromise.min.js');
-require('./normalizer.js'); require(process.env.DET ? path.resolve(process.env.DET) : './linguistic-detector.js');
+require(process.env.NORM ? path.resolve(process.env.NORM) : './normalizer.js'); require(process.env.DET ? path.resolve(process.env.DET) : './linguistic-detector.js');
 const Det = globalThis.TrustLinguisticDetector, N = globalThis.TrustNormalizer;
 const scan = raw => Det.scan(N.normalizePath_C(raw)).filter(x => /^nlp_/.test(x.patternId));
 const P = raw => scan(raw).filter(x => x.patternId === 'nlp_person_name').map(x => x.rawMatch);

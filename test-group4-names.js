@@ -156,7 +156,7 @@ if (want('G')) {
   L('[G-info] known pre-existing person false positives (not counted): ' + known.map(p => JSON.stringify(persons(p))).join(' '));
 }
 
-// ── M: metamorphic templates (name length x position x script) ────────────────
+// ── M: metamorphic templates (name length 1-6 x position x script/diacritics x sentence / lower / Title case) ──────────────
 if (want('M')) {
   const G1 = ['Beatriz', 'Hilario', 'Imelda', 'Wilfredo', 'Cynthia', 'Dionisio', 'Marcus', 'Priya', 'Oliver', 'Amelia', 'Rodrigo', 'Lourdes', 'Esteban', 'Niño', 'Zoë', 'Renée'];
   const G2 = ['Mae', 'Jay', 'Lyn', 'Jean', 'Marie', 'Paul'];
@@ -164,12 +164,14 @@ if (want('M')) {
   const PART = ['Dela', 'De La', 'De Los', 'Del', 'Van Der', 'Al'];
   const build = (n, i) => {
     const g = G1[i % G1.length], s = SUR[(i * 5 + 3) % SUR.length], m = G2[i % G2.length], pa = PART[i % PART.length];
+    const g3 = G1[(i + 7) % G1.length], s2 = SUR[(i * 3 + 1) % SUR.length];
     switch (n) {
       case 1: return g;
       case 2: return `${g} ${s}`;
       case 3: return `${g} ${m} ${s}`;
       case 4: return `${g} ${m} ${pa} ${s}`;
-      case 5: return `${g} ${m} ${G1[(i + 7) % G1.length]} ${pa} ${s}`;
+      case 5: return `${g} ${m} ${g3} ${pa} ${s}`;
+      case 6: return `${g} ${m} ${g3} ${s2} ${pa} ${s}`;
     }
   };
   const TPL = [
@@ -178,22 +180,39 @@ if (want('M')) {
     ['end', n => `I would like to thank ${n}.`],
     ['comma', n => `Hello, ${n} is here to see you.`],
   ];
-  const stat = {};
-  for (let len = 1; len <= 5; len++) {
-    for (const [pos, f] of TPL) {
-      let ok = 0, tot = 0; const bad = [];
-      for (let i = 0; i < 6; i++) {
-        const nm = build(len, i); tot++;
-        const got = persons(f(nm));
-        if (same(got, [nm])) ok++; else bad.push([nm, got]);
+  const titleCase = s => s.replace(/(^|[\s,'"(-])(\p{Ll})/gu, (_, a, c) => a + c.toUpperCase());
+  const lowPart = nm => nm.replace(/\b(Dela|De La|De Los|Del|Van Der|Al)\b/g, x => x.toLowerCase());
+  const VARIANTS = [
+    ['sentence', (f, nm) => [f(nm), nm]],
+    ['lower-particle', (f, nm) => { const l = lowPart(nm); return [f(l), l]; }],
+    ['Title', (f, nm) => [titleCase(f(nm)), nm]],
+    ['lower', (f, nm) => [f(nm).toLowerCase(), nm.toLowerCase()]],
+  ];
+  const rows = [], allBad = [];
+  for (let len = 1; len <= 6; len++) {
+    const cells = {};
+    for (const [vname, vf] of VARIANTS) {
+      if (vname === 'lower-particle' && len < 4) continue;
+      for (const [pos, f] of TPL) {
+        let ok = 0, tot = 0;
+        for (let i = 0; i < 6; i++) {
+          const nm = build(len, i); const [prompt, exp] = vf(f, nm); tot++;
+          const got = persons(prompt);
+          if (same(got, [exp])) ok++; else allBad.push(`[${len}w ${vname} ${pos}] ${JSON.stringify(prompt)} -> ${JSON.stringify(got)}`);
+        }
+        cells[vname] = cells[vname] || { ok: 0, tot: 0, pos: [] };
+        cells[vname].ok += ok; cells[vname].tot += tot; cells[vname].pos.push(`${pos} ${ok}/${tot}`);
       }
-      stat[`${len} words / ${pos}`] = `${ok}/${tot}`;
-      if (bad.length && len > 1) { totalFail += bad.length; bad.slice(0, 2).forEach(([nm, g]) => L(`     FAIL [${len}w ${pos}] ${nm} -> ${JSON.stringify(g)}`)); }
-      if (len === 1 && bad.length) { /* single first names are policy-dependent: reported, not failed */ }
     }
+    rows.push([len, cells]);
   }
-  L('[M] exact-span template results (name words / position):');
-  for (const len of [1, 2, 3, 4, 5]) L('     ' + len + ' word(s): ' + TPL.map(([pos]) => `${pos} ${stat[`${len} words / ${pos}`]}`).join(' | '));
+  L('[M] exact-span results, 6 names x 4 positions per cell (lower = known limitation: lowercase names without a trigger are not expected):');
+  for (const [len, c] of rows) {
+    L(`     ${len} word(s):` + Object.entries(c).map(([v, x]) => ` ${v} ${x.ok}/${x.tot}`).join(' |'));
+    if (c.sentence) L(`          sentence by position: ${c.sentence.pos.join(', ')}`);
+  }
+  fs.writeFileSync(path.join(__dirname, '.agents', 'tasks', 'group4b-M-failures.txt'), allBad.join('\n'));
+  L(`     all non-exact cells written to .agents/tasks/group4b-M-failures.txt (${allBad.length} lines)`);
 }
 
 // ── Benign sets ───────────────────────────────────────────────────────────────

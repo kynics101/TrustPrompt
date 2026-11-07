@@ -243,12 +243,14 @@ const TrustNormalizer = (() => {
     //   - Preceded by verbs like "taught", "taught me" (object verbs)
     const prepositionsAndConnectors = /\b(?:for|to|with|in|at|by|from|as|or|of|on|up|and|the|is|are|was|were|be|have|has|had)$/i;
     const commonFirstNames = /\b(?:John|Mary|James|David|Robert|Michael|William|Richard|Charles|Joseph|Thomas|Alice|Bob|Charlie|Maria|Jose|Anna|Juan|Carlos|Luis|Pedro|Miguel|Jennifer|Jessica|Sarah|Laura|Susan|Karen|Nancy|Lisa|Sandra|Betty|Patricia|Margaret|Barbara|Dorothy|Kyleen|Maricel|Jerralyn)$/i;
+    // Lowercase surname particles ("Juan dela Cruz", "Ludwig van Beethoven") are followed by the rest of the name: no period is inserted after them.
+    const surnameParticles = /^(?:dela|de|del|van|von|der|di|da|bin|al|el|y|le|du|la|los|las)$/i;   // la/los/las added to your list: "de la Torre", "de los Santos" need them
     const languagesAndSubjects = /\b(?:Filipino|English|Spanish|French|German|Mandarin|Japanese|Korean|Arabic|Portuguese|Italian|Russian|Chinese|Algebra|Geometry|Biology|Chemistry|Physics|History|Geography|Literature|Mathematics|Science|Economics|Philosophy|Art|Music|Design)$/i;
     
     // Letter classes are Unicode-aware: with [a-z] the n-tilde in "Pena" ended a "word", so the trailing "a" looked like a
     // lowercase word and a period was inserted after the name ("Grace Dela Pena. Tomorrow").
     text = text.replace(/((?<![\p{L}\p{M}\d_'’])\p{Ll}[\p{Ll}\p{M}]*)( )(\p{Lu}[\p{Ll}\p{M}]{2,})/gu, (full, word, sp, start) => {
-      if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word) || languagesAndSubjects.test(start)) {
+      if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word) || languagesAndSubjects.test(start) || surnameParticles.test(word)) {
         return full;  // Don't insert period
       }
       return word + "." + sp + start;

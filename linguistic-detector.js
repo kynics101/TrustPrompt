@@ -4014,11 +4014,6 @@ const TrustLinguisticDetector = (() => {
     console.log('[TrustPrompt/PATH_C] Input text length:', textNLP.length);
     console.log('[TrustPrompt/PATH_C] First 100 chars:', textNLP.substring(0, 100));
 
-    // Group 4: normalizePath_C step 5 inserts a period between a lowercase word and a following Title-Case word ("Juan dela. Cruz").
-    // For lowercase surname particles that period is an artifact, never real punctuation, so the particle is re-joined to the name.
-    // (Not done for "van", "bin", "den", "al", "el": they can end a real sentence or an abbreviation: "put it in the bin.", "et al.")
-    textNLP = textNLP.replace(/(?<![\p{L}\p{M}])(dela|del|de|von|y|di|da|le|du|der|la|los|las)\. (?=\p{Lu})/gu, '$1 ');
-
     const findings = [];
 
     try {

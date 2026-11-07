@@ -46,12 +46,10 @@ const TrustLinguisticDetector = (() => {
 
   // ── Constants & heuristic data ─────────────────────────────────────────────
 
-  // Common first names used for optional filtering of obvious non-PII
-  const COMMON_FIRST_NAMES = new Set([
-    'john', 'mary', 'james', 'david', 'robert', 'michael', 'william', 'richard',
-    'charles', 'joseph', 'thomas', 'alice', 'bob', 'charlie', 'example', 'user',
-    'test', 'demo', 'sample', 'admin', 'root'
-  ]);
+  // Group 4c: placeholders only. A common first name ("John", "Mary") no longer disqualifies a name: "John Reyes" is a real name.
+  // Only these placeholder words (as the first word) and these complete placeholder names are filtered.
+  const COMMON_FIRST_NAMES = new Set(['example', 'user', 'test', 'demo', 'sample', 'admin', 'root']);
+  const PLACEHOLDER_FULL_NAMES = new Set(['john doe', 'jane doe', 'john smith', 'jane smith']);
 
   // Non-name words that get capitalized but are not names
   // These are typically adjectives, nouns, or descriptors that should not be treated as person names
@@ -630,10 +628,17 @@ const TrustLinguisticDetector = (() => {
     'ministry', 'office', 'authority', 'center', 'centre', 'service', 'services', 'network', 'systems', 'holdings', 'ventures',
     'solutions', 'company', 'corporation'
   ]);
+  // Group 4c: the safer corporate words added to the structural organization pass (common-noun suffixes are left for Group 7)
+  const RUN_NEW_SUFFIX_WORDS = new Set(['holdings', 'enterprises', 'industries', 'ventures', 'technologies', 'manufacturing',
+    'properties', 'laboratories', 'pharmaceuticals', 'airlines', 'motors']);
+  // the suffixes among them that are also ordinary nouns
+  const RUN_NOUN_SUFFIX_WORDS = new Set(['properties', 'technologies', 'manufacturing', 'laboratories']);
   function classifyPersonRun(candidate, textAfter) {
     const toks = candidate.split(/\s+/);
     let core = toks.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase()) && !/^\p{Lu}\.$/u.test(t) && !/^(?:III|II|IV)$/.test(t));
     const personTagged = ws => ws.some(w => nameHasPersonTag(isolatedNameTags(w)));
+    // "<Name> Industries": a run that ends in one of the corporate words is an organization, not a person
+    if (core.length >= 2 && RUN_NEW_SUFFIX_WORDS.has(core[core.length - 1].toLowerCase())) return 'organization';
     if (core.length >= 2 && core[core.length - 1] === 'Co' && !/^\s*\./.test(textAfter || '') && personTagged(core.slice(0, -1))) {
       core = core.slice(0, -1);   // "Anna Marie Co": the surname Co
     }
@@ -708,6 +713,34 @@ const TrustLinguisticDetector = (() => {
         findings.push({ patternId: 'nlp_person_name', label: 'Person Name (Lowercase intro)', risk: 'low', rawMatch: name, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'lowercase_self_intro' });
       }
     }
+  }
+
+  // Group 4c: the "y" rule for findings made by ANY method (METHOD 3 subject pattern, trigger phrases...). A person finding that contains a
+  // standalone "y" is split there unless it is a compound surname: 2+ name words on the left and exactly one word on the right.
+  // Single-word pieces are kept only when every piece carries a Person tag ("Maria y Jose").
+  function splitPersonFindingsAtY(findings) {
+    const out = [];
+    for (const f of findings) {
+      if (f.patternId !== 'nlp_person_name' || !f.rawMatch || !/\sy\s/.test(f.rawMatch)) { out.push(f); continue; }
+      const toks = f.rawMatch.split(/\s+/), segs = []; let cur = [];
+      for (let i = 0; i < toks.length; i++) {
+        if (toks[i] === 'y' && cur.length) {
+          const j = toks.indexOf('y', i + 1), right = toks.slice(i + 1, j < 0 ? toks.length : j);
+          const lw = cur.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase())).length, rw = right.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase())).length;
+          if (!(lw >= 2 && rw === 1)) { segs.push(cur); cur = []; continue; }
+        }
+        cur.push(toks[i]);
+      }
+      if (cur.length) segs.push(cur);
+      if (segs.length < 2) { out.push(f); continue; }
+      const singleOk = segs.every(sg => sg.length === 1 && nameHasPersonTag(isolatedNameTags(sg[0])));
+      for (const sg of segs) {
+        if (sg.length < 2 && !singleOk) continue;
+        const txt = sg.join(' ');
+        if (!out.some(o => o.rawMatch && o.rawMatch.toLowerCase() === txt.toLowerCase())) out.push(Object.assign({}, f, { rawMatch: txt }));
+      }
+    }
+    findings.length = 0; findings.push(...out);
   }
 
   // Stage d (mirror rule): a job span must start where the person span ends. The title extension (D10) can absorb the Title-Case words
@@ -817,6 +850,34 @@ const TrustLinguisticDetector = (() => {
                 if (TITLE_LEVEL_WORDS.has(pw.toLowerCase()) || (pt.some(t => COMMON_WORD_TAGS.includes(t)) && !nameHasPersonTag(pt))) cutAt--; else break;
               }
               run = toks.slice(0, cutAt).join(' '); toks = toks.slice(0, cutAt);
+            }
+          }
+          // Group 4c: the Spanish/Filipino "y" joins ONE name ("Jose Rizal y Mercado": 2+ name words on the left, a single word on
+          // the right). Any other use is a conjunction between two people ("Ana Santos y Ben Cruz", "Maria y Jose"): split there.
+          if (toks.includes('y') && toks.indexOf('y') > 0) {
+            const segs = []; let cur = [];
+            for (let i = 0; i < toks.length; i++) {
+              if (toks[i] === 'y' && cur.length) {
+                const j = toks.indexOf('y', i + 1), right = toks.slice(i + 1, j < 0 ? toks.length : j);
+                const leftWords = cur.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase())).length;
+                const rightWords = right.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase())).length;
+                if (!(leftWords >= 2 && rightWords === 1)) { segs.push(cur); cur = []; continue; }
+              }
+              cur.push(toks[i]);
+            }
+            if (cur.length) segs.push(cur);
+            if (segs.length > 1) {
+              // "Maria y Jose": two single names are kept only when each carries a Person tag (same anchor as the list rule)
+              const singleOk = segs.every(sg => sg.length === 1 && nameHasPersonTag(isolatedNameTags(sg[0])));
+              let pos = s;
+              for (const sg of segs) {
+                const txt = sg.join(' ');
+                // the 'y' that separated two segments was consumed: advance past it
+                const at = text.indexOf(txt, pos);
+                if (at >= 0) { if (sg.length >= 2 || runSrc !== NAME_RUN2 || singleOk) queue.push({ run: txt, index: at }); pos = at + txt.length; }
+              }
+              if (queue.length) { const q = queue.shift(); return emit(q.run, q.index); }
+              continue;
             }
           }
           if (toks.length < 2 && runSrc === NAME_RUN2) continue;
@@ -1007,7 +1068,7 @@ const TrustLinguisticDetector = (() => {
     }
     
     // For other contexts, use dictionary + heuristics
-    return COMMON_FIRST_NAMES.has(firstWord);
+    return COMMON_FIRST_NAMES.has(firstWord) || PLACEHOLDER_FULL_NAMES.has(lower.replace(/\s+/g, ' '));
   }
 
   /**
@@ -3240,7 +3301,11 @@ const TrustLinguisticDetector = (() => {
     // "O'Brien & Associates Ltd" is captured as a single fragment, but ONLY
     // when the & is NOT immediately followed by "Co" (which starts a suffix).
     const NAME_FRAG   = `(?!${TITLE_STOP_PAT})${NAME_TOKEN}(?:\\s+(?:&(?!\\s*Co)\\s+)?(?!${TITLE_STOP_PAT})${NAME_TOKEN})*`;
-    const SUFFIX_WORD = '(?:Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|LLC|LLP|&\\s*Co\\.?)';
+    // Group 4c: the safer corporate words (rarely ordinary words after a Title-Case name). Common-noun suffixes (Group, Partners,
+    // Services, Solutions, Systems, Capital, Media...) are left for Group 7.
+    const SUFFIX_WORD = '(?:Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|LLC|LLP|&\\s*Co\\.?|Holdings|Enterprises|Industries|Ventures|Technologies|Manufacturing|Properties|Laboratories|Pharmaceuticals|Airlines|Motors)';
+    // (Group 4d removed Insurance, Trading, Logistics and Realty again: with the "one unknown word" gate they matched ordinary phrases
+    //  such as "Health Insurance", "Stock Trading", "Military Logistics", "Luxury Realty". They go to Group 7.)
     const SUFFIX_RE = new RegExp(
       `\\b(${NAME_FRAG}),?\\s+(${SUFFIX_WORD})\\b`, 'g'
     );
@@ -3271,6 +3336,18 @@ const TrustLinguisticDetector = (() => {
       if (alreadyFoundLower.has(lowerFull)) continue;      // guard 2: dedup
       if (shouldFilterCommonOrganization(full)) continue;  // guard 3
       if (looksLikePlaceName(full)) continue;              // guard 4
+      // guard 5 (Group 4c): for the corporate words that are also ordinary words (Trading, Insurance, Technologies...), a fragment that
+      // contains an adjective / gerund / determiner ("New Technologies", "Modern Manufacturing") is a phrase, not a company name
+      // Group 4d: for the suffixes that are also ordinary nouns (RUN_NOUN_SUFFIX_WORDS) at least one preceding token must be a word
+      // Compromise does not know as an ordinary word (the R8 unknown-word signal); for the others no preceding token may be one.
+      {
+        const sfxLow = suffixWord.toLowerCase();
+        if (RUN_NEW_SUFFIX_WORDS.has(sfxLow)) {
+          const isCommonW = w => { const tg = isolatedNameTags(w); return !nameHasPersonTag(tg) && tg.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t)); };
+          const fw = fragment.split(/\s+/);
+          if (RUN_NOUN_SUFFIX_WORDS.has(sfxLow) ? !fw.some(w => !isCommonW(w)) : fw.some(isCommonW)) continue;
+        }
+      }
       alreadyFoundLower.add(lowerFull);                    // mark seen
       found.push({
         name: full,
@@ -3587,6 +3664,27 @@ const TrustLinguisticDetector = (() => {
     return false;
   }
 
+  // Group 4d: words people address with "Ask/Tell/Thank/Call/Email ..." that are not a person's name
+  const ADDRESSEE_NON_NAME_WORDS = new Set([
+    'alexa', 'siri', 'cortana', 'bixby', 'google', 'claude', 'gpt', 'chatgpt', 'gemini', 'copilot', 'bard', 'bing',
+    'mom', 'dad', 'mum', 'mommy', 'daddy', 'mama', 'papa', 'nanay', 'tatay', 'god', 'lord', 'jesus', 'allah',
+    'support', 'help', 'helpdesk', 'admin', 'everyone', 'everybody', 'someone', 'anyone', 'nobody', 'team', 'staff', 'all', 'both',
+    'me', 'you', 'us', 'them', 'him', 'her', 'it', 'again', 'now', 'later', 'back', 'here', 'there', 'sir', 'madam',
+    // objects of idioms with these verbs (ask permission / questions / advice, tell stories / the truth, thank goodness / heaven,
+    // call home / back / off, email customer service). Compromise gives these the same tags as an unfamiliar name, so a list is the only signal.
+    'permission', 'question', 'questions', 'advice', 'story', 'stories', 'joke', 'jokes', 'truth', 'lies', 'goodness', 'heaven', 'heavens',
+    'home', 'customer', 'customers', 'service', 'services', 'office', 'work', 'off', 'out', 'up', 'away', 'around'
+  ]);
+  // true when the word following a person-directed verb is evidently not a person's name (see ADDRESSEE_NON_NAME_WORDS)
+  function isAddresseeNonName(word) {
+    const lc = word.toLowerCase(), tg = isolatedNameTags(word);
+    if (ADDRESSEE_NON_NAME_WORDS.has(lc)) return true;
+    if (nameHasPersonTag(tg)) return false;
+    return EXTENSIVE_JOB_TITLES.has(lc) || tg.includes('Plural') || tg.some(t => NAME_CLOSED_TAGS.includes(t));
+  }
+  const PERSON_DIRECTED_VERB_RE =/^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)$/i;
+  const PERSON_DIRECTED_LEAD_RE = /^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting|sent|send(?:s|ing)?|gave|give[sn]?|giving|help(?:ed|s|ing)?|named?|names)$/i;
+  const PERSON_DIRECTED_BEFORE_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\s+(?:(?:to|with|for|that)\s+)?$/i;
   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
     const orgs = findings
       .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
@@ -3622,7 +3720,21 @@ const TrustLinguisticDetector = (() => {
       }
       // (d) single-word place used locatively
       if (words.length === 1 && isKnownPlaceWord(raw) && occs.every(([s, e]) => hasLocativeCue(text, s, e))) {
-        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (place in locative context): "${raw}"`);
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (place in locative context): "${raw}"`); return;
+      }
+      // (f) Group 4c: a 1-2 word finding that IS an exact place name ("Baguio", "Nueva Ecija", "Compare Tarlac" = verb + place) and has no
+      //     cue is a place, not a person. A person-directed verb (thank, contact, email, tell, ask, call, meet, remind, invite) right
+      //     before it, or as its own first word, protects it; place verbs (visit, go to, travel to, compare) do not.
+      if (words.length <= 2) {
+        const tk = words.map(w => w.replace(/[.,]$/, ''));
+        // a place verb (visit, compare, travel...) or any ordinary word without a Person tag in front of the place
+        const leadVerb = tk.length === 2 && !nameHasPersonTag(isolatedNameTags(tk[0])) &&
+          (isOrdinaryNonNameWord(tk[0]) || /^(?:compar\w*|visit\w*|explor\w*|tour\w*|see|seeing|trip|travel\w*|go|going|fly|flying|drive|driving|mov\w*|relocat\w*)$/i.test(tk[0]));
+        const placePart = leadVerb ? tk[1] : tk.join(' ');
+        if (isKnownPlaceWord(placePart) && !(leadVerb && PERSON_DIRECTED_VERB_RE.test(tk[0])) &&
+            !occs.some(([s]) => PERSON_DIRECTED_BEFORE_RE.test(text.slice(Math.max(0, s - 30), s)))) {
+          drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (exact place name, no person cue): "${raw}"`);
+        }
       }
     });
     return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller replaces the contents in place)
@@ -3805,6 +3917,7 @@ const TrustLinguisticDetector = (() => {
       .flatMap(o => jobOccurrences(text, o.rawMatch).map(([s, e]) => [s, e]));
     const clipSpans = jobSpans.concat(orgSpans);   // a person span stops where a job-title or organization span begins
     const drop = new Set();
+    const strippedVerbOf = new WeakMap();   // finding -> the leading verb that was stripped from it
 
     persons.forEach(f => {
       const raw = f.rawMatch.trim();
@@ -3833,7 +3946,7 @@ const TrustLinguisticDetector = (() => {
             const ti = terms.findIndex(x => x.text === toks[0].w);
             const nt = ti >= 0 ? terms[ti + toks.length] : null;
             const subjectUse = nt && (nt.tags || []).some(x => ['Verb', 'Modal', 'Auxiliary', 'Copula'].includes(x));
-            if (!subjectUse) { a++; verbStripped = true; continue; }
+            if (!subjectUse) { a++; verbStripped = true; strippedVerbOf.set(f, lw); continue; }
           }
           if (EXTENSIVE_JOB_TITLES.has(lw) && !nameHasPersonTag(isolatedNameTags(w))) {
             const next = nameTagsFor(terms, toks[a + 1].w);
@@ -3917,6 +4030,15 @@ const TrustLinguisticDetector = (() => {
       const cued = occs.some(([s, e]) => hasPersonCueAround(text, s, e));
       const words = raw.split(/\s+/);
       const lw = raw.toLowerCase();
+      // Group 4c: a single word left after an ordinary (not person-directed) verb was stripped ("Install Python", "Order Burger") has no
+      // evidence of being a name: keep it only with a Person tag or a cue. "Thank Hazel", "Contact Hope", "Thank Grace" are protected by the verb.
+      // (and after a person-directed verb the word must not be an evident non-name addressee: "Ask Alexa", "Call Mom", "Thank God")
+      if (words.length === 1 && strippedVerbOf.has(f) && PERSON_DIRECTED_LEAD_RE.test(strippedVerbOf.get(f)) && isAddresseeNonName(raw)) {
+        drop.add(f); console.debug(`[PATH_C/G3] Dropped person (addressee that is not a name after a person-directed verb): "${raw}"`); return;
+      }
+      if (words.length === 1 && !cued && strippedVerbOf.has(f) && !PERSON_DIRECTED_LEAD_RE.test(strippedVerbOf.get(f)) && !nameHasPersonTag(isolatedNameTags(raw))) {
+        drop.add(f); console.debug(`[PATH_C/G3] Dropped person (single word after an ordinary verb, no Person tag): "${raw}"`); return;
+      }
       if (words.length === 1 && !cued) {
         let why = null;
         if (NAME_HONORIFIC_TOKENS.has(lw)) why = 'honorific';
@@ -4438,7 +4560,11 @@ const TrustLinguisticDetector = (() => {
         // Action verbs with direct object names (direct capture only, no intermediate prepositions)
         // Matches: "contact Kyleen", "call John", "invite Sarah"
         // Does NOT match: "email for Kyleen" (has preposition in between)
-        { pattern: new RegExp(String.raw`\b(?:contact|call|invite|notify)\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'action_verb' },
+        // Group 4d: the person-directed verbs (contact, call, invite, notify, thank, email, tell, ask, meet, remind) in any inflection; the
+        // first letter may be upper case so a sentence-initial "Thank Grace" / "Contact Hope" matches.
+        // The optional "." is the one normalizePath_C step 5 inserts between a lowercase verb and a Title-Case word it does not know
+        // ("Please thank. Hilario"); the same tolerance already exists for job titles.
+        { pattern: new RegExp(String.raw`\b(?:[Cc]ontact(?:s|ed|ing)?|[Cc]all(?:s|ed|ing)?|[Ii]nvite[sd]?|[Ii]nviting|[Nn]otif(?:y|ies|ied|ying)|[Tt]hank(?:s|ed|ing)?|[Ee]-?mail(?:s|ed|ing)?|[Tt]ell(?:s|ing)?|[Tt]old|[Aa]sk(?:s|ed|ing)?|[Mm]eet(?:s|ing)?|[Mm]et|[Rr]emind(?:s|ed|ing)?)\.?\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'action_verb' },
         // "from [Name]" context - captures name after "from"
         { pattern: new RegExp(String.raw`\bfrom\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'from_context' }
       ];
@@ -4457,10 +4583,19 @@ const TrustLinguisticDetector = (() => {
           
           // Filter: Reject if it's a known non-name word (adjectives, verbs, discourse markers)
           if (nonNameWordsDirective.has(name.toLowerCase())) continue;
-          
+
           // Filter: Reject known organizations and AI models
           const knownOrganizations = new Set(['azure', 'google', 'amazon', 'microsoft', 'apple', 'claude', 'gpt', 'gemini', 'bard']);
           if (knownOrganizations.has(name.toLowerCase())) continue;
+
+          // Group 4d: after a person-directed verb the word is kept unless it is evidently an addressee that is not a person's name:
+          // a voice assistant / AI, a kinship or deity word, a generic support/role word, a dictionary job title, or a closed-class
+          // word (pronoun, determiner, adverb, date...: "Tell Me", "Thank You", "Ask Again"). Ordinary words that are also names
+          // (Hope, Joy, Rose) are NOT rejected here: the verb is the cue.
+          if (patternObj.name === 'action_verb' && isAddresseeNonName(name)) continue;
+          // "called" also NAMES things: "The event is called X", "a group called X" are not people being addressed
+          if (patternObj.name === 'action_verb' && /^[Cc]alled/.test(match[0]) &&
+              /(?:\b(?:is|are|was|were|be|been|being|so|also)|\b(?:a|an|the|this|that|our|my|his|her|their)\s+\p{L}+)\s+$/u.test(textNLP.slice(Math.max(0, match.index - 40), match.index))) continue;
           
           // Filter: Avoid duplicates
           if (findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) continue;
@@ -4485,6 +4620,7 @@ const TrustLinguisticDetector = (() => {
       // Group 3 (D6): titles, honorifics, leading verbs and ordinary words must not be reported as person names.
       if (PERSON_LIST_ENABLED) extractNameLists(textNLP, findings);
       if (PERSON_LOWERCASE_INTRO_ENABLED) extractLowercaseSelfIntros(textNLP, findings);
+      splitPersonFindingsAtY(findings);
       trimJobSpansOverNames(findings);
       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.

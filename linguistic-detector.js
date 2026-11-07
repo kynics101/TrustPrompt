@@ -593,7 +593,238 @@ const TrustLinguisticDetector = (() => {
   // finding of "for missing the lab exam". A genuine honorific+name is written in
   // Title Case (e.g. "Prof. Reyes", "Dr. Smith"); a lowercase "professor" is just a
   // common noun and must NOT trigger name extraction.
-  const HONORIFICS = /\b(Mr|Ms|Mrs|Miss|Mx|Sir|Madam|Dr|Prof|Professor|Rev|Reverend|Fr|Father|Sr|Esq|Eng|Engr)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g;
+  // ── Group 4: Unicode-aware name word ─────────────────────────────────────────
+  // One Title-Case name word: a capital + at least one lowercase letter + any letters/combining marks, optionally with an
+  // "O'" / "D'" prefix, hyphen joins (Santos-Lim, Pena-Munoz) and apostrophe joins before a capital (O'Brien). A possessive
+  // "'s" is NOT part of the word. The old [A-Z][a-z]+ cut "Pena" at the n-tilde and "McDonald" at the second capital.
+  const NAME_WORD = String.raw`(?:\p{Lu}['’])?\p{Lu}\p{Ll}[\p{L}\p{M}]*(?:-\p{L}[\p{L}\p{M}]*|['’]\p{Lu}[\p{L}\p{M}]*)*`;
+  // not in the middle of a word: no letter/digit right before, and no "letter + apostrophe/hyphen" right before ("O'Brien" -> not "Brien"),
+  // but an opening quote ('Maria Santos) is fine
+  const NAME_LB = String.raw`(?<![\p{L}\p{M}\d_])(?<![\p{L}\p{M}]['’-])`;
+  const NAME_RB = String.raw`(?![\p{L}\p{M}\d_])`;
+  // Group 4 (stage b): a name RUN is up to six name words. Between words an optional single-letter initial ("S. ") and ONE lowercase
+  // or Title-case surname particle sequence (dela, de la, de los, van der, y ...) are allowed; the run may start with initials or
+  // "Ma." and end with a Roman-numeral suffix (III). "Jr"/"Sr" are ordinary name words, and their period stays outside the span.
+  const NAME_PART_SEQ = String.raw`(?:de\s+la|de\s+los|de\s+las|van\s+der|van\s+den|von\s+der|dela|del|de|van|von|bin|al|el|y|di|da|le|du|der|den|la)`;
+  const NAME_JOIN = String.raw`\s+(?:\p{Lu}\.\s+)?(?:${NAME_PART_SEQ}\s+)?${NAME_WORD}`;
+  const NAME_LEAD = String.raw`(?:(?:\p{Lu}\.\s+){1,3}|Ma\.\s+)`;
+  const NAME_TAIL = String.raw`(?:\s+(?:III|II|IV)${NAME_RB})?`;
+  const NAME_RUN1 = String.raw`${NAME_LEAD}?${NAME_WORD}(?:${NAME_JOIN}){0,14}${NAME_TAIL}`;                                   // 1+ words
+  const NAME_RUN2 = String.raw`(?:${NAME_LEAD}${NAME_WORD}(?:${NAME_JOIN}){0,14}|${NAME_WORD}(?:${NAME_JOIN}){1,14})${NAME_TAIL}`;  // 2+ tokens
+  const HONORIFICS = new RegExp(String.raw`${NAME_LB}(Mr|Ms|Mrs|Miss|Mx|Sir|Madam|Dr|Prof|Professor|Rev|Reverend|Fr|Father|Sr|Esq|Eng|Engr)\.?\s+(${NAME_RUN1})${NAME_RB}`, 'gu');
+
+  // Tags that make a capitalised word a sentence-opener rather than part of a name ("If Maria Santos calls", "Hello Maria Santos").
+  const RUN_LEAD_STRIP_TAGS = ['Conjunction', 'Preposition', 'Determiner', 'QuestionWord', 'Adverb', 'Expression'];
+  const RUN_PARTICLE_WORDS = new Set(['de', 'del', 'dela', 'la', 'los', 'las', 'van', 'von', 'bin', 'al', 'el', 'y', 'di', 'da', 'le', 'du', 'der', 'den']);
+
+  // Org/person decision for a METHOD 4 name run. classifyNameVsOrganization() counts every token, so a name with particles,
+  // initials or a suffix, or any run of 4+ words, was always "organization", and "Co" always counted as a company suffix.
+  // Here: (1) particles, initials and Roman suffixes are not counted; (2) a trailing "Co" is a company suffix only when followed by
+  // a period or when no other word of the run can be a person's name (Compromise tags no other word as a Person);
+  // (3) 4+ counted words are a person only if no word is an organization head word AND some word carries a Person tag.
+  // Anything the rule does not accept falls back to the old classifier.
+  const RUN_ORG_HEAD_WORDS = new Set([
+    'inc', 'corp', 'co', 'ltd', 'llc', 'llp', 'gmbh', 'department', 'dept', 'division', 'unit', 'group', 'team', 'bureau', 'agency',
+    'administration', 'institute', 'university', 'college', 'school', 'academy', 'hospital', 'clinic', 'bank', 'fund', 'association',
+    'society', 'enterprises', 'enterprise', 'organization', 'org', 'council', 'committee', 'board', 'foundation', 'cooperative',
+    'ministry', 'office', 'authority', 'center', 'centre', 'service', 'services', 'network', 'systems', 'holdings', 'ventures',
+    'solutions', 'company', 'corporation'
+  ]);
+  function classifyPersonRun(candidate, textAfter) {
+    const toks = candidate.split(/\s+/);
+    let core = toks.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase()) && !/^\p{Lu}\.$/u.test(t) && !/^(?:III|II|IV)$/.test(t));
+    const personTagged = ws => ws.some(w => nameHasPersonTag(isolatedNameTags(w)));
+    if (core.length >= 2 && core[core.length - 1] === 'Co' && !/^\s*\./.test(textAfter || '') && personTagged(core.slice(0, -1))) {
+      core = core.slice(0, -1);   // "Anna Marie Co": the surname Co
+    }
+    if (core.length >= 4) {
+      if (core.some(w => RUN_ORG_HEAD_WORDS.has(w.toLowerCase().replace(/[.,]$/, '')))) return 'organization';
+      return personTagged(core) || toks.length > core.length ? 'name' : 'organization';
+    }
+    return classifyNameVsOrganization(core.join(' '));
+  }
+
+  // ── Stage f / g: list of single names, and lowercase self-introductions ─────────────────────────────────────────────────────────
+  // Both are switchable. Each is kept only if it gave 0 false positives on its benign set (test-group4-names.js sections BL / BS).
+  const PERSON_LIST_ENABLED = true;
+  const PERSON_LOWERCASE_INTRO_ENABLED = true;
+
+  // A word that is evidently NOT a bare name: non-name list, closed class, dictionary job title, digit, or a word Compromise tags
+  // as ordinary (verb, adjective, adverb...). Used only for words that carry no Person tag.
+  function isOrdinaryNonNameWord(w) {
+    const lw = w.toLowerCase(), tg = isolatedNameTags(w);
+    return /\d/.test(w) || NON_NAME_WORDS.has(lw) || INTERNAL_FUNCTION_WORDS.has(lw) || LEAD_PERSON_VERBS.has(lw) || EXTENSIVE_JOB_TITLES.has(lw) ||
+      tg.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t));
+  }
+  function isPlaceOrOrgWord(w) {
+    const lw = w.toLowerCase();
+    return isKnownPlaceWord(w) || EXTENSIVE_ORGANIZATIONS.has(lw);
+  }
+
+  // Stage f. "Ana, Ben, Carla and Dan": three or more single Title-Case words separated by commas / "and". The list is a list of
+  // people only when at least half of its items carry a Compromise Person tag; the other items must then be neither ordinary words,
+  // places, organizations nor job titles. A list item glued to a neighbouring Title-Case word ("Ana Cruz, Ben, Carla") is dropped.
+  function extractNameLists(text, findings) {
+    const W = NAME_WORD;
+    const re = new RegExp(`${NAME_LB}(${W}(?:\\s*,\\s*${W}){1,12}(?:,?\\s+(?:and|&)\\s+${W})?)${NAME_RB}`, 'gu');
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      let items = m[1].split(/\s*,\s*(?:and\s+|&\s+)?|\s+(?:and|&)\s+/).filter(Boolean);
+      let start = m.index;
+      if (/\p{Lu}[\p{L}\p{M}'’-]*\s+$/u.test(text.slice(Math.max(0, start - 40), start))) { start += items[0].length; items = items.slice(1); }
+      if (/^\s+\p{Lu}[\p{L}\p{M}]/u.test(text.slice(m.index + m[1].length, m.index + m[1].length + 3)) && items.length) items = items.slice(0, -1);
+      if (items.length < 3) continue;
+      const tagged = items.filter(w => nameHasPersonTag(isolatedNameTags(w)));
+      if (tagged.length * 2 < items.length) continue;
+      for (const w of items) {
+        if (!nameHasPersonTag(isolatedNameTags(w)) && (isOrdinaryNonNameWord(w) || isPlaceOrOrgWord(w))) continue;
+        if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === w.toLowerCase())) continue;
+        findings.push({ patternId: 'nlp_person_name', label: 'Person Name (List)', risk: 'low', rawMatch: w, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'name_list' });
+      }
+    }
+  }
+
+  // Stage g. Lowercase names right after a self-introduction ("my name is carlo mendoza", "im rowena dizon"). Strictest forms only:
+  //   "my name is" + 1-2 lowercase words that are not ordinary words; "im / i'm / i am / call me" need TWO lowercase words, the first with a
+  //   Person tag and the second not an ordinary word, so "im sorry", "i am from ...", "im a student", "i am 22 years old" never qualify.
+  function extractLowercaseSelfIntros(text, findings) {
+    const LW = String.raw`\p{Ll}[\p{L}\p{M}]*(?:-\p{L}[\p{L}\p{M}]*)*`;
+    const END = String.raw`(?![\p{L}\p{M}\d_'’])`;
+    const pats = [
+      { re: new RegExp(String.raw`\b[Mm]y\s+name\s+is\s+(${LW})(?:\s+(${LW}))?${END}`, 'gu'), strict: false },
+      { re: new RegExp(String.raw`\b(?:[Ii]m|[Ii]['’]m|[Ii]\s+am|[Cc]all\s+me)\s+(${LW})(?:\s+(${LW}))?${END}`, 'gu'), strict: true },
+    ];
+    for (const { re, strict } of pats) {
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const t1 = m[1], t2 = m[2];
+        const ok1 = nameHasPersonTag(isolatedNameTags(t1)) || (!strict && !isOrdinaryNonNameWord(t1) && !isPlaceOrOrgWord(t1));
+        if (!ok1) continue;
+        const ok2 = t2 && !isOrdinaryNonNameWord(t2) && !isPlaceOrOrgWord(t2) && t2.length >= 2;
+        if (strict && !ok2) continue;
+        const name = ok2 ? `${t1} ${t2}` : t1;
+        if (name.length < 2 || shouldFilterCommonName(name)) continue;
+        if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === name.toLowerCase())) continue;
+        findings.push({ patternId: 'nlp_person_name', label: 'Person Name (Lowercase intro)', risk: 'low', rawMatch: name, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'lowercase_self_intro' });
+      }
+    }
+  }
+
+  // Stage d (mirror rule): a job span must start where the person span ends. The title extension (D10) can absorb the Title-Case words
+  // in front of a title ("Hilario Ferrer Regional Manager" -> one nlp_job_title). When a person finding is a proper prefix of such a
+  // job finding and the remainder is a dictionary title (or ends in one), the job is re-bounded to the remainder.
+  function trimJobSpansOverNames(findings) {
+    const persons = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    if (!persons.length) return;
+    findings.forEach(j => {
+      if (j.patternId !== 'nlp_job_title' || !j.rawMatch) return;
+      const jl = j.rawMatch.toLowerCase();
+      for (const p of persons) {
+        const pl = p.rawMatch.trim().toLowerCase();
+        if (jl.length > pl.length + 1 && jl.startsWith(pl + ' ')) {
+          const rest = j.rawMatch.slice(pl.length + 1).trim();
+          if (EXTENSIVE_JOB_TITLES.has(rest.toLowerCase()) || EXTENSIVE_JOB_TITLES.has(rest.split(/\s+/).pop().toLowerCase())) { j.rawMatch = rest; break; }
+        }
+      }
+    });
+  }
+
+  // Stage e: a token that cannot be part of a person name inside a Title-Case-only prompt: a known non-name word, a person-directed
+  // verb, a function word, an honorific, a dictionary job title, or a word Compromise tags as ordinary/closed-class WITHOUT a Person tag.
+  // Unknown words (Compromise tags them Noun/Singular only) are NOT splitters, so unfamiliar surnames stay inside the name.
+  function isTitleRunSplitter(tok) {
+    const w = tok.replace(/[.,;:!?]+$/, ''), lw = w.toLowerCase();
+    if (!/^\p{Lu}\p{Ll}/u.test(w) || RUN_PARTICLE_WORDS.has(lw)) return false;
+    const tg = isolatedNameTags(w);
+    if (nameHasPersonTag(tg)) return false;
+    return NON_NAME_WORDS.has(lw) || LEAD_PERSON_VERBS.has(lw) || INTERNAL_FUNCTION_WORDS.has(lw) || NAME_HONORIFIC_TOKENS.has(lw) ||
+      EXTENSIVE_JOB_TITLES.has(lw) || tg.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t));
+  }
+  // Split a captured run at its splitter tokens; returns [{run, index}] pieces of 2+ tokens, or null when nothing was split.
+  // keepFirst: the first token is never a split point (sentence-case runs: a leading title/verb/honorific is stripped, with re-bounding,
+  // by the Group 3 pass, as before: "Engineer John Paul Tolentino").
+  function splitTitleRun(run, startIndex, keepFirst) {
+    const re = /\S+/g; const toks = []; let m;
+    while ((m = re.exec(run)) !== null) toks.push({ w: m[0], s: m.index, e: m.index + m[0].length, cut: !(keepFirst && !toks.length) && isTitleRunSplitter(m[0]) });
+    if (!toks.some(t => t.cut)) return null;
+    const pieces = []; let cur = [];
+    const flush = () => { if (cur.length >= 2) pieces.push({ run: run.slice(cur[0].s, cur[cur.length - 1].e), index: startIndex + cur[0].s }); cur = []; };
+    for (const t of toks) { if (t.cut) flush(); else cur.push(t); }
+    flush();
+    return pieces;
+  }
+
+  // Iterator over name runs in `text`, with the same exec() shape as a global RegExp (result[1] = run, result.index = start).
+  // Two clean-ups the regex cannot express: (1) a single leading initial that follows a lowercase word is a sentence end or an
+  // ordinary letter ("plan B. Maria Santos"), not part of the name; (2) when 3+ tokens are captured, leading sentence-opener words
+  // (conjunction, preposition, determiner, question word, adverb, expression, with no Person tag) are not part of the name.
+  function nameRunMatcher(text, runSrc) {
+    const re = new RegExp(`${NAME_LB}(${runSrc})${NAME_RB}`, 'gu');
+    const queue = [];   // pieces of a run that was split (stage e)
+    const emit = (piece, index) => { const o = [piece, piece]; o.index = index; return o; };
+    return {
+      exec() {
+        if (queue.length) { const q = queue.shift(); return emit(q.run, q.index); }
+        for (;;) {
+          const m = re.exec(text);
+          if (!m) return null;
+          let s = m.index, run = m[1];
+          const lead = run.match(/^((?:\p{Lu}\.\s+)+)/u);
+          if (lead && (lead[1].match(/\./g) || []).length === 1 && /\p{Ll}\s+$/u.test(text.slice(0, s))) { s += lead[1].length; run = run.slice(lead[1].length); }
+          let toks = run.split(/\s+/);
+          while (toks.length >= 3 && /^\p{Lu}\p{Ll}/u.test(toks[0]) && !RUN_PARTICLE_WORDS.has(toks[0].toLowerCase())) {
+            const tg = isolatedNameTags(toks[0]);
+            if (!tg.some(t => RUN_LEAD_STRIP_TAGS.includes(t)) || nameHasPersonTag(tg)) break;
+            const cut = run.indexOf(toks[0]) + toks[0].length;
+            const ws = run.slice(cut).match(/^\s+/)[0].length;
+            s += cut + ws; run = run.slice(cut + ws); toks = run.split(/\s+/);
+          }
+          // Stage e: a Title-Case-only passage ("Draft An Email For Ana Cruz About The Plan") shows itself by capitalised function words
+          // INSIDE the run (in sentence case "An"/"For" are never capitalised mid-phrase) or by a surrounding run of Title-Case words.
+          // The whole run is split at the words that cannot be part of a name (isTitleRunSplitter) and each piece of 2+ tokens is offered
+          // as a candidate. The Group 3 heading guard (R6) is the anchor test: a piece survives only with a strong cue or when half its
+          // tokens carry a Person tag. Otherwise a run longer than six tokens is cut into a six-token name and the rest.
+          const styled = toks.length >= 3 && (toks.slice(1).some(t => INTERNAL_FUNCTION_WORDS.has(t.toLowerCase())) || inTitleCaseRun(text, s, s + run.length));
+          if (styled) {
+            const pieces = splitTitleRun(run, s);
+            if (pieces) { queue.push(...pieces); if (queue.length) { const q = queue.shift(); return emit(q.run, q.index); } continue; }
+          } else if (toks.length >= 4 && splitTitleRun(run, s, true)) {
+            // a 4+ token run in ordinary sentence case that contains words which cannot be part of a name ("Ana Cruz Tarlac State University",
+            // "Alvin Dela Rosa Senior Accountant") is split the same way; shorter runs keep the old reject-the-whole-candidate behaviour.
+            queue.push(...splitTitleRun(run, s, true)); if (queue.length) { const q = queue.shift(); return emit(q.run, q.index); } continue;
+          } else if (toks.filter(t => !RUN_PARTICLE_WORDS.has(t.toLowerCase())).length > 6) {
+            // cap: six name words (particles such as "y" or "dela" do not count); the rest is its own candidate
+            let cnt = 0, idx = toks.length;
+            for (let i = 0; i < toks.length; i++) { if (!RUN_PARTICLE_WORDS.has(toks[i].toLowerCase()) && ++cnt > 6) { idx = i; break; } }
+            while (idx > 0 && RUN_PARTICLE_WORDS.has(toks[idx - 1].toLowerCase())) idx--;
+            const first = toks.slice(0, idx).join(' '), rest = toks.slice(idx);
+            if (rest.length >= 2) queue.push({ run: rest.join(' '), index: s + first.length + 1 });
+            run = first; toks = toks.slice(0, idx);
+          }
+          // Stage d: a person span stops where a job title begins. A trailing dictionary job title (1-3 words) is cut off together with
+          // the ordinary-word modifiers directly before it ("Regional", "Branch"), when at least two name tokens remain, the title word
+          // is not itself a Person word (Baker, Taylor), and no person cue (honorific, "my name is") sits in front of the run.
+          if (toks.length >= 3 && !hasPersonCueAround(text, s, s + run.length)) {
+            const plain = toks.map(t => t.replace(/[.,]$/, ''));
+            let cutAt = -1;
+            for (let n = Math.min(3, plain.length - 2); n >= 1 && cutAt < 0; n--) {
+              const win = plain.slice(plain.length - n).join(' ').toLowerCase();
+              if (EXTENSIVE_JOB_TITLES.has(win) && !(n === 1 && nameHasPersonTag(isolatedNameTags(plain[plain.length - 1])))) cutAt = plain.length - n;
+            }
+            if (cutAt >= 2) {
+              while (cutAt - 1 >= 2) {
+                const pw = plain[cutAt - 1], pt = isolatedNameTags(pw);
+                if (TITLE_LEVEL_WORDS.has(pw.toLowerCase()) || (pt.some(t => COMMON_WORD_TAGS.includes(t)) && !nameHasPersonTag(pt))) cutAt--; else break;
+              }
+              run = toks.slice(0, cutAt).join(' '); toks = toks.slice(0, cutAt);
+            }
+          }
+          if (toks.length < 2 && runSrc === NAME_RUN2) continue;
+          return emit(run, s);
+        }
+      }
+    };
+  }
 
   // ── Helper: Extract names with honorifics ────────────────────────────────────
 
@@ -617,6 +848,8 @@ const TrustLinguisticDetector = (() => {
     while ((match = HONORIFICS.exec(text)) !== null) {
       const honorific = match[1];
       const name = match[2].trim();
+      // Group 4: "Sr" after a full name ("Orlando Villacorta Sr. Went home") is the generational suffix, not the honorific "Sr." (Sister).
+      if (/^(?:Sr|Esq)$/.test(honorific) && /\p{Lu}[\p{L}\p{M}'’-]*\s+\p{Lu}[\p{L}\p{M}'’-]*\s+$/u.test(text.slice(Math.max(0, match.index - 60), match.index))) continue;
       
       // Filter out common non-PII names
       if (name.length >= 2 && !shouldFilterCommonName(name)) {
@@ -1953,7 +2186,7 @@ const TrustLinguisticDetector = (() => {
     if (!n) return out;
     for (let i = hay.indexOf(n); i !== -1; i = hay.indexOf(n, i + 1)) {
       const b = i === 0 ? ' ' : hay[i - 1], a = i + n.length >= hay.length ? ' ' : hay[i + n.length];
-      if (!/[a-z0-9]/.test(b) && !/[a-z0-9]/.test(a)) out.push([i, i + n.length]);
+      if (!/[\p{L}\p{M}\d]/u.test(b) && !/[\p{L}\p{M}\d]/u.test(a)) out.push([i, i + n.length]);
     }
     return out;
   }
@@ -3327,7 +3560,7 @@ const TrustLinguisticDetector = (() => {
   function hasPersonCueAround(text, s, e) {
     const before = text.slice(Math.max(0, s - 40), s);
     if (/\b(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov)\.?\s+$/i.test(before)) return true;      // honorific
-    if (/\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|call\s+me)\s+$/i.test(before)) return true;                             // self-introduction
+    if (/\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|im|call\s+me)\s+$/i.test(before)) return true;                           // self-introduction
     // job title right before ("nurse Grace Cruz"; the normalizer may have inserted a period: "nurse. Grace Cruz")
     const beforeTrim = before.replace(/\.?\s+$/, '');
     const prev = /[,;:!?]$/.test(beforeTrim) ? [] : beforeTrim.split(/\s+/).slice(-3).map(w => w.toLowerCase().replace(/[^a-z-]/g, '')).filter(Boolean);
@@ -3568,6 +3801,9 @@ const TrustLinguisticDetector = (() => {
     const core = w => w.replace(/^["'“‘(]+/, '').replace(/[.,;:!?)"”’]+$/, '');
     const jobSpans = findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch)
       .flatMap(j => jobOccurrences(text, j.rawMatch).map(([s, e]) => [s, e]));
+    const orgSpans = findings.filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
+      .flatMap(o => jobOccurrences(text, o.rawMatch).map(([s, e]) => [s, e]));
+    const clipSpans = jobSpans.concat(orgSpans);   // a person span stops where a job-title or organization span begins
     const drop = new Set();
 
     persons.forEach(f => {
@@ -3603,7 +3839,7 @@ const TrustLinguisticDetector = (() => {
             const next = nameTagsFor(terms, toks[a + 1].w);
             // tokens that remain after the title, counting adjacent Title-Case tokens beyond the extractor's 3-word cap
             let follow = 0, fEnd = toks[b - 1].e, fm;
-            while (follow < 2 && (fm = text.slice(fEnd).match(/^ +([A-Z][a-z'’-]+)(?![A-Za-z'’])/))) { follow++; fEnd += fm[0].length; }
+            while (follow < 2 && (fm = text.slice(fEnd).match(/^ +(\p{Lu}[\p{Ll}\p{M}'’-]+)(?![\p{L}\p{M}'’])/u))) { follow++; fEnd += fm[0].length; }
             if (b - a - 1 + follow >= 2 || next.includes('FirstName')) { a++; continue; }
           }
         }
@@ -3614,7 +3850,7 @@ const TrustLinguisticDetector = (() => {
         // tokens that follow them (up to two) are the name, so re-bound onto those instead of dropping the finding.
         if (a >= toks.length) {
           let end = toks[toks.length - 1].e, startPos = -1, got = 0, fm;
-          while (got < 2 && (fm = text.slice(end).match(/^\.?[ ]+([A-Z][a-z'’-]+)(?![A-Za-z'’])/))) {
+          while (got < 2 && (fm = text.slice(end).match(/^\.?[ ]+(\p{Lu}[\p{Ll}\p{M}'’-]+)(?![\p{L}\p{M}'’])/u))) {
             const lw2 = fm[1].toLowerCase();
             if (NAME_HONORIFIC_TOKENS.has(lw2) || FILIPINO_NAME_PREFIXES.has(lw2) || NAME_LABEL_WORDS.has(lw2) || NON_NAME_WORDS.has(lw2) ||
                 EXTENSIVE_JOB_TITLES.has(lw2) || isolatedNameTags(fm[1]).some(t => NAME_CLOSED_TAGS.includes(t))) break;
@@ -3634,8 +3870,10 @@ const TrustLinguisticDetector = (() => {
         }
         if (k < b - 1 && k > a) b = k;
         else {
-          for (const [js, je] of jobSpans) {
-            if (je === toks[b - 1].e && js > toks[a].s && js < toks[b - 1].s) {
+          for (const [js, je] of clipSpans) {
+            // Stage d: ANY job or organization span that starts inside the person span (not only one ending exactly at its end)
+            // ends the name there.
+            if (je > js && js > toks[a].s && js < toks[b - 1].e) {
               const kk = toks.findIndex((t, i) => i >= a && t.s === js);
               if (kk > a) { b = kk; break; }
             }
@@ -3652,7 +3890,7 @@ const TrustLinguisticDetector = (() => {
       if (a > 0) {
         let extra = a, end = eB;
         while (extra > 0) {
-          const m = text.slice(end).match(/^ +([A-Z][a-z'’-]+)(?![A-Za-z'’])/);
+          const m = text.slice(end).match(/^ +(\p{Lu}[\p{Ll}\p{M}'’-]+)(?![\p{L}\p{M}'’])/u);
           if (!m) break;
           const lw = m[1].toLowerCase();
           if (NAME_HONORIFIC_TOKENS.has(lw) || NAME_LABEL_WORDS.has(lw) || NON_NAME_WORDS.has(lw) || EXTENSIVE_JOB_TITLES.has(lw) ||
@@ -3709,7 +3947,7 @@ const TrustLinguisticDetector = (() => {
       const strongCue = occs.some(([s, e]) => {
         const before = text.slice(Math.max(0, s - 40), s);
         return /\b(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov)\.?\s+$/i.test(before) ||
-          /\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|call\s+me)\s+$/i.test(before) ||
+          /\b(?:my\s+name\s+is|name\s+is|i\s+am|i['’]m|im|call\s+me)\s+$/i.test(before) ||
           /\b(?:regards|sincerely|thanks|thank\s+you|cheers|respectfully|yours\s+truly|best|warmly|faithfully|gratefully)[,!]?\s*$/i.test(before);
       });
       // only occurrences written exactly like the finding count: a lowercase mention elsewhere is not evidence about a Title-Case one
@@ -3776,6 +4014,11 @@ const TrustLinguisticDetector = (() => {
     console.log('[TrustPrompt/PATH_C] Input text length:', textNLP.length);
     console.log('[TrustPrompt/PATH_C] First 100 chars:', textNLP.substring(0, 100));
 
+    // Group 4: normalizePath_C step 5 inserts a period between a lowercase word and a following Title-Case word ("Juan dela. Cruz").
+    // For lowercase surname particles that period is an artifact, never real punctuation, so the particle is re-joined to the name.
+    // (Not done for "van", "bin", "den", "al", "el": they can end a real sentence or an abbreviation: "put it in the bin.", "et al.")
+    textNLP = textNLP.replace(/(?<![\p{L}\p{M}])(dela|del|de|von|y|di|da|le|du|der|la|los|las)\. (?=\p{Lu})/gu, '$1 ');
+
     const findings = [];
 
     try {
@@ -3811,17 +4054,24 @@ const TrustLinguisticDetector = (() => {
         // case-sensitive (Title Case only) so common nouns are not captured.
         // (The path normalizer capitalises the first character of the prompt,
         // so a prompt that begins with this phrase always arrives as "My name is".)
-        /\b[Mm]y\s+[Nn]ame\s+[Ii]s\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
-        /\b(?:i\s+)?(?:am|'m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
-        /\b[Cc]all\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
-        /\bi['']m\s+called\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+        new RegExp(String.raw`\b[Mm]y\s+[Nn]ame\s+[Ii]s\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
+        new RegExp(String.raw`\b(?:i\s+)?(?:am|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
+        new RegExp(String.raw`\b[Cc]all\s+me\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
+        new RegExp(String.raw`\bi['’]m\s+called\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
       ];
       
       for (const pattern of nameTriggerPatterns) {
         let match;
         while ((match = pattern.exec(textNLP)) !== null) {
-          const name = match[1].trim();
-          
+          // Group 4: the run can now be up to six words. Trailing words that cannot be part of a name (a job title, a
+          // closed-class word or a known non-name word: "my name is Ana Cruz Manager at ...") are cut off, so the name keeps its own words.
+          let name = match[1].trim();
+          for (let tw = name.split(/\s+/); tw.length > 1; tw = name.split(/\s+/)) {
+            const lastW = tw[tw.length - 1], lw = lastW.toLowerCase(), lt = isolatedNameTags(lastW);
+            if (!(NON_NAME_WORDS.has(lw) || EXTENSIVE_JOB_TITLES.has(lw) || (lt.some(t => NAME_CLOSED_TAGS.includes(t)) && !nameHasPersonTag(lt)))) break;
+            name = tw.slice(0, -1).join(' ');
+          }
+
           // ★ FIX: Filter out non-name words (adjectives, verbs, descriptors, etc.)
           // Check if ANY word in the phrase is a known non-name word
           const words = name.split(/\s+/);
@@ -3856,7 +4106,7 @@ const TrustLinguisticDetector = (() => {
       // Pattern: [Capitalized Words] + [Verb/State]
       // Captures: "Maricel Balais is experiencing", "John is working", "Maria said", etc.
       // MUST capture multi-word names as a unit, not individual words
-      const subjectNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|are|was|were|said|told|asked|explained|works|worked|goes|went|comes|came|living|lived|named|called)\b/g;
+      const subjectNamePattern = new RegExp(String.raw`${NAME_LB}(${NAME_RUN1})\s+(?:is|are|was|were|said|told|asked|explained|works|worked|goes|went|comes|came|living|lived|named|called)\b`, 'gu');
       
       let match;
       while ((match = subjectNamePattern.exec(textNLP)) !== null) {
@@ -3906,7 +4156,7 @@ const TrustLinguisticDetector = (() => {
       // METHOD 4: Standalone capitalized multi-word phrases (names without explicit triggers)
       // Examples: "Maricel Balais said...", "John Smith works at..."
       // Look for 2-3 consecutive capitalized words that might be names
-      const standaloneNamePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g;
+      const standaloneNamePattern = nameRunMatcher(textNLP, NAME_RUN2);
       let standaloneMatch;
       const processedStandalone = new Set();
       
@@ -3965,7 +4215,7 @@ const TrustLinguisticDetector = (() => {
         // names that compromise and the capitalized-phrase heuristic mis-tag as
         // people — e.g. "Mapua Malayan Colleges", "Saudi Arabia". These are
         // captured by the dedicated org extractor / location pattern instead.
-        if (classifyNameVsOrganization(candidateName) === 'organization') {
+        if (classifyPersonRun(candidateName, textNLP.slice(standaloneMatch.index + candidateName.length, standaloneMatch.index + candidateName.length + 4)) === 'organization') {
           console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - classified as organization: "${candidateName}"`);
           continue;
         }
@@ -3980,7 +4230,8 @@ const TrustLinguisticDetector = (() => {
         // classifyNameVsOrganization only sees the phrase itself and would score
         // a 3-word Title-Case phrase as a name, so we check the trailing context.
         const afterMatch = textNLP.slice(standaloneMatch.index + candidateName.length, standaloneMatch.index + candidateName.length + 16);
-        if (/^\s*,?\s*(?:inc|corp|corporation|incorporated|ltd|limited|llc|llp|co|company|enterprises?|holdings|ventures|group)\b\.?/i.test(afterMatch)) {
+        // Group 4: the suffix must be a whole word ("Co", not the "co" of "co-authored")
+        if (/^\s*,?\s*(?:inc|corp|corporation|incorporated|ltd|limited|llc|llp|co|company|enterprises?|holdings|ventures|group)(?![\p{L}\p{M}\d'’-])\.?/iu.test(afterMatch)) {
           console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - followed by corporate suffix (organization): "${candidateName}"`);
           continue;
         }
@@ -4188,13 +4439,13 @@ const TrustLinguisticDetector = (() => {
       const directiveContextPatterns = [
         // Prepositions: "for [Name]", "to [Name]", "with [Name]"
         // Captures the capitalized name directly after these prepositions
-        { pattern: /\b(?:for|to|with)\s+([A-Z][a-z]+)\b/g, name: 'preposition' },
+        { pattern: new RegExp(String.raw`\b(?:for|to|with)\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'preposition' },
         // Action verbs with direct object names (direct capture only, no intermediate prepositions)
         // Matches: "contact Kyleen", "call John", "invite Sarah"
         // Does NOT match: "email for Kyleen" (has preposition in between)
-        { pattern: /\b(?:contact|call|invite|notify)\s+([A-Z][a-z]+)\b/g, name: 'action_verb' },
+        { pattern: new RegExp(String.raw`\b(?:contact|call|invite|notify)\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'action_verb' },
         // "from [Name]" context - captures name after "from"
-        { pattern: /\bfrom\s+([A-Z][a-z]+)\b/g, name: 'from_context' }
+        { pattern: new RegExp(String.raw`\bfrom\s+(${NAME_WORD})${NAME_RB}`, 'gu'), name: 'from_context' }
       ];
       
       for (const patternObj of directiveContextPatterns) {
@@ -4237,6 +4488,9 @@ const TrustLinguisticDetector = (() => {
       console.debug('[TrustPrompt/PATH_C] METHOD 4.5 found:', method45Count);
 
       // Group 3 (D6): titles, honorifics, leading verbs and ordinary words must not be reported as person names.
+      if (PERSON_LIST_ENABLED) extractNameLists(textNLP, findings);
+      if (PERSON_LOWERCASE_INTRO_ENABLED) extractLowercaseSelfIntros(textNLP, findings);
+      trimJobSpansOverNames(findings);
       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }

@@ -230,11 +230,11 @@ const TrustNormalizer = (() => {
     text = text.replace(/([.!?])\1+/g, "$1");  // Multiple punct → single
     
     // CRITICAL: Always ensure space after punctuation before letter/number
-    text = text.replace(/([,;:!?.])([a-zA-Z0-9])/g, "$1 $2");
-    
+    text = text.replace(/([,;:!?.])([\p{L}\d])/gu, "$1 $2");
+
     // Remove space before punctuation
     text = text.replace(/\s+([,;:!?.])/g, "$1");
-    
+
     // Step 5: Sentence boundary detection (avoid false sentence breaks)
     // Insert period between lowercase word + uppercase word, UNLESS:
     //   - Preceded by preposition/connector
@@ -245,7 +245,9 @@ const TrustNormalizer = (() => {
     const commonFirstNames = /\b(?:John|Mary|James|David|Robert|Michael|William|Richard|Charles|Joseph|Thomas|Alice|Bob|Charlie|Maria|Jose|Anna|Juan|Carlos|Luis|Pedro|Miguel|Jennifer|Jessica|Sarah|Laura|Susan|Karen|Nancy|Lisa|Sandra|Betty|Patricia|Margaret|Barbara|Dorothy|Kyleen|Maricel|Jerralyn)$/i;
     const languagesAndSubjects = /\b(?:Filipino|English|Spanish|French|German|Mandarin|Japanese|Korean|Arabic|Portuguese|Italian|Russian|Chinese|Algebra|Geometry|Biology|Chemistry|Physics|History|Geography|Literature|Mathematics|Science|Economics|Philosophy|Art|Music|Design)$/i;
     
-    text = text.replace(/((?<!['’])\b[a-z]+)( )([A-Z][a-z]{2,})/g, (full, word, sp, start) => {
+    // Letter classes are Unicode-aware: with [a-z] the n-tilde in "Pena" ended a "word", so the trailing "a" looked like a
+    // lowercase word and a period was inserted after the name ("Grace Dela Pena. Tomorrow").
+    text = text.replace(/((?<![\p{L}\p{M}\d_'’])\p{Ll}[\p{Ll}\p{M}]*)( )(\p{Lu}[\p{Ll}\p{M}]{2,})/gu, (full, word, sp, start) => {
       if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word) || languagesAndSubjects.test(start)) {
         return full;  // Don't insert period
       }
@@ -254,12 +256,12 @@ const TrustNormalizer = (() => {
     
     // Step 6: Ensure correct sentence case
     // Capitalize first letter
-    text = text.replace(/^([a-z])/, c => c.toUpperCase());
+    text = text.replace(/^(\p{Ll})/u, c => c.toUpperCase());
     // Capitalize after sentence punctuation
-    text = text.replace(/([.!?]\s+)([a-z])/g, (_, p, l) => p + l.toUpperCase());
+    text = text.replace(/([.!?]\s+)(\p{Ll})/gu, (_, p, l) => p + l.toUpperCase());
     // Restore standalone "I"
     text = text.replace(/\bi\b/g, "I");
-    
+
     // Step 7: Restore code blocks as neutral placeholders (not sentences)
     text = text.replace(/\[CODE_(\d+)\]/g, " [CODE BLOCK] ");
     

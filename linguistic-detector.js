@@ -3809,6 +3809,13 @@ const TrustLinguisticDetector = (() => {
       if (words.length >= 2 && words.some(w => STRONG_ORG_HEAD_WORDS.has(w.toLowerCase().replace(/\.$/, '')))) {
         drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (institutional head word): "${raw}"`); return;
       }
+      // (e2) Group 11: a candidate that is ONLY a head word, with or without a determiner ("University", "The Bank"), is not a person.
+      //      (A cue above, or a second word such as "Hannah Bank", keeps the finding.)
+      //      Uses the existing organization head-word lists. STRONG_ORG_HEAD_WORDS alone omits Bank/Office/Bureau/Group/Foundation (they can be
+      //      real surnames, so they must not close a two-word case such as "Hannah Bank"), but a bare one of them is not a name.
+      if (words.length === 1 && (w0 => STRONG_ORG_HEAD_WORDS.has(w0) || RUN_ORG_HEAD_WORDS.has(w0))(words[0].toLowerCase().replace(/\.$/, ''))) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (bare head word): "${raw}"`); return;
+      }
       // (d) single-word place used locatively
       if (words.length === 1 && isKnownPlaceWord(raw) && occs.every(([s, e]) => hasLocativeCue(text, s, e))) {
         drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (place in locative context): "${raw}"`); return;

@@ -2423,6 +2423,21 @@ const TrustLinguisticDetector = (() => {
   }
   const JOB_OBJECT_ROLE_BEFORE_AS_RE = /\b(?:us(?:e|es|ed|ing)|design(?:ed|s|ing)?|intend(?:ed|s)?|meant|treat(?:ed|s|ing)?|regard(?:ed|s|ing)?|consider(?:ed|s|ing)?|view(?:ed|s|ing)?|seen|describ(?:ed|es|ing))\b(?:\s+[\w'’-]+){0,3}?\s+as\s+(?:an?\s+|the\s+)?$/i;
   // Group 17: is the sentence that holds [s,e] a generic one (question / definition / comparison opener or phrase)?
+  // Group 17b: is [s,e] part of a Title Case HEADING rather than a statement about a person? True when the span starts with a capital and either
+  //   (a) it sits in a run of 3 or more consecutive Title Case words that contains no anchored person name, or
+  //   (b) the word right after it is a heading-like ending (List, Guide, Schedule, Checklist, Menu, Plan, Report, Directory...).
+  // Used only to withhold the "multi-word title" shortcut from titles added by category; any other cue still counts.
+  const JOB_HEADING_ENDINGS = new Set(['list', 'lists', 'guide', 'schedule', 'checklist', 'menu', 'plan', 'report', 'directory', 'handbook', 'roster', 'chart', 'table', 'calendar', 'form', 'template', 'registry', 'index', 'catalog', 'catalogue']);
+  function jobHeadingLikeAt(text, s, e) {
+    if (!/^[A-Z]/.test(text.slice(s, e))) return false;
+    const nx = text.slice(e, e + 40).match(/^\s+([A-Za-z]+)/);
+    if (nx && JOB_HEADING_ENDINGS.has(nx[1].toLowerCase())) return true;
+    const left = (text.slice(Math.max(0, s - 100), s).match(/((?:[A-Z][\w'’-]*\s+)*)$/) || ['', ''])[1].trim().split(/\s+/).filter(Boolean);
+    const right = (text.slice(e, e + 100).match(/^((?:\s+[A-Z][\w'’-]*)*)/) || ['', ''])[1].trim().split(/\s+/).filter(Boolean);
+    const run = left.concat(text.slice(s, e).trim().split(/\s+/), right);
+    if (run.length < 3) return false;
+    return !run.some(w => isKnownNameWord(w) || nameHasPersonTag(isolatedNameTags(w)));
+  }
   function jobGenericAt(text, s, e) {
     const ss = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('?', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('\n', s - 1)) + 1;
     let se = text.length;
@@ -2438,7 +2453,7 @@ const TrustLinguisticDetector = (() => {
     // Heading guard: when most other words in the sentence are Capitalised (Title
     // Case headings, ALL-CAPS), capitalisation carries no information, so the
     // name/employer cues (4, 5, 6) are disabled for this occurrence.
-    const capsUseless = (() => {
+    const capsUselessBase = (() => {
       const sentStart = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('?', s - 1)) + 1;
       let sentEnd = text.length;
       for (const ch of ['.', '!', '?']) { const k = text.indexOf(ch, e); if (k !== -1 && k < sentEnd) sentEnd = k; }
@@ -2447,10 +2462,13 @@ const TrustLinguisticDetector = (() => {
       if (rest.length < 4) return false;
       return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
     })();
+    // Group 17b: for a title added by category, a Title Case heading context also disables the capitalisation cues (4, 5, 5b, 6) -
+    // "<Title> Meeting Notes" is not "<Title> <First> <Last>".
+    const capsUseless = capsUselessBase || (JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && jobHeadingLikeAt(text, s, e));
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
     // (Group 17: not for a plural, and not for a title added by category when the sentence is generic)
     if (!leadOnly && !noMulti && /\s/.test(span.trim()) && !definiteBefore &&
-        !(JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless))) return true;            // 1 (multi-word, not a bare definite description)
+        !(JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless || jobHeadingLikeAt(text, s, e)))) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
     // Group 15 (a): a bare "as a" right after a verb of use / purpose / treatment ("use it as a", "designed as a", "treated as a") names the
     // role of a THING; it is not evidence of a person's job. "works as", "serves as", "employed as", "hired as" are not in that class.

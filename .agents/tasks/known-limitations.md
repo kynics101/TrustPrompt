@@ -30,8 +30,10 @@
     coordination, not in "Mentored three junior auditors, including <Name>" (C-155 "auditors" stays missed).
 12. **Group 17 (cause D) titles added by category** (terms-occupations.js, OCCUPATIONS_EXTRA, 304 entries not previously in the dictionary):
     multi-word additions are accepted like other multi-word titles, except from a generic sentence (question / definition / comparison) or a
-    Title Case heading. They still produce findings in non-generic text that is not about a person: C-122 "medical technologist"
-    (job-post paragraph, a no-flag row) and the heading "Fresh Harvest Farmers Market Vendor List". `student`, `volunteer` and other status
+    Title Case heading (Group 17b: a run of 3+ Title Case words with no anchored person name, or a heading ending such as List / Guide /
+    Schedule / Checklist / Menu / Plan / Report / Directory right after the title; in a heading the capitalisation cues are off too).
+    They still produce findings in non-generic prose that is not about a person: C-122 "medical technologist" (job-post paragraph, an
+    accepted policy row). `student`, `volunteer` and other status
     roles are deliberately not in the dictionary (C-059 is expected to be corrected in the test set).
 13. **"the city engineer"**: a multi-word title preceded by "the" is not accepted by the multi-word cue (bare definite description), so
     C-124 "city engineer" stays missed although "City Engineer" is now in the dictionary.

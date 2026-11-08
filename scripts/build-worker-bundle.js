@@ -30,7 +30,8 @@ const termFiles = [
   'terms-financial.js',
   'terms-organizations.js',
   'terms-occupations.js',
-  'terms-names.js'
+  'terms-names.js',
+  'terms-names-extra.js'
 ];
 
 for (const file of termFiles) {
@@ -73,6 +74,8 @@ self.ORGANIZATIONS_DATA = ${JSON.stringify(organizationTerms)};
 self.OCCUPATIONS_DATA = ${JSON.stringify(occupationTerms)};
 
 self.NAMES_DATA = ${JSON.stringify(namesData)};
+
+self.NAMES_EXTRA_DATA = ${JSON.stringify(sandbox.NAMES_EXTRA_DATA || sandbox.globalThis.NAMES_EXTRA_DATA || { firstNames: [], surnames: [] })};
 
 // Signal that worker data is ready
 if (typeof self !== 'undefined') {

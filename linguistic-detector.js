@@ -58,6 +58,14 @@ const TrustLinguisticDetector = (() => {
       NAMES_DICT_AVAILABLE = NAMES_FIRST.size > 0;
     }
   } catch (_) { /* optional data */ }
+  // optional extra list (terms-names-extra.js: aggregate frequency lists of given names and surnames); same use, same Sets
+  try {
+    if (typeof NAMES_EXTRA_DATA !== 'undefined' && NAMES_EXTRA_DATA && Array.isArray(NAMES_EXTRA_DATA.firstNames) && Array.isArray(NAMES_EXTRA_DATA.surnames)) {
+      NAMES_EXTRA_DATA.firstNames.forEach(n => NAMES_FIRST.add(n));
+      NAMES_EXTRA_DATA.surnames.forEach(n => NAMES_SURNAMES.add(n));
+      NAMES_DICT_AVAILABLE = NAMES_FIRST.size > 0;
+    }
+  } catch (_) { /* optional data */ }
   function isKnownNameWord(word) {
     if (!NAMES_DICT_AVAILABLE || !word) return false;
     const k = word.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -3957,11 +3965,32 @@ const TrustLinguisticDetector = (() => {
     construction: 'construction builders contractors developers realty properties plumbing electrical roofing welding repair repairs machinery masonry carpentry excavation demolition landscaping janitorial',
     media: 'media studios studio productions publishing publishers press broadcasting radio films pictures entertainment printing graphics advertising communications animation',
     hospitality: 'hotel hotels resort resorts inn lodge suites hostel travel tours travels spa salon barbershop fitness gym hospitality villas',
-    trade: 'trading supply supplies distributors distribution manufacturing wholesalers retailers'
+    trade: 'trading supply supplies distributors distribution manufacturing wholesalers retailers',
+    // ── expansion by industry section (PSIC / ISIC section and division names), generic nouns and plural / agent forms only ──
+    agriculture: 'farm farms farming agriculture agricultural agribusiness agri plantation plantations ranch ranches orchards nurseries poultry livestock piggery cattle dairy creamery hatchery fishery fisheries aquaculture forestry lumber sawmill sawmills feeds fertilizer fertilizers seeds hacienda agrochemicals',
+    mining: 'mining mines minerals quarry quarries drilling petroleum oil gas coal aggregates exploration',
+    manufacturing: 'manufacturers factory factories fabrication bottling canning packaging packing plastics chemicals chemical textile textiles garments apparel clothing footwear furniture furnishings woodworks cabinetry ceramics paper rubber metals metalworks cement concrete electronics appliances equipment tools fasteners cables wires paints coatings cosmetics detergents beverages foods confectionery chocolates snacks noodles refinery refineries distillery winery wines tannery tanneries toys jewelry instruments devices components automotive fabrics',
+    utilities: 'electric electricity energy renewables solar hydro geothermal biomass utilities generation fuels fuel waterworks sewerage sanitation waste recycling disposal remediation',
+    construction2: 'infrastructure architecture designs interiors interior renovation remodeling painting paving flooring glazing steelworks scaffolding surveying homes housing townhomes residences condominium condominiums landholdings development developments',
+    motortrade: 'auto autos dealership dealerships garage garages carwash tires tyres batteries parts spareparts salvage surplus imports exports merchandise gadgets shoes bags gifts books stationery florist florists lighting petshop agrivet',
+    transport2: 'airlines airline airways aviation railways railway bus buses shipyard shipyards ports terminal terminals warehouse warehousing warehouses depot depots delivery deliveries parcel parcels haulage hauling limousine limousines rentals rental leasing cruises cruise ferries transit',
+    accommodation: 'motel motels pension lodging lodgings homestay homestays bnb inns cottages cabins campground kitchens cafeteria cafeterias grill grille barbecue bbq bars pub pubs lounge lounges roastery coffeeshop teahouse chicken burgers burger pizza pizzas ramen sushi bakeshop bakeshops patisserie deli delicatessen foods fastfood buffet dining rotisserie smokehouse botica panaderia bodega karinderya talyer ferreteria',
+    information: 'telecom telecoms telecommunications broadband internet wireless networks systems software technologies technology interactive digital analytics hosting computing computers games gaming apps newspaper newspapers magazine magazines publications television news times herald tribune gazette chronicle journal bulletin observer inquirer telegraph cinema cinemas',
+    finance: 'banking bancorp savings credit lending loans financing finance financial financials fintech microfinance pawnshop pawnshops remittance remittances forex securities investments investment equity equities funds assurance mutual wealth',
+    realestate: 'estates landlords apartments apartment mall malls',
+    professional2: 'law lawyers attorneys legal notary notaries accountants auditors tax taxation research testing inspection inspections design branding creative creatives photography photographers photo photos sciences innovations management managers',
+    admin: 'manpower employment placement outsourcing security guards investigation investigations detective detectives cleaning cleaners pest maintenance facilities events planners exhibitions conventions telemarketing secretarial translations',
+    education2: 'learning training trainings education educational childcare daycare playschool seminary conservatory lyceum montessori tutors vocational',
+    health2: 'medical medicine medicines pharma drugs hospitals polyclinic polyclinics infirmary dentists optometry orthodontics orthopedics dermatology cardiology pediatrics physiotherapy therapeutics imaging radiology dialysis maternity nursing homecare eldercare ambulance ambulances rehab caregivers physicians technicians electricians mechanics therapists pharmacists chemists specialists practitioners',
+    arts: 'theater theatre theaters theatres museum museums gallery galleries arts crafts music recordings orchestra circus amusement amusements arcade arcades casino casinos lottery bowling billiards sports athletics gymnasium yoga pilates dojo dance zoo gardens aquarium stadium arena recreation adventures adventure expeditions golf racing speedway karaoke videoke',
+    otherservices: 'laundry laundries laundromat upholstery funeral funerals mortuary crematorium parlor parlour beauty nails tattoo tattoos massage cosmetology aesthetics skincare haircare grooming kennels locksmith locksmiths ministries fellowship parish congregation federation federations foundation foundations charities orphanage shelters',
+    agents: 'agents professionals artisans craftsmen fishermen tradesmen handymen seamen'
   };
   const CA_STRONG_HEADS = new Set(Object.values(CA_HEADS_BY_CATEGORY).join(' ').split(' '));
   // heads that are also surnames or ordinary words: a person finding is dropped only if no word carries name evidence
-  const CA_WEAK_HEADS = new Set(['lodge', 'press', 'inn', 'spa', 'market', 'express', 'mart', 'studio', 'travel', 'store', 'outlet', 'pictures', 'films']);
+  const CA_WEAK_HEADS = new Set(['lodge', 'press', 'inn', 'spa', 'market', 'express', 'mart', 'studio', 'travel', 'store', 'outlet', 'pictures', 'films',
+    // expansion: heads that are also surnames, first names or very common words
+    'law', 'herald', 'estates', 'gas', 'oil', 'mines', 'coal', 'casino', 'arena', 'books', 'cottages', 'cabins', 'seeds', 'lumber', 'parish', 'cruises', 'cruise', 'ports', 'beauty', 'gardens', 'ranch', 'farms', 'bars', 'music', 'arts', 'times', 'gallery', 'depot', 'wealth', 'mutual', 'savings', 'credit', 'equity', 'parts', 'nails', 'dance', 'golf', 'racing']);
   function caHeadKind(word) {
     const w = word.toLowerCase().replace(/[.,;:!?)]+$/, '');
     if (CA_STRONG_HEADS.has(w)) return CA_WEAK_HEADS.has(w) ? 'weak' : 'strong';

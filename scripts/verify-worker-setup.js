@@ -136,7 +136,8 @@ const termFiles = [
   'terms-financial.js',
   'terms-organizations.js',
   'terms-occupations.js',
-  'terms-names.js'
+  'terms-names.js',
+  'terms-names-extra.js'
 ];
 
 console.log('\n[verify-worker-setup] Checking term files...\n');

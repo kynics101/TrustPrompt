@@ -695,7 +695,7 @@ const TrustLinguisticDetector = (() => {
       if (/^\s+\p{Lu}[\p{L}\p{M}]/u.test(text.slice(m.index + m[1].length, m.index + m[1].length + 3)) && items.length) items = items.slice(0, -1);
       if (items.length < 3) continue;
       const tagged = items.filter(w => nameHasPersonTag(isolatedNameTags(w)));
-      if (tagged.length * 2 < items.length) continue;
+      if (tagged.length * 2 <= items.length) continue;   // Group 8b: a STRICT majority of the items must be anchored ("Alpha, Bravo, Charlie and Delta" has 2 of 4)
       for (const w of items) {
         if (!nameHasPersonTag(isolatedNameTags(w)) && (isOrdinaryNonNameWord(w) || isPlaceOrOrgWord(w))) continue;
         if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === w.toLowerCase())) continue;

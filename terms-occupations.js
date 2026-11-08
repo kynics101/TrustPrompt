@@ -18056,6 +18056,85 @@ const OCCUPATIONS_DATA = [
   "Worker"
 ];
 
+// Group 17 (cause D): additions BY CATEGORY (not copied from test rows). Written after the held-out sentences of the same categories.
+// Multi-word titles are accepted like any other multi-word title, except that a generic sentence (question / definition / comparison)
+// does not accept them (the detector knows this list as OCCUPATIONS_EXTRA). Single-word entries stay cue-gated like every single word.
+// Deliberately NOT included: status roles (student, volunteer, intern, trainee, applicant, retiree, freelancer, jobseeker).
+const OCCUPATIONS_EXTRA = [
+  // 1. Barangay and local-government posts (PH)
+  "Barangay Captain", "Punong Barangay", "Barangay Kagawad", "Kagawad", "Barangay Councilor", "Barangay Secretary", "Barangay Treasurer",
+  "Barangay Tanod", "Tanod", "Barangay Health Worker", "Barangay Health Officer", "Barangay Nutrition Scholar", "Barangay Day Care Worker",
+  "Barangay Peacekeeping Officer", "Barangay Solid Waste Officer", "Barangay Midwife", "Barangay Administrator", "Barangay Clerk",
+  "Barangay Auditor", "Barangay Official", "Lupon Member", "Lupon Chairperson", "Sangguniang Kabataan Chairperson", "Sangguniang Kabataan Kagawad",
+  "Sangguniang Kabataan Secretary", "Sangguniang Kabataan Treasurer", "SK Chairperson", "SK Kagawad", "Municipal Mayor", "City Mayor",
+  "Vice Mayor", "Municipal Vice Mayor", "City Vice Mayor", "City Councilor", "Municipal Councilor", "Provincial Governor", "Vice Governor",
+  "Provincial Board Member", "Sangguniang Bayan Member", "Sangguniang Panlungsod Member", "Sangguniang Panlalawigan Member",
+  "City Treasurer", "Municipal Treasurer", "Provincial Treasurer", "City Assessor", "Municipal Assessor", "City Administrator",
+  "Municipal Administrator", "Provincial Administrator", "City Engineer", "Municipal Engineer", "Provincial Engineer", "City Planning Officer",
+  "Municipal Planning Officer", "Municipal Budget Officer", "City Budget Officer", "Municipal Health Officer", "City Health Officer",
+  "Provincial Health Officer", "Municipal Agriculturist", "City Agriculturist", "Provincial Agriculturist", "Municipal Civil Registrar",
+  "City Civil Registrar", "Municipal Social Welfare Officer", "City Social Welfare Officer", "Municipal Accountant", "City Accountant",
+  "Municipal Legal Officer", "City Legal Officer", "Municipal Disaster Risk Reduction Officer", "Municipal Environment Officer",
+  "City Environment Officer", "Municipal Assessor Clerk", "Local Government Operations Officer", "Municipal Local Government Operations Officer",
+  // 2. School roles
+  "Guidance Counselor", "Guidance Coordinator", "School Counselor", "Co-Teacher", "Co-Adviser", "Assistant Principal", "School Principal",
+  "School Head", "Principal Teacher", "Master Teacher", "Teacher Aide", "Teaching Assistant", "Teaching Aide", "School Nurse", "School Librarian",
+  "School Registrar", "School Clerk", "School Secretary", "School Bursar", "School Cashier", "School Driver", "School Security Guard",
+  "School Canteen Manager", "Canteen Manager", "Class Adviser", "Homeroom Adviser", "Homeroom Teacher", "Grade Level Coordinator",
+  "Grade Level Chairperson", "Subject Coordinator", "Subject Group Head", "Department Head", "Program Coordinator", "Instructional Coach",
+  "Special Education Teacher", "SPED Teacher", "Kindergarten Teacher", "Elementary School Teacher", "Elementary Teacher", "High School Teacher",
+  "Senior High School Teacher", "Junior High School Teacher", "Public School Teacher", "Private School Teacher", "College Instructor",
+  "College Professor", "Assistant Professor", "Associate Professor", "Adjunct Professor", "Research Assistant", "Laboratory Custodian",
+  "Science Laboratory Technician", "Computer Laboratory Technician", "School Property Custodian", "Learning Resource Coordinator",
+  "Alternative Learning System Teacher", "ALS Teacher", "Day Care Worker", "Day Care Teacher", "Early Childhood Educator",
+  // 3. Healthcare laboratory and allied roles
+  "Medical Technologist", "Medical Laboratory Scientist", "Medical Laboratory Technician", "Medical Laboratory Assistant", "Clinical Laboratory Technician",
+  "Clinical Laboratory Scientist", "Clinical Laboratory Assistant", "Laboratory Technologist", "Laboratory Technician", "Laboratory Assistant",
+  "Laboratory Aide", "Laboratory Analyst", "Lab Technician", "Lab Assistant", "Lab Aide", "Histotechnologist", "Histology Technician",
+  "Cytotechnologist", "Cytology Technician", "Blood Bank Technician", "Blood Bank Technologist", "Phlebotomist", "Phlebotomy Technician",
+  "Pharmacy Aide", "Pharmacy Assistant", "Pharmacy Technician", "Pharmacy Helper", "Sonographer", "Ultrasound Technologist", "Ultrasound Technician",
+  "Respiratory Therapist", "Respiratory Technician", "Dialysis Technician", "Dialysis Nurse", "Medical Technician", "Medical Assistant",
+  "Medical Secretary", "Medical Transcriptionist", "Medical Coder", "Nursing Aide", "Nursing Attendant", "Nursing Assistant", "Nurse Aide",
+  "Hospital Aide", "Hospital Attendant", "Hospital Orderly", "Health Care Assistant", "Healthcare Assistant", "X-Ray Technician", "X-Ray Technologist",
+  "Radiology Technician", "Radiologic Technician", "Radiology Aide", "ECG Technician", "EEG Technician", "Cardiology Technician",
+  "Operating Room Nurse", "Operating Room Technician", "Emergency Room Nurse", "Emergency Medical Technician", "Ambulance Driver",
+  "Rural Health Midwife", "Public Health Nurse", "Community Health Worker", "Rural Health Physician", "Sanitary Inspector",
+  // 4. Trade variants (space / hyphen spellings and local trades)
+  "Bar Tender", "Bar-Tender", "Bar Back", "Bar-Back", "Line Cook", "Prep Cook", "Short Order Cook", "Fork Lift Operator", "Fork-Lift Operator",
+  "Forklift Operator", "Hair Stylist", "Hair Dresser", "Hair-Dresser", "Make Up Artist", "Make-Up Artist", "Makeup Artist", "Nail Technician",
+  "Car Mechanic", "Auto Mechanic", "Automotive Mechanic", "Motor Cycle Mechanic", "Motorcycle Mechanic", "Diesel Mechanic", "Aircon Technician",
+  "Air-Conditioning Technician", "Air Conditioning Technician", "Aircon Mechanic", "Refrigeration Technician", "Cellphone Repair Technician",
+  "Cell Phone Repair Technician", "Phone Repair Technician", "Computer Repair Technician", "Appliance Repair Technician", "Electronics Technician",
+  "Tricycle Driver", "Jeepney Driver", "Pedicab Driver", "Bus Conductor", "Taxi Driver", "Truck Driver", "Van Driver", "Delivery Driver",
+  "Delivery Rider", "Delivery Rider", "Motor Taxi Rider", "Motorcycle Taxi Rider", "Habal-Habal Driver", "Habal Habal Driver", "Tile Setter",
+  "Tile Installer", "Crane Operator", "Tower Crane Operator", "Heavy Equipment Operator", "Backhoe Operator", "Bulldozer Operator", "Rebar Worker",
+  "Steel Fabricator", "Welder-Fabricator", "Welder Fabricator", "Pipe Fitter", "Scaffold Erector", "Construction Worker", "Carpenter Helper",
+  "Electrician Helper", "Plumber Helper", "Mason Helper", "Painter Helper", "Sari-Sari Store Owner", "Sari Sari Store Owner", "Store Owner",
+  "Store Manager", "Store Clerk", "Market Vendor", "Street Vendor", "Fish Vendor", "Rice Retailer", "Carinderia Owner", "Carinderia Cook",
+  "Karinderya Owner", "Laundry Shop Owner", "Bakery Helper", "Water Refilling Station Owner", "Security Guard Supervisor", "Janitorial Staff",
+  // 5. Remote / freelance / online work
+  "Virtual Assistant", "Virtual Receptionist", "Virtual Bookkeeper", "Executive Virtual Assistant", "Freelance Writer", "Freelance Graphic Designer",
+  "Freelance Developer", "Freelance Web Developer", "Freelance Translator", "Freelance Editor", "Freelance Photographer", "Freelance Illustrator",
+  "Freelance Video Editor", "Freelance Designer", "Freelance Programmer", "Freelance Copywriter", "Freelance Accountant", "Freelance Bookkeeper",
+  "Online Seller", "Online Reseller", "Online Tutor", "Online Teacher", "Online Instructor", "Online English Teacher", "Live Seller",
+  "Live Selling Host", "Social Media Manager", "Social Media Specialist", "Social Media Coordinator", "Content Creator", "Content Writer",
+  "Content Moderator", "Content Strategist", "Community Manager", "Community Moderator", "Data Annotator", "Data Labeler", "Data Entry Clerk",
+  "Data Entry Specialist", "Transcriptionist", "Transcription Specialist", "Customer Support Agent", "Customer Support Representative",
+  "Customer Support Specialist", "Chat Support Agent", "Email Support Agent", "Technical Support Representative", "Technical Support Agent",
+  "Technical Support Specialist", "Appointment Setter", "Lead Generation Specialist", "Lead Generation Associate", "SEO Specialist",
+  "SEO Writer", "Digital Marketer", "Digital Marketing Specialist", "Email Marketing Specialist", "Ad Specialist", "Media Buyer",
+  "UI/UX Designer", "UX Designer", "UI Designer", "Video Editor", "Podcast Editor", "Audio Editor", "Thumbnail Designer", "Motion Graphics Designer",
+  "E-Commerce Specialist", "Ecommerce Seller", "Amazon Virtual Assistant", "Shopify Developer", "WordPress Developer", "Remote Developer",
+  "Remote Customer Service Representative", "Work From Home Agent", "Home-Based Agent", "Dropshipper", "Copywriter", "Videographer"
+];
+// make the additions part of the dictionary (case-insensitive de-duplication; the generic-sentence rule is kept for the extras)
+// OCCUPATIONS_EXTRA_ADDED = only the entries that were NOT already in the dictionary (titles that were already there keep their old behavior)
+const OCCUPATIONS_EXTRA_ADDED = [];
+(function () {
+  const have = new Set(OCCUPATIONS_DATA.map(t => t.toLowerCase()));
+  for (const t of OCCUPATIONS_EXTRA) { const k = t.toLowerCase(); if (!have.has(k)) { have.add(k); OCCUPATIONS_DATA.push(t); OCCUPATIONS_EXTRA_ADDED.push(t); } }
+})();
+
 // Export for use
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = OCCUPATIONS_DATA;
@@ -18067,4 +18146,5 @@ if (typeof window !== 'undefined') {
 }
 if (typeof globalThis !== 'undefined') {
   globalThis.OCCUPATIONS_DATA = OCCUPATIONS_DATA;
+  globalThis.OCCUPATIONS_EXTRA_ADDED = OCCUPATIONS_EXTRA_ADDED;
 }

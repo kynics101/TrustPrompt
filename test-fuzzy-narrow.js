@@ -20,7 +20,7 @@
  */
 'use strict';
 const fs = require('fs'), vm = require('vm'), path = require('path');
-const ROOT = __dirname, FILE = path.join(ROOT, 'fuzzy-narrow-prompts.json');
+const ROOT = __dirname, FILE = path.join(ROOT, 'test-data', 'fuzzy-narrow-prompts.json');
 const mode = process.argv[2];
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
@@ -30,7 +30,7 @@ if (mode === 'gen') {
   const ORGS = globalThis.ORGANIZATIONS_DATA;
   const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   // texts whose entries must not be reused
-  let used = JSON.parse(fs.readFileSync(path.join(ROOT, 'speed-diff-prompts.json'), 'utf8')).map(p => p.text).join(' \n ');
+  let used = JSON.parse(fs.readFileSync(path.join(ROOT, 'test-data', 'speed-diff-prompts.json'), 'utf8')).map(p => p.text).join(' \n ');
   used += ' \n ' + JSON.parse(fs.readFileSync(path.join(ROOT, 'after-g8.json'), 'utf8')).rows.map(r => r.prompt).join(' \n ');
   used = used.toLowerCase();
   const clean = ORGS.filter(o => /^[A-Za-z0-9 ]+$/.test(o) && !/ {2}/.test(o));

@@ -174,6 +174,7 @@ const TrustLinguisticDetector = (() => {
   // No async loading needed — data is available synchronously from OCCUPATIONS_DATA and ORGANIZATIONS_DATA
   let EXTENSIVE_JOB_TITLES = new Set();
   let EXTENSIVE_JOB_TITLES_ARRAY = [];  // For length-sorted matching
+  let JOB_EXTRA_TITLES = new Set();     // Group 17: the titles added by category (see terms-occupations.js)
   let EXTENSIVE_ORGANIZATIONS = new Set();
   let EXTENSIVE_ORGANIZATIONS_ARRAY = [];  // For length-sorted matching
   let ORG_KEYWORDS_INDEX = new Map();  // Keyword → org names mapping
@@ -202,7 +203,10 @@ const TrustLinguisticDetector = (() => {
       
       // Populate the Set with unique titles
       EXTENSIVE_JOB_TITLES = new Set(titles);
-      
+      // Group 17: titles added by category (terms-occupations.js, OCCUPATIONS_EXTRA_ADDED); a generic sentence never accepts them
+      JOB_EXTRA_TITLES = new Set((typeof OCCUPATIONS_EXTRA_ADDED !== 'undefined' && Array.isArray(OCCUPATIONS_EXTRA_ADDED) ? OCCUPATIONS_EXTRA_ADDED : [])
+        .map(t => t.toLowerCase()));
+
       // Sort by length (longest first) for fuzzy matching and multi-word matching
       EXTENSIVE_JOB_TITLES_ARRAY = Array.from(titles).sort((a, b) => b.length - a.length);
       
@@ -529,7 +533,11 @@ const TrustLinguisticDetector = (() => {
   }
 
   // Group 6: possessive triggers, which alone do not justify extending a title over noun modifiers.
-  const JOB_POSSESSIVE_TRIGGERS = new Set(['my ', 'your ', 'their ', 'her ', 'his ']);
+  const JOB_POSSESSIVE_TRIGGERS = new Set(['my ', 'your ', 'their ', 'her ', 'his ', 'our ']);
+  // Group 16 (cause B, stage 1): "became / becomes / becoming a <title>" is a trigger like "become a", but a hypothetical or a wish before it
+  // ("if I became a", "I would like to become a", "when she becomes a") is not about a specific person's job.
+  const JOB_BECAME_TRIGGERS = new Set(['became a ', 'became an ', 'became the ', 'becomes a ', 'becomes an ', 'becomes the ', 'becoming a ', 'becoming an ', 'becoming the ']);
+  const JOB_HYPOTHETICAL_BEFORE_RE = /\b(?:if|would|could|might|should|wish|wishes|hope|hopes|want|wants|wanted|wanna|plan|plans|planning|dream|dreams|imagine|suppose|what if|how to|how do|how can|when|once|until|before|unless|whether)\b[^.?!;]*$/i;
 
   /**
    * Check if span appears in job context
@@ -553,8 +561,9 @@ const TrustLinguisticDetector = (() => {
       'were a ', 'were an ', 'were the ',    // ★ FIX: Added "were" for past plural
       'works as ', 'employed as ', 'works for ',
       'worked as ', 'work as ',              // ★ FIX: Added past and base forms
-      'my ', 'your ', 'their ', 'her ', 'his ',
+      'my ', 'your ', 'their ', 'her ', 'his ', 'our ',
       'be a ', 'become a ', 'hired as ',
+      ...JOB_BECAME_TRIGGERS,
       "i'm a ", "i'm an ",                   // ★ FIX: Added "i'm an" variant
       "you're a ", "you're an ",             // ★ FIX: Added "you're an" variant
       "they're a ", "they're an ",           // ★ FIX: Added "they're an" variant
@@ -571,6 +580,12 @@ const TrustLinguisticDetector = (() => {
         // in between ("am a very experienced <title>"), not anywhere in the last 50 chars.
         const gap = before.slice(i + trigger.length).trim();
         if (/[.,;:!?]/.test(gap)) continue;                // punctuation breaks the link to the title
+        if (JOB_BECAME_TRIGGERS.has(trigger) && JOB_HYPOTHETICAL_BEFORE_RE.test(before.slice(0, i))) continue;   // Group 16: hypothetical veto
+        // Group 16: "our <title> policy / handbook / salary": the title is a modifier of a following common noun, not a person
+        if (trigger === 'our ') {
+          const nx = text.slice(index + actualSpan.length).match(/^\s+([a-z][a-z'-]*)/);
+          if (nx && !JOB_FUNCTION_WORDS.has(nx[1]) && isolatedNameTags(nx[1]).includes('Noun')) continue;
+        }
         if (gap === '' || gap.split(/\s+/).length <= 3) return true;
       }
       return false;
@@ -2237,6 +2252,35 @@ const TrustLinguisticDetector = (() => {
     }
     
     // ────────────────────────────────────────────────────────────────────────
+    // PASS 2p (Group 17, cause E): plural of a dictionary title ("welders", "call center agents", "secretaries")
+    // The last word is a regular plural (-s, -es, -ies) and the singular phrase is a dictionary title. The same validation as for the
+    // singular follows, except that the "multi-word title" cue never applies to a plural (see validateJobTitlesWithCompromise).
+    // ────────────────────────────────────────────────────────────────────────
+    {
+      const wordRe = /[A-Za-z][A-Za-z'’-]*/g, ws = [];
+      let wm;
+      while ((wm = wordRe.exec(text)) !== null) ws.push([wm.index, wm.index + wm[0].length]);
+      for (let wi = 0; wi < ws.length; wi++) {
+        const last = text.slice(ws[wi][0], ws[wi][1]), ll = last.toLowerCase();
+        if (ll.length < 4 || ll[ll.length - 1] !== 's') continue;
+        const sing = [ll.slice(0, -1)];
+        if (/(?:[sxz]|ch|sh)es$/.test(ll)) sing.push(ll.slice(0, -2));
+        if (/ies$/.test(ll)) sing.push(ll.slice(0, -3) + 'y');
+        for (let n = 0; n <= 2 && wi - n >= 0; n++) {       // 0-2 words in front of the plural head
+          if (n > 0 && text.slice(ws[wi - n][1], ws[wi - n + 1][0]) !== ' ') break;            // words must be separated by one space
+          const prefix = n > 0 ? text.slice(ws[wi - n][0], ws[wi][0]).toLowerCase() : '';
+          const plural = n > 0 ? text.slice(ws[wi - n][0], ws[wi][1]) : last;
+          if (EXTENSIVE_JOB_TITLES.has(plural.toLowerCase())) continue;                  // the plural form is itself a title: PASS 1 has it
+          if (sing.some(sg => EXTENSIVE_JOB_TITLES.has(prefix + sg)) && !seen.has(plural.toLowerCase())) {
+            seen.add(plural.toLowerCase());
+            found.push({ name: plural, rawMatch: plural, confidence: 'high', source: 'csv_exact_match', csvValidated: true, plural: true });
+            console.debug(`[PATH_C/CSV_JOB] Pass 2p (plural): found "${plural}"`);
+          }
+        }
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // PASS 3: Fuzzy match (1 character difference, handles typos)
     // ────────────────────────────────────────────────────────────────────────
     // ★ CRITICAL FIX: Prevent short words from fuzzy-matching to job titles
@@ -2368,8 +2412,24 @@ const TrustLinguisticDetector = (() => {
    *   6. directly after "First Last," (appositive), optionally with a/an/the
    *   7. next to a list/résumé delimiter ("|", "•")
    */
+  // Group 16: a run of Title Case tokens that can be a person's name: no function words, no dictionary job title, at least one anchored
+  // given name or surname (Compromise Person tag or the names dictionary), and at least two tokens unless the single token is an anchored name.
+  function looksLikePersonNameRun(tokens) {
+    const toks = tokens.map(t => t.replace(/[.,]$/, '')).filter(Boolean);
+    if (!toks.length || toks.length > 4) return false;
+    if (toks.some(t => JOB_FUNCTION_WORDS.has(t.toLowerCase()) || EXTENSIVE_JOB_TITLES.has(t.toLowerCase()))) return false;
+    const anchored = toks.filter(t => isKnownNameWord(t) || nameHasPersonTag(isolatedNameTags(t)));
+    return toks.length >= 2 ? anchored.length >= 1 : anchored.length === 1;
+  }
   const JOB_OBJECT_ROLE_BEFORE_AS_RE = /\b(?:us(?:e|es|ed|ing)|design(?:ed|s|ing)?|intend(?:ed|s)?|meant|treat(?:ed|s|ing)?|regard(?:ed|s|ing)?|consider(?:ed|s|ing)?|view(?:ed|s|ing)?|seen|describ(?:ed|es|ing))\b(?:\s+[\w'’-]+){0,3}?\s+as\s+(?:an?\s+|the\s+)?$/i;
-  function hasStructuralJobCue(text, s, e, leadOnly) {
+  // Group 17: is the sentence that holds [s,e] a generic one (question / definition / comparison opener or phrase)?
+  function jobGenericAt(text, s, e) {
+    const ss = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('?', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('\n', s - 1)) + 1;
+    let se = text.length;
+    for (const ch of ['.', '?', '!', '\n']) { const k = text.indexOf(ch, e); if (k !== -1 && k < se) se = k; }
+    return JOB_GENERIC_SENTENCE_RE.test(text.slice(ss, se));
+  }
+  function hasStructuralJobCue(text, s, e, leadOnly, noMulti) {
     // Group 14 (cause A): leadOnly = look only at what stands BEFORE the span (cues 2, 3, 3b, 6, 7-before); used for a span that was
     // extended leftwards over modifier words, so the "multi-word" cue 1 and the after-side cues (4, 5, 5b) say nothing new.
     const before = text.slice(Math.max(0, s - 60), s);
@@ -2388,12 +2448,29 @@ const TrustLinguisticDetector = (() => {
       return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
     })();
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
-    if (!leadOnly && /\s/.test(span.trim()) && !definiteBefore) return true;            // 1 (multi-word, not a bare definite description)
+    // (Group 17: not for a plural, and not for a title added by category when the sentence is generic)
+    if (!leadOnly && !noMulti && /\s/.test(span.trim()) && !definiteBefore &&
+        !(JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless))) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
     // Group 15 (a): a bare "as a" right after a verb of use / purpose / treatment ("use it as a", "designed as a", "treated as a") names the
     // role of a THING; it is not evidence of a person's job. "works as", "serves as", "employed as", "hired as" are not in that class.
     if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before) && !JOB_OBJECT_ROLE_BEFORE_AS_RE.test(before)) return true;      // 3
     if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
+    // Group 16: "became / becomes / becoming a <title>" is a role change like "promoted to" (not for hypotheticals)
+    if (/\b(?:became|becomes|becoming)\s+(?:an?\s+|the\s+)$/i.test(before) && !JOB_HYPOTHETICAL_BEFORE_RE.test(before.replace(/\b(?:became|becomes|becoming)\s+(?:an?\s+|the\s+)$/i, ''))) return true;   // 3c
+    // Group 16 (cause B, stage 1)
+    {
+      const nameBefore = (re) => { const m = before.match(re); return m ? looksLikePersonNameRun(m[1].trim().split(/\s+/)) : false; };
+      // rule 2: a title in parentheses right after a person's name: "Anna Marie Co (accountant)". The heading guard is not applied: a
+      // list of names is all Title Case by nature, and the name itself must be anchored (names dictionary / Person tag).
+      if (/\(\s*$/.test(before) && (leadOnly || /^\s*\)/.test(after)) &&
+          nameBefore(/((?:[A-Z][\w'’.-]*\s+){0,3}[A-Z][\w'’-]*)\s*\(\s*$/)) return true;                                                // 8
+      // rule 4: a Title Case title directly after a full name with no punctuation: "Maria Santos Branch Coordinator"
+      // (multi-word spans only: a single Title Case word after a name is too often a surname - Cook, Baker, Miller, Porter - and the
+      //  names dictionary does not list all of them)
+      if (!capsUseless && !noMulti && /\s/.test(span.trim()) && /^[A-Z]/.test(span) &&
+          nameBefore(/((?:[A-Z][\w'’-]*\s+){1,3})$/)) return true;                                                                       // 9
+    }
     if (!capsUseless && !leadOnly) {
       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
       if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
@@ -2404,14 +2481,14 @@ const TrustLinguisticDetector = (() => {
       // Group 12: an honorific between the title and the name ("principal, Mr. Armando Dizon") is skipped; the honorific itself
       // is the evidence of a person, so one or more capitalised words after it are enough.
       const honM = after.match(/^([.,]?\s+)(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Atty|Engr|Arch|Hon|Fr|Rev|Sen|Gov)\.?\s+(?=[A-Z][a-z'’-]+)/);
-      if (honM) {
+      if (honM && !noMulti) {   // Group 17: a name right after a PLURAL ("Associates Law Offices", "Doctors Without Borders") is not evidence
         const nm = after.slice(honM[0].length).match(/^[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){0,3}\b/);
         if (nm) return true;                                                                                          // 5b
       }
       const nameM = after.match(/^[.,]?\s+([A-Z][a-z'’-]+)(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/);
-      if (nameM && !JOB_FUNCTION_WORDS.has(nameM[1].toLowerCase()) &&
+      if (!noMulti && nameM && !JOB_FUNCTION_WORDS.has(nameM[1].toLowerCase()) &&
           !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
-      if (/(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;               // 6
+      if (!noMulti && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;     // 6 (not for a plural: "<Org Name>, Doctors ...")
     }
     if (leadOnly && !capsUseless && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;   // 6 (lead-only)
     if (/[|•]\s*$/.test(before) || (!leadOnly && /^\s*[|•]/.test(after))) return true;                               // 7
@@ -2461,15 +2538,44 @@ const TrustLinguisticDetector = (() => {
     return start;
   }
 
+  // Group 16 (cause B, stage 2): coordination of titles. Connector before / after a title; an employer phrase ("at Punongbayan & Araullo")
+  // may stand between the partner and the connector on the left.
+  const JOB_COORD_LEFT_RE = /(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and|or|&)\s+|\s*\/\s*)(?:(?:an?|the)\s+)?$/i;
+  const JOB_COORD_RIGHT_RE = /^(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and|or|&)\s+|\s*\/\s*)(?:(?:an?|the)\s+)?/i;
+  const JOB_EMPLOYER_PP_RE = /\s+(?:at|of|for|with|under|from)\s+(?:the\s+)?[A-Z][\w&'.’-]*(?:\s+(?:[A-Z&][\w&'.’-]*|of|the|and)){0,4}$/;
+  // generic sentence markers (always veto): question / definition / comparison openers and phrases
+  const JOB_GENERIC_SENTENCE_RE = /^\s*(?:what|how|why|which|who|whom|is|are|does|do|did|can|should|would|could|if|explain|define|compare|describe|tell me about)\b|\b(?:to become|compared to|compare|earn(?:s)? more|versus|vs\.?|how much|salary of)\b|\b(?:is|are)\s+(?:a|an|the)\s+(?:person|people|someone|somebody|professional|worker|specialist)\s+(?:who|that|whose|responsible)\b|\b(?:means|refers to|is defined as|is known as|is called)\b/i;
+  // a job-post HEADER only ("WANTED: ...", "Hiring: ..."): free text such as "the hospital is hiring a ..." is not one (it is also how
+  // generic announcements are written, and such announcements are policy rows)
+  const JOB_POST_BEFORE_RE = /(?:^|[\n.!?]\s*)(?:wanted|now hiring|hiring|vacanc(?:y|ies)|job openings?|openings?|looking for|seeking|needed)\s*[:\-–]\s*[^.?!\n]*$/i;
+  const JOB_EMPLOYMENT_HISTORY_BEFORE_RE = /\b(?:previously|formerly|currently|presently|since\s+\d{4}|from\s+\d{4})\b[^.?!\n]*$/i;
+  // a pronoun copula + article ("I am a", "she is a"; NOT "we are looking"), "works as", or a possessive, at most 6 words before the title
+  const JOB_FIRST_PERSON_TIE_RE = /\b(?:(?:i['’]?m|i am|i was|she is|he is|she['’]?s|he['’]?s|they are|we are)\s+(?:an?|the)|(?:work(?:s|ed|ing)?|serv(?:e|es|ed|ing)|employed)\s+as|my|our|his|her|their|your)\s+(?:[\w'’&-]+\s+){0,6}$/i;
+  function jobCoordinationContextOk(text, s, e) {
+    const ss = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('?', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('\n', s - 1)) + 1;
+    let se = text.length;
+    for (const ch of ['.', '?', '!', '\n']) { const k = text.indexOf(ch, e); if (k !== -1 && k < se) se = k; }
+    const sentence = text.slice(ss, se), beforeS = text.slice(ss, s);
+    if (JOB_GENERIC_SENTENCE_RE.test(sentence)) return false;                                  // generic veto is always on
+    const linePre = text.slice(text.lastIndexOf('\n', s - 1) + 1, s);
+    if (/^\s*(?:[-*•▪◦]|\d+[.)])\s/.test(linePre) || /\|/.test(linePre)) return true;         // bullet / table row
+    if (JOB_POST_BEFORE_RE.test(beforeS)) return true;                                           // WANTED: / hiring / looking for ...
+    if (JOB_EMPLOYMENT_HISTORY_BEFORE_RE.test(beforeS) || JOB_FIRST_PERSON_TIE_RE.test(beforeS)) return true;
+    for (const m of sentence.matchAll(/(?:[A-Z][\w'’-]*\s+){1,3}[A-Z][\w'’-]*/g)) {            // a person's name in the sentence
+      if (looksLikePersonNameRun(m[0].trim().split(/\s+/))) return true;
+    }
+    return false;
+  }
+
   // Group 14 (cause A): the structural cues ("as a", "Job:", ", a", "Name, the") must stand directly before the title, but a modifier
   // can sit between them and the dictionary head ("as a registered nurse", "Job: tricycle driver"). Walk the modifiers that
   // extendJobHeadLeft accepts (at most 3) and look for a before-side cue at each stop. Returns [start, end] of the extended title or null.
-  function findLeadingModifierCue(text, occs) {
+  function findLeadingModifierCue(text, occs, plural) {
     for (const [s, e] of occs) {
       const steps = [];
       extendJobHeadLeft(text, s, false, steps, e);
       for (const ns of steps) {
-        if (hasStructuralJobCue(text, ns, e, true) || checkJobContext(text, text.slice(ns, e), true)) return [ns, e];
+        if (hasStructuralJobCue(text, ns, e, true, plural) || checkJobContext(text, text.slice(ns, e), true)) return [ns, e];
       }
     }
     return null;
@@ -2482,6 +2588,7 @@ const TrustLinguisticDetector = (() => {
     }
 
     const validated = [];
+    const deferred = [];
 
     for (const finding of csvFindings) {
       const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
@@ -2491,20 +2598,25 @@ const TrustLinguisticDetector = (() => {
         if ((finding.source === 'csv_exact_match' || finding.source === 'csv_phrase_match') && finding.confidence === 'high') {
           // Group 5 (D9): keep when a trigger phrase OR any occurrence shows a
           // structural personal-job cue; a bare common noun with neither stays out.
-          const occs = jobOccurrences(text, actualSpan);
+          let occs = jobOccurrences(text, actualSpan);
+          // Group 17: a plural, or a title added by category, is never accepted from a generic sentence
+          if (finding.plural || JOB_EXTRA_TITLES.has(actualSpan.trim().toLowerCase())) {
+            occs = occs.filter(([gs, ge]) => !jobGenericAt(text, gs, ge));
+            if (!occs.length) { console.debug(`[PATH_C/VAL_JOB] FILTER (generic sentence): "${finding.name}"`); continue; }
+          }
           let keepStart = -1, keepEnd = -1;
-          if (checkJobContext(text, actualSpan)) { keepStart = occs.length ? occs[0][0] : -1; keepEnd = occs.length ? occs[0][1] : -1; }
+          if (checkJobContext(text, actualSpan, !!finding.plural)) { keepStart = occs.length ? occs[0][0] : -1; keepEnd = occs.length ? occs[0][1] : -1; }
           if (keepStart < 0 || !occs.length) {
             for (const [s, e] of occs) {
-              if (hasStructuralJobCue(text, s, e)) { keepStart = s; keepEnd = e; break; }
+              if (hasStructuralJobCue(text, s, e, false, finding.plural)) { keepStart = s; keepEnd = e; break; }
             }
           }
-          const trig = checkJobContext(text, actualSpan);
+          const trig = checkJobContext(text, actualSpan, !!finding.plural);
           let keepStructural = -1;
-          for (const [s2, e2] of occs) { if (hasStructuralJobCue(text, s2, e2)) { keepStructural = s2; break; } }
+          for (const [s2, e2] of occs) { if (hasStructuralJobCue(text, s2, e2, false, finding.plural)) { keepStructural = s2; break; } }
           if (!trig && keepStart < 0) {
             // Group 14 (cause A): a cue that stands before accepted modifier words ("as a registered nurse") counts for the whole title
-            const lead = findLeadingModifierCue(text, occs);
+            const lead = findLeadingModifierCue(text, occs, finding.plural);
             if (lead) {
               const ext = text.slice(lead[0], lead[1]);
               validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));
@@ -2512,11 +2624,12 @@ const TrustLinguisticDetector = (() => {
               continue;
             }
             console.debug(`[PATH_C/VAL_JOB] FILTER (no context/cue): "${finding.name}"`);
+            deferred.push({ finding, occs });          // Group 16 (stage 2): may still be accepted by coordination with another title
             continue;
           }
           // A lone adjective-only word ("former", "extra") is not a title, unless a
           // strong structural cue (not just a trigger phrase) vouches for it.
-          if (keepStructural < 0 && !/\s/.test(actualSpan.trim()) && window.nlp) {
+          if (keepStructural < 0 && !/[\s-]/.test(actualSpan.trim()) && window.nlp) {   // Group 17: a hyphenated compound ("bar-tender") is not a lone adjective
             const d = window.nlp(actualSpan);
             if (d.has('#Adjective') && !d.has('#Noun')) { console.debug(`[PATH_C/VAL_JOB] FILTER (adjective): "${finding.name}"`); continue; }
           }
@@ -2558,6 +2671,36 @@ const TrustLinguisticDetector = (() => {
         console.debug(`[PATH_C/VAL_JOB] Validation error: ${error.message}, keeping finding`);
         validated.push(finding);
       }
+    }
+
+    // Group 16 (cause B, stage 2): a title that had no cue of its own is accepted when it is coordinated ("A and B", "A, B, and C",
+    // "A at Org and a B") with an accepted title or another candidate title, AND the sentence shows a person tie or a job-post/list
+    // context, AND is not a generic question/definition/comparison.
+    if (deferred.length) {
+      const accSpans = [], defSpans = [];
+      validated.forEach(f => jobOccurrences(text, f.rawMatch || f.name).forEach(o => accSpans.push(o)));
+      deferred.forEach((d, di) => d.occs.forEach(o => defSpans.push([o[0], o[1], di])));
+      deferred.forEach((d, di) => {
+        const partnerEnds = pos => accSpans.some(o => o[1] === pos) || defSpans.some(o => o[1] === pos && o[2] !== di);
+        const partnerStarts = pos => accSpans.some(o => o[0] === pos) || defSpans.some(o => o[0] === pos && o[2] !== di);
+        for (const [s, e] of d.occs) {
+          let linked = false;
+          const lm = text.slice(0, s).match(JOB_COORD_LEFT_RE);
+          if (lm) {
+            const pre = text.slice(0, s - lm[0].length);
+            linked = partnerEnds(pre.length) || partnerEnds(pre.replace(JOB_EMPLOYER_PP_RE, '').length);
+          }
+          if (!linked) {
+            const rm = text.slice(e).match(JOB_COORD_RIGHT_RE);
+            if (rm) linked = partnerStarts(e + rm[0].length);
+          }
+          if (linked && jobCoordinationContextOk(text, s, e)) {
+            validated.push(d.finding);
+            console.debug(`[PATH_C/VAL_JOB] PASS (coordination + person tie / list context): "${d.finding.name}"`);
+            break;
+          }
+        }
+      });
     }
 
     // Group 5: containment dedup — drop a title whose every occurrence lies

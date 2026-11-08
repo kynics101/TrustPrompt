@@ -24,3 +24,8 @@ Thumbs.db
 # Editor directories
 .vscode/settings.json
 
+# Housekeeping — generated artefacts
+results/
+test-data/
+.agents/scratch/
+/after-g8.json

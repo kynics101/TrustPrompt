@@ -3898,8 +3898,126 @@ const TrustLinguisticDetector = (() => {
     findOrgsLawFirms(text, pushG7);
     findOrgsInstitutionOfPlace(text, pushG7);
     findOrgsBrandDescriptor(text, pushG7);
+    findOrgsGroupAgency(text, pushG7);
+    findOrgsUnitDivision(text, pushG7);
 
     return found;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROUP 7 (stage 2): "Group" / "Agency" and "Unit" / "Division" / "Section" as organization head words.
+  // These are very common ordinary words, so each rule needs capitalised words in front of the head that include a sector word
+  // (Medical, Security, Cardiology...) or a known place; "Group" / "Agency" are also accepted after capitalised name-like words
+  // (not generic modifiers such as Age, Study, Focus) when an affiliation cue stands before them. Never flagged:
+  //   - a head in a Title Case HEADING line (>= 80% of the content words capitalised, >= 4 words) unless the line is just the name or a cue exists;
+  //   - a head followed by a heading ending (Guide, Topics, Rules...), a number / letter / roman numeral ("Unit 4"), or another capitalised
+  //     word ("Unit Test", "Group Discussion"), or by "of the <lower-case noun>" ("Finance Section of the newspaper").
+  // The sector list is language-level (departments and industries), not organization names.
+  // ═══════════════════════════════════════════════════════════════════════
+  const G7_SECTOR_WORDS = new Set((
+    'medical health healthcare dental pharmaceutical pharmacy nursing clinical surgical cardiology pediatrics paediatrics oncology radiology pathology laboratory emergency intensive care ' +
+    'security safety insurance financial finance banking investment capital energy power electric utility water telecom telecommunications communications media broadcasting publishing ' +
+    'education educational logistics shipping transport transportation aviation maritime construction engineering manufacturing industrial mining agricultural agri food retail trading ' +
+    'marketing advertising consulting staffing recruitment placement employment manpower realty property hospitality tourism technology software digital cyber legal accounting audit ' +
+    'human resources payroll procurement operations sales customer service services research development planning administration maintenance environmental forestry fisheries ' +
+    'records management quality assurance information fire prevention rural public relations compliance risk treasury training'
+  ).split(' '));
+  // modifiers that make "<modifier> Group / Agency" an ordinary phrase (Age Group, Study Group, News Agency...); they never count as a name
+  const G7_GENERIC_MODS = new Set((
+    'age blood focus support study peer reading control discussion working travel news government user target pressure ethnic minority social tour family friends class team project ' +
+    'interest action self task work math science history english sports sub work-study prayer book chat'
+  ).split(' '));
+  const G7_HEADING_ENDINGS = new Set((
+    'list lists guide guides schedule checklist menu plan plans report reports directory handbook roster chart table calendar form template registry index catalog catalogue topics topic ' +
+    'notes basics tips examples activities overview summary exercises rules policies procedures lesson lessons quiz test tests worksheet outline syllabus curriculum questions answers ' +
+    'review meeting meetings discussion discussions'
+  ).split(' '));
+  const G7_NEXT_LOWER_BLOCK = new Set(['test', 'tests', 'plan', 'price', 'prices', 'cost', 'costs', 'conversion', 'rate', 'rates', 'chat', 'discussion', 'activity', 'activities']);
+  const G7_ORG_AFTER_OK = /^(?:Inc|Corp|Corporation|Ltd|Limited|LLC|LLP|Co|Holdings|Enterprises|Industries)\b/;
+
+  function g7SectorOrPlace(tok) { return G7_SECTOR_WORDS.has(tok.toLowerCase()) || isKnownPlaceWord(tok); }
+  function g7SectorOnly(tok) { return G7_SECTOR_WORDS.has(tok.toLowerCase()); }
+  // true when the word can stand in the name part: a sector word, a known place, or a capitalised word that is not a common word
+  function g7Eligible(tok) {
+    if (!/^[A-Z]/.test(tok)) return false;
+    if (g7SectorOrPlace(tok)) return true;
+    return tok.length >= 3 && !g7IsCommonWord(tok) && !G7_GENERIC_MODS.has(tok.toLowerCase());
+  }
+  // the run of eligible capitalised words (and "and" / "&" between two of them) right before position s: { tokens, start }
+  function g7LeftRun(text, s, maxTokens) {
+    const seg = text.slice(Math.max(0, s - 90), s);
+    const m = seg.match(/((?:[A-Z][A-Za-z'’-]*\s+(?:(?:and|&)\s+)?){1,6})$/);
+    if (!m) return null;
+    const base = s - m[1].length;
+    const parts = []; const re = /[A-Z][A-Za-z'’-]*|and|&/g; let t;
+    while ((t = re.exec(m[1])) !== null) parts.push({ w: t[0], i: base + t.index });
+    const keep = []; let count = 0;
+    for (let k = parts.length - 1; k >= 0 && count < maxTokens; k--) {
+      const p = parts[k];
+      if (p.w === 'and' || p.w === '&') {
+        const before = parts[k - 1];
+        if (keep.length && before && g7SectorOnly(before.w) && g7SectorOnly(keep[0].w)) { keep.unshift(p); continue; }
+        break;
+      }
+      if (!g7Eligible(p.w)) break;
+      keep.unshift(p); count++;
+    }
+    while (keep.length && (keep[0].w === 'and' || keep[0].w === '&')) keep.shift();
+    if (!keep.length) return null;
+    return { tokens: keep.map(x => x.w), start: keep[0].i };
+  }
+  function g7InHeadingLine(text, s, e) {
+    const ss = Math.max(text.lastIndexOf('.', s - 1), text.lastIndexOf('?', s - 1), text.lastIndexOf('!', s - 1), text.lastIndexOf('\n', s - 1)) + 1;
+    let se = text.length;
+    for (const ch of ['.', '?', '!', '\n']) { const k = text.indexOf(ch, e); if (k !== -1 && k < se) se = k; }
+    const seg = text.slice(ss, se).trim();
+    if (seg.replace(/[\s,;:!?.]+$/, '') === text.slice(s, e).trim()) return false;           // the line is only the name
+    const words = (seg.match(/[A-Za-z][A-Za-z'’-]*/g) || []).filter(w => !G7_STOP_RE.test(w));
+    if (words.length < 4) return false;
+    return words.filter(w => /^[A-Z]/.test(w)).length / words.length >= 0.8;
+  }
+  // shared checks on what follows the head word; returns true when the head must NOT be taken as an organization
+  function g7BadFollower(text, he) {
+    const after = text.slice(he, he + 60);
+    if (/^['’]s\b/.test(after)) return false;
+    const nm = after.match(/^\s+([A-Za-z0-9][\w'’-]*)/);
+    if (nm) {
+      const w = nm[1];
+      if (/^\d/.test(w) || /^[A-Z]$/.test(w) || /^[IVX]+$/.test(w)) return true;                              // Unit 4, Section A, Division II
+      if (/^[A-Z]/.test(w) && !G7_ORG_AFTER_OK.test(w) && !G7_STOP_RE.test(w)) return true;                   // another capitalised word: a longer phrase
+      if (G7_HEADING_ENDINGS.has(w.toLowerCase())) return true;
+      if (G7_NEXT_LOWER_BLOCK.has(w.toLowerCase())) return true;
+    }
+    if (/^\s+of\s+(?:the|a|an|this|our|my|his|her)\s+[a-z]/.test(after)) return true;                          // "Finance Section of the newspaper"
+    return false;
+  }
+
+  function findOrgsGroupAgency(text, push) {
+    const RE = /\b(Group|Agency)\b/g; let m;
+    while ((m = RE.exec(text)) !== null) {
+      const he = m.index + m[0].length;
+      const run = g7LeftRun(text, m.index, 3);
+      if (!run) continue;
+      const span = text.slice(run.start, he).replace(/\s+/g, ' ');
+      if (g7BadFollower(text, he)) continue;
+      const qualified = run.tokens.some(g7SectorOrPlace);
+      const cue = hasOrgAffiliationCue(text, run.start);
+      if (!qualified && !cue) continue;
+      if (!cue && g7InHeadingLine(text, run.start, he)) continue;
+      push(span, qualified ? 'Group/Agency (sector)' : 'Group/Agency (cue)');
+    }
+  }
+  function findOrgsUnitDivision(text, push) {
+    const RE = /\b(Unit|Division|Section)\b/g; let m;
+    while ((m = RE.exec(text)) !== null) {
+      const he = m.index + m[0].length;
+      const run = g7LeftRun(text, m.index, 3);
+      if (!run) continue;
+      if (!run.tokens.some(g7SectorOnly)) continue;
+      if (g7BadFollower(text, he)) continue;
+      if (g7InHeadingLine(text, run.start, he) && !hasOrgAffiliationCue(text, run.start)) continue;
+      push(text.slice(run.start, he).replace(/\s+/g, ' '), 'Unit/Division/Section');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════

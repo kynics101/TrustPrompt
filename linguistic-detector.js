@@ -805,7 +805,7 @@ const TrustLinguisticDetector = (() => {
   //   (c) initials followed by a surname ("J. P. Rizal-Alonso").
   // The gate is active only when the name dictionary is loaded (NAMES_DICT_AVAILABLE); without it METHOD 4 behaves as before.
   // ═══════════════════════════════════════════════════════════════════════
-  const G_B_PREP_CUES = false;
+  const G_B_PREP_CUES = true;
   const G_B_BEFORE_CUE_RE = /(?:\b(?:named|called|name\s+is|name['’]s|dear|hi|hello|hey|greetings|this\s+is|it['’]s|i['’]m|i\s+am|call\s+me|attn:?|attention:?|cc:?|regards,?|sincerely,?|thanks,?|cheers,?|(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|sir|madam)\.?)\s+)$/i;
   const G_B_PREP_CUE_RE = /\b(?:to|for|with|from|by)\s+$/i;
   const G_B_AFTER_CUE_RE = /^\s*,?\s*(?:said|says|told|asked|asks|works?|worked|replied|wrote|writes|called|speaking)\b/i;
@@ -3930,8 +3930,128 @@ const TrustLinguisticDetector = (() => {
     findOrgsBrandDescriptor(text, pushG7);
     findOrgsGroupAgency(text, pushG7);
     findOrgsUnitDivision(text, pushG7);
+    findOrgsBusinessHead(text, pushG7);
 
     return found;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CAUSE A: a Title Case run that ends in an ordinary BUSINESS NOUN is an organization candidate, never a person.
+  //   - HEAD LIST, built by category (language-level; no organization names): retail, food, transport, health, education, professional
+  //     services, construction, media, hospitality, general trade. Heads handled elsewhere (Group, Agency, Unit, Division, Section, Inc, Corp,
+  //     Holdings...) are not repeated here. Plural agent nouns in -ers (Printers, Movers, Surveyors...) are a morphological, weaker head.
+  //   - An organization is emitted ONLY with evidence: an affiliation cue before it, an "at / for / from / by / via" frame, a billing /
+  //     field label ("Bill to:", "Company:"), a signature line (after a job title and a comma / bar), or "is hiring / opened / announced"
+  //     right after it. With no evidence the run is neither a person nor an organization.
+  //   - Never an organization: inside a Title Case heading line (unless a cue exists); followed by a heading word, "for", a number or another
+  //     capitalised word; or when every word before the head is a generic modifier / common noun ("Customer Services", "Storage Solutions").
+  //   - dropPersonsEndingInBusinessHead() removes the person finding for such a run (a weak head only when no word carries name evidence).
+  // ═══════════════════════════════════════════════════════════════════════
+  const CA_HEADS_BY_CATEGORY = {
+    retail: 'grocers grocery groceries supermarket supermart minimart mart store stores shop shops shoppe boutique emporium bookstore hardware pharmacy drugstore market outlet wholesale mercantile',
+    food: 'restaurant restaurants cafe café coffeehouse bakery bistro diner eatery canteen catering brewery pizzeria steakhouse carinderia tavern',
+    transport: 'transport transportation logistics freight cargo shipping trucking courier couriers movers express taxi cabs ferry shuttle towing forwarding',
+    health: 'clinic clinics dental dentistry optical laboratory laboratories diagnostics wellness therapy rehabilitation counseling healthcare hospice veterinary',
+    education: 'academy college institute library libraries tutorial tutorials tutoring preschool kindergarten nursery',
+    professional: 'services solutions consulting consultancy consultants associates partners advisors advisory accounting bookkeeping engineering architects staffing recruitment insurance brokerage auditing payroll translation',
+    construction: 'construction builders contractors developers realty properties plumbing electrical roofing welding repair repairs machinery masonry carpentry excavation demolition landscaping janitorial',
+    media: 'media studios studio productions publishing publishers press broadcasting radio films pictures entertainment printing graphics advertising communications animation',
+    hospitality: 'hotel hotels resort resorts inn lodge suites hostel travel tours travels spa salon barbershop fitness gym hospitality villas',
+    trade: 'trading supply supplies distributors distribution manufacturing wholesalers retailers'
+  };
+  const CA_STRONG_HEADS = new Set(Object.values(CA_HEADS_BY_CATEGORY).join(' ').split(' '));
+  // heads that are also surnames or ordinary words: a person finding is dropped only if no word carries name evidence
+  const CA_WEAK_HEADS = new Set(['lodge', 'press', 'inn', 'spa', 'market', 'express', 'mart', 'studio', 'travel', 'store', 'outlet', 'pictures', 'films']);
+  function caHeadKind(word) {
+    const w = word.toLowerCase().replace(/[.,;:!?)]+$/, '');
+    if (CA_STRONG_HEADS.has(w)) return CA_WEAK_HEADS.has(w) ? 'weak' : 'strong';
+    if (/^[a-zà-ÿ]{4,}ers$/.test(w) && !/^(?:numbers|letters|flowers|others|powers|summers|winters|sisters|brothers|fathers|mothers|wonders|fingers|cinders|waters|rivers|towers)$/.test(w)) return 'weak';   // plural agent noun
+    return '';
+  }
+  // generic modifiers / common nouns that, alone, make "<Mod> <Head>" an ordinary phrase (Customer Services, Storage Solutions, Appliance Repair)
+  const CA_COMMON_MODS = new Set((
+    'customer client member student patient tenant visitor user guest staff employee storage appliance household home house garden kitchen bathroom bedroom office car auto bike bicycle ' +
+    'computer laptop phone mobile pet baby child kids family personal business commercial residential domestic general technical public private online local basic advanced ' +
+    'mail data cloud water air fire building property project product service support help repair'
+  ).split(' '));
+  function caEligibleToken(tok) {
+    if (!/^[A-Z]/.test(tok) || G7_STOP_RE.test(tok) || G7_HONORIFIC_RE.test(tok)) return false;
+    const tg = isolatedNameTags(tok);
+    if (nameHasPersonTag(tg)) return true;
+    // only a word that Compromise's own lexicon lists as a verb / closed-class word is rejected; tags GUESSED from an unknown word's ending
+    // ("Stonehaven" -> Verb, "Nettlebed" -> Verb) are not evidence against a name
+    try {
+      let lt = window.nlp.world().model.one.lexicon[tok.toLowerCase()];
+      if (lt) { lt = Array.isArray(lt) ? lt : [lt]; if (lt.some(t => CA_NOT_NAME_LEX_TAGS.includes(t))) return false; }
+    } catch (_) { /* lexicon unavailable: accept */ }
+    return true;
+  }
+  const CA_NOT_NAME_LEX_TAGS = ['Verb', 'Gerund', 'Infinitive', 'PresentTense', 'PastTense', 'Modal', 'Auxiliary', 'Determiner', 'Pronoun', 'Preposition', 'Conjunction', 'QuestionWord', 'Adverb', 'Expression'];
+  function caIsGenericToken(tok) {
+    const l = tok.toLowerCase();
+    return G7_SECTOR_WORDS.has(l) || G7_GENERIC_MODS.has(l) || CA_COMMON_MODS.has(l) || CA_STRONG_HEADS.has(l);
+  }
+  const CA_FRAME_BEFORE_RE = /(?:^|[\s,;:(])(?:at|for|from|by|via)\s+(?:the\s+)?$/i;
+  const CA_BILLING_BEFORE_RE = /(?:bill(?:ed)?\s+to|invoice(?:d)?\s+(?:to|from)|payable\s+to|remit(?:tance)?\s+to|company|employer|organization|organisation|vendor|supplier|merchant|payee|business\s+name|store|branch|firm|client)\s*[:=-]?\s*(?:the\s+)?$/i;
+  const CA_SUBJECT_AFTER_RE = /^\s*,?\s*(?:(?:is|are|was|were|has|have|had|will|just|now|recently|also)\s+)*(?:hiring|opened|opening|announced|announcing|launched|closed|closing|offers|offered|provides|provided|sells|sold|accepts|accepting|recruiting|expanded|released|posted|reported|requires)\b/i;
+  function caHasEvidence(text, start, end) {
+    const raw = text.slice(Math.max(0, start - 90), start);
+    const before = raw.replace(/\.?\s*$/, ' ');                                   // the normalizer may have put a period before the capital
+    if (hasOrgAffiliationCue(text, start)) return true;
+    const fm = before.match(/([\w'’-]+)\s+(?:at|for|from|by|via)\s+(?:the\s+)?$/i);
+    if (fm && CA_FRAME_BEFORE_RE.test(before) && !PERSON_DIRECTED_VERB_RE.test(fm[1])) return true;
+    if (CA_BILLING_BEFORE_RE.test(before)) return true;
+    const sm = raw.match(/([\w' ]{2,50}?)\s*[,|;:–—-]\s*\.?\s*$/);                // signature: "<Name>, <Job title>, <Org>"
+    if (sm) {
+      const w = sm[1].toLowerCase().split(/\s+/).filter(Boolean).slice(-3);
+      for (let n = 1; n <= w.length; n++) if (EXTENSIVE_JOB_TITLES.has(w.slice(w.length - n).join(' '))) return true;
+    }
+    if (CA_SUBJECT_AFTER_RE.test(text.slice(end, end + 60))) return true;
+    return false;
+  }
+  function findOrgsBusinessHead(text, push) {
+    const RE = /\b([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*)\b/g; let m;
+    while ((m = RE.exec(text)) !== null) {
+      const head = m[1], hs = m.index, he = hs + head.length;
+      if (!/^[A-Z]/.test(head)) continue;
+      const kind = caHeadKind(head);
+      if (!kind) continue;
+      // capitalised words right before the head (single spaces), up to 3, nearest first
+      const seg = text.slice(Math.max(0, hs - 60), hs);
+      const lm = seg.match(/((?:[A-Z][A-Za-zÀ-ÿ'’-]*\s+){1,3})$/);
+      if (!lm) continue;
+      const base = hs - lm[1].length, toks = []; const TR = /[A-Z][A-Za-zÀ-ÿ'’-]*/g; let t;
+      while ((t = TR.exec(lm[1])) !== null) toks.push({ w: t[0], i: base + t.index });
+      const keep = [];
+      for (let k = toks.length - 1; k >= 0; k--) { if (!caEligibleToken(toks[k].w)) break; keep.unshift(toks[k]); }
+      if (!keep.length) continue;
+      if (keep.every(x => caIsGenericToken(x.w))) continue;                       // "Customer Services", "Storage Solutions"
+      // "<Phrase> for Small Homes" is a heading / title (a capitalised word follows "for"); "notice from <Phrase> for the group" is running prose
+      if (/^\s+for\s+(?:(?:the|a|an|our|your|my)\s+)?[A-Z]/.test(text.slice(he, he + 30)) || g7BadFollower(text, he)) continue;
+      const start = keep[0].i;
+      const cue = caHasEvidence(text, start, he);
+      if (!cue) continue;
+      if (g7InHeadingLine(text, start, he) && !hasOrgAffiliationCue(text, start)) continue;
+      push(text.slice(start, he).replace(/\s+/g, ' '), 'Business-head organization');
+    }
+  }
+  // person findings that are really "<name> <business noun>" runs (METHOD 3 / 4 / 4.5 and the trigger methods have no such check)
+  function dropPersonsEndingInBusinessHead(findings, text) {
+    const drop = new Set();
+    findings.forEach((f, idx) => {
+      if (f.patternId !== 'nlp_person_name' || !f.rawMatch) return;
+      const words = f.rawMatch.trim().split(/\s+/);
+      if (words.length < 2) return;
+      const kind = caHeadKind(words[words.length - 1]);
+      if (!kind) return;
+      const occs = jobOccurrences(text, f.rawMatch.trim());
+      if (occs.some(([s, e]) => hasPersonCueAround(text, s, e))) return;
+      // weak head: a name-evidence word before it keeps the person ("Anna Summers"); for a plural agent noun the head itself may be the surname
+      const ev = w => isKnownNameWord(w) || nameHasPersonTag(isolatedNameTags(w));
+      if (kind === 'weak' && (words.slice(0, -1).some(ev) || (!CA_STRONG_HEADS.has(words[words.length - 1].toLowerCase()) && ev(words[words.length - 1])))) return;
+      drop.add(idx); console.debug(`[PATH_C/CAUSE_A] Dropped person ending in a business noun: "${f.rawMatch}"`);
+    });
+    return findings.filter((_, i) => !drop.has(i));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -5351,6 +5471,8 @@ const TrustLinguisticDetector = (() => {
       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
       // Group 13: e-mail addresses and lowercase ordinary words are not organization mentions (runs before Group 1 so it sees the final organizations).
       { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
+      // Cause A: a "<name> <business noun>" run is not a person (the organization, if there is evidence, comes from the structural pass).
+      { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       

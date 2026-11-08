@@ -2254,6 +2254,17 @@ const TrustLinguisticDetector = (() => {
             console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - first/last letter differs: "${match}" vs "${title}"`);
             continue;
           }
+          // Group 12b: the first/last-letter rule above looks only at the ends of the whole phrase. In a multi-word match the same rule
+          // is applied to every word (an end-of-word change inside "change person" -> "changed person" is a different word, not a typo).
+          // Phrases with a different word count (a space typo such as "bar tender") keep the old behaviour.
+          {
+            const mw = match.split(/\s+/), tw = titleLower.split(/\s+/);
+            if (tw.length > 1 && mw.length === tw.length &&
+                mw.some((w, k) => w[0] !== tw[k][0] || w[w.length - 1] !== tw[k][tw[k].length - 1])) {
+              console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - word ends differ: "${match}" vs "${title}"`);
+              continue;
+            }
+          }
           // ★ NEW: Reject if matched text is too short
           if (match.length <= 5) {
             console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - matched text too short: "${match}" (${match.length} chars) → title: "${title}"`);
@@ -2357,7 +2368,9 @@ const TrustLinguisticDetector = (() => {
    *   6. directly after "First Last," (appositive), optionally with a/an/the
    *   7. next to a list/résumé delimiter ("|", "•")
    */
-  function hasStructuralJobCue(text, s, e) {
+  function hasStructuralJobCue(text, s, e, leadOnly) {
+    // Group 14 (cause A): leadOnly = look only at what stands BEFORE the span (cues 2, 3, 3b, 6, 7-before); used for a span that was
+    // extended leftwards over modifier words, so the "multi-word" cue 1 and the after-side cues (4, 5, 5b) say nothing new.
     const before = text.slice(Math.max(0, s - 60), s);
     const after = text.slice(e, e + 70);
     const span = text.slice(s, e);
@@ -2374,23 +2387,31 @@ const TrustLinguisticDetector = (() => {
       return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
     })();
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
-    if (/\s/.test(span.trim()) && !definiteBefore) return true;                         // 1 (multi-word, not a bare definite description)
+    if (!leadOnly && /\s/.test(span.trim()) && !definiteBefore) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
     if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before)) return true;      // 3
     if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
-    if (!capsUseless) {
+    if (!capsUseless && !leadOnly) {
       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
       if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
       // (an optional "." is tolerated: normalizePath_C inserts one between a lowercase word and a Title-case word)
       // Group 6: the first capitalised word must not be a function word (determiner, pronoun,
       // conjunction, preposition, auxiliary...): "main breaker. The Bureau of Fire" is not a name,
       // "nurse. Grace Cruz" still is.
+      // Group 12: an honorific between the title and the name ("principal, Mr. Armando Dizon") is skipped; the honorific itself
+      // is the evidence of a person, so one or more capitalised words after it are enough.
+      const honM = after.match(/^([.,]?\s+)(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Atty|Engr|Arch|Hon|Fr|Rev|Sen|Gov)\.?\s+(?=[A-Z][a-z'’-]+)/);
+      if (honM) {
+        const nm = after.slice(honM[0].length).match(/^[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){0,3}\b/);
+        if (nm) return true;                                                                                          // 5b
+      }
       const nameM = after.match(/^[.,]?\s+([A-Z][a-z'’-]+)(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/);
       if (nameM && !JOB_FUNCTION_WORDS.has(nameM[1].toLowerCase()) &&
           !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
       if (/(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;               // 6
     }
-    if (/[|•]\s*$/.test(before) || /^\s*[|•]/.test(after)) return true;                                              // 7
+    if (leadOnly && !capsUseless && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;   // 6 (lead-only)
+    if (/[|•]\s*$/.test(before) || (!leadOnly && /^\s*[|•]/.test(after))) return true;                               // 7
     return false;
   }
 
@@ -2401,16 +2422,18 @@ const TrustLinguisticDetector = (() => {
    * word from the small closed qualification/seniority adjective set; hyphen
    * prefixes ("co-teacher") are attached directly. Returns the new start index.
    */
-  function extendJobHeadLeft(text, s, adjOnly) {
+  function extendJobHeadLeft(text, s, adjOnly, steps) {
+    // steps (optional array): receives the start index after each accepted modifier word (Group 14, cause A)
     let start = s;
     for (let k = 0; k < 3; k++) {
       const pre = text.slice(0, start);
       let m = pre.match(/([A-Za-z]+)-$/);                     // attached prefix: co-, vice-
-      if (m) { start -= m[0].length; continue; }
-      m = pre.match(/([A-Za-z][A-Za-z'-]*)\s$/);              // single preceding word
+      if (m) { start -= m[0].length; if (steps) steps.push(start); continue; }
+      m = pre.match(/([A-Za-z][A-Za-z'’-]*)\s$/);             // single preceding word
       if (!m) break;
       const w = m[1], lw = w.toLowerCase();
       if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
+      if (/['’]s$|s['’]$/i.test(w)) break;                    // Group 14 (G): a possessive ("Protection's fire marshal") ends the title
       let ok = JOB_MOD_ADJ.has(lw);
       // Group 6: when the finding is backed only by a possessive trigger ("my sourdough starter"),
       // extend over qualification adjectives only, never over noun modifiers.
@@ -2423,8 +2446,23 @@ const TrustLinguisticDetector = (() => {
       }
       if (!ok) break;
       start -= m[0].length;
+      if (steps) steps.push(start);
     }
     return start;
+  }
+
+  // Group 14 (cause A): the structural cues ("as a", "Job:", ", a", "Name, the") must stand directly before the title, but a modifier
+  // can sit between them and the dictionary head ("as a registered nurse", "Job: tricycle driver"). Walk the modifiers that
+  // extendJobHeadLeft accepts (at most 3) and look for a before-side cue at each stop. Returns [start, end] of the extended title or null.
+  function findLeadingModifierCue(text, occs) {
+    for (const [s, e] of occs) {
+      const steps = [];
+      extendJobHeadLeft(text, s, false, steps);
+      for (const ns of steps) {
+        if (hasStructuralJobCue(text, ns, e, true) || checkJobContext(text, text.slice(ns, e), true)) return [ns, e];
+      }
+    }
+    return null;
   }
 
   function validateJobTitlesWithCompromise(csvFindings, text, doc) {
@@ -2455,6 +2493,14 @@ const TrustLinguisticDetector = (() => {
           let keepStructural = -1;
           for (const [s2, e2] of occs) { if (hasStructuralJobCue(text, s2, e2)) { keepStructural = s2; break; } }
           if (!trig && keepStart < 0) {
+            // Group 14 (cause A): a cue that stands before accepted modifier words ("as a registered nurse") counts for the whole title
+            const lead = findLeadingModifierCue(text, occs);
+            if (lead) {
+              const ext = text.slice(lead[0], lead[1]);
+              validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));
+              console.debug(`[PATH_C/VAL_JOB] PASS (cue before modifiers): "${ext}"`);
+              continue;
+            }
             console.debug(`[PATH_C/VAL_JOB] FILTER (no context/cue): "${finding.name}"`);
             continue;
           }
@@ -2482,8 +2528,12 @@ const TrustLinguisticDetector = (() => {
         }
         
         // Lower-confidence findings must pass both context and POS checks
-        const hasJobContext = checkJobContext(text, actualSpan);
-        
+        // Group 12: a typo'd title right after an appositive "X, a/an" is in the same position as cue 3b for exact matches
+        let hasJobContext = checkJobContext(text, actualSpan);
+        if (!hasJobContext && finding.source === 'csv_fuzzy_match') {
+          hasJobContext = jobOccurrences(text, actualSpan).some(([s]) => /\w,\s*an?\s+$/i.test(text.slice(Math.max(0, s - 60), s)));
+        }
+
         // POS validation with compromise
         const nlpSpan = window.nlp ? window.nlp(actualSpan) : null;
         const hasBadPOS = nlpSpan ? checkBadPOS(nlpSpan) : false;
@@ -3776,6 +3826,70 @@ const TrustLinguisticDetector = (() => {
   const PERSON_DIRECTED_VERB_RE =/^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)$/i;
   const PERSON_DIRECTED_LEAD_RE = /^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting|sent|send(?:s|ing)?|gave|give[sn]?|giving|help(?:ed|s|ing)?|named?|names)$/i;
   const PERSON_DIRECTED_BEFORE_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\s+(?:(?:to|with|for|that)\s+)?$/i;
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROUP 13: occurrence-level filters for dictionary organizations (no policy change)
+  //   (a) an occurrence inside an e-mail address ("ramon@meralco.com.ph") is not a mention of the organization;
+  //   (b) a SINGLE-WORD organization written entirely in lowercase is kept only if an affiliation cue stands right before it, or if it
+  //       shows no sign of being an ordinary word. The only sign is that Compromise's own lexicon lists the word with a verb/adjective/
+  //       etc. tag ("target", "smart", "wise"). A determiner or possessive before the word is NOT a sign: "the shopee app", "my gcash
+  //       account" are brands (measured: a determiner-based sign lost 100% of real lowercase brands in the/my/our/a frames).
+  //       A Title Case or UPPER CASE occurrence is always kept.
+  //   A finding survives while at least one occurrence survives.
+  // ═══════════════════════════════════════════════════════════════════════
+  // true only for a word that Compromise's own lexicon lists with a verb/adjective/etc. tag (unknown words get guessed tags from their
+  // suffix: "harpic" -> Adjective, "chowking" -> Gerund; those guesses are not evidence of an ordinary word)
+  function isLexiconOrdinaryWord(w) {
+    try {
+      const lex = window.nlp.world().model.one.lexicon, t = lex[w.toLowerCase()];
+      return !!t && COMMON_WORD_TAGS.includes(t);
+    } catch (_) { return false; }
+  }
+  function hasOrgAffiliationCue(text, s) {
+    const before = text.slice(Math.max(0, s - 80), s);
+    // "works at / worked for / employed by / interning with / formerly with / now at / joined / left ..."
+    if (/\b(?:work(?:s|ed|ing)?|employed|hired|intern(?:s|ed|ing)?|joined|left|resigned|formerly|previously|currently|now|staff|seaman)\s+(?:\w+\s+){0,2}?(?:at|for|with|by|from|of|in)\s+(?:the\s+)?$/i.test(before)) return true;
+    // "my employer is / our company, ..."
+    if (/\b(?:my|our|his|her|their)\s+(?:current\s+|former\s+|previous\s+|prospective\s+)?(?:employer|company|firm|workplace)\b[^.]{0,25}$/i.test(before)) return true;
+    // "<job title> at / of / for / with / from <Org>"
+    const jm = before.replace(/[\s,]+$/, '').match(/((?:[\w'-]+\s+){0,2}[\w'-]+)\s+(?:at|of|for|with|from)\s*(?:the\s*)?$/i);
+    if (jm) {
+      const w = jm[1].toLowerCase().split(/\s+/);
+      for (let n = 1; n <= w.length; n++) if (EXTENSIVE_JOB_TITLES.has(w.slice(w.length - n).join(' '))) return true;
+    }
+    // "<First> <Last> from / of <Org>"
+    if (/\b[A-Z][\w'’-]+\s+[A-Z][\w'’-]+,?\s+(?:from|of)\s+(?:the\s+)?$/.test(before)) return true;
+    // the same in lowercase chat ("rodel aquino of pldt"): one of the two words must be an anchored name
+    const lm = before.match(/([a-z][\w'’-]*)\s+([a-z][\w'’-]*),?\s+(?:from|of)\s+(?:the\s+)?$/i);
+    if (lm && (nameHasPersonTag(isolatedNameTags(lm[1])) || nameHasPersonTag(isolatedNameTags(lm[2])))) return true;
+    // header / record fields: "From: Name, Org", "Employer: Org", "\"employer\": \"Org\""
+    if (/(?:^|\n)\s*(?:from|employer|company|organization|affiliation)\s*[:=]\s*[^\n]{0,60}$/i.test(before) || /"(?:employer|company|organization)"\s*:\s*"$/i.test(before)) return true;
+    return false;
+  }
+  function refineOrganizationFindings(findings, text) {
+    // normalizePath_C may already have split an address ("ramon. Dizon@meralco. Com. Ph"), so an occurrence counts as "inside an e-mail
+    // address" when the whitespace-delimited token that contains it also contains an "@".
+    const inEmail = (s, e) => /\S*@\S*$/.test(text.slice(Math.max(0, s - 120), s)) || /^\S*@/.test(text.slice(e, e + 120));
+    const drop = new Set();
+    findings.forEach((f, idx) => {
+      if (f.patternId !== 'nlp_organization' || !f.rawMatch) return;
+      const raw = f.rawMatch.trim();
+      let occs = jobOccurrences(text, raw);
+      if (!occs.length) return;
+      occs = occs.filter(([s, e]) => !inEmail(s, e));
+      if (!occs.length) { drop.add(idx); console.debug(`[PATH_C/G13] Dropped organization inside e-mail address: "${raw}"`); return; }
+      if (/\s/.test(raw)) return;
+      const commonTag = isLexiconOrdinaryWord(raw);
+      occs = occs.filter(([s, e]) => {
+        const seg = text.slice(s, e);
+        if (seg !== seg.toLowerCase()) return true;                                  // Title Case / UPPER CASE
+        if (hasOrgAffiliationCue(text, s)) return true;
+        return !commonTag;
+      });
+      if (!occs.length) { drop.add(idx); console.debug(`[PATH_C/G13] Dropped lowercase ordinary-word organization: "${raw}"`); }
+    });
+    return findings.filter((_, i) => !drop.has(i));
+  }
+
   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
     const orgs = findings
       .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
@@ -4724,6 +4838,8 @@ const TrustLinguisticDetector = (() => {
       splitPersonFindingsAtY(findings);
       trimJobSpansOverNames(findings);
       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
+      // Group 13: e-mail addresses and lowercase ordinary words are not organization mentions (runs before Group 1 so it sees the final organizations).
+      { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       

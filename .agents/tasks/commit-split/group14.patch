@@ -1,0 +1,102 @@
+diff --git a/linguistic-detector.js b/linguistic-detector.js
+index 4f6df57..59be77a 100644
+--- a/linguistic-detector.js
++++ b/linguistic-detector.js
+@@ -2368,7 +2368,9 @@ const TrustLinguisticDetector = (() => {
+    *   6. directly after "First Last," (appositive), optionally with a/an/the
+    *   7. next to a list/résumé delimiter ("|", "•")
+    */
+-  function hasStructuralJobCue(text, s, e) {
++  function hasStructuralJobCue(text, s, e, leadOnly) {
++    // Group 14 (cause A): leadOnly = look only at what stands BEFORE the span (cues 2, 3, 3b, 6, 7-before); used for a span that was
++    // extended leftwards over modifier words, so the "multi-word" cue 1 and the after-side cues (4, 5, 5b) say nothing new.
+     const before = text.slice(Math.max(0, s - 60), s);
+     const after = text.slice(e, e + 70);
+     const span = text.slice(s, e);
+@@ -2385,11 +2387,11 @@ const TrustLinguisticDetector = (() => {
+       return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
+     })();
+     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
+-    if (/\s/.test(span.trim()) && !definiteBefore) return true;                         // 1 (multi-word, not a bare definite description)
++    if (!leadOnly && /\s/.test(span.trim()) && !definiteBefore) return true;            // 1 (multi-word, not a bare definite description)
+     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
+     if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before)) return true;      // 3
+     if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
+-    if (!capsUseless) {
++    if (!capsUseless && !leadOnly) {
+       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
+       if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
+       // (an optional "." is tolerated: normalizePath_C inserts one between a lowercase word and a Title-case word)
+@@ -2408,7 +2410,8 @@ const TrustLinguisticDetector = (() => {
+           !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
+       if (/(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;               // 6
+     }
+-    if (/[|•]\s*$/.test(before) || /^\s*[|•]/.test(after)) return true;                                              // 7
++    if (leadOnly && !capsUseless && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;   // 6 (lead-only)
++    if (/[|•]\s*$/.test(before) || (!leadOnly && /^\s*[|•]/.test(after))) return true;                               // 7
+     return false;
+   }
+ 
+@@ -2419,16 +2422,18 @@ const TrustLinguisticDetector = (() => {
+    * word from the small closed qualification/seniority adjective set; hyphen
+    * prefixes ("co-teacher") are attached directly. Returns the new start index.
+    */
+-  function extendJobHeadLeft(text, s, adjOnly) {
++  function extendJobHeadLeft(text, s, adjOnly, steps) {
++    // steps (optional array): receives the start index after each accepted modifier word (Group 14, cause A)
+     let start = s;
+     for (let k = 0; k < 3; k++) {
+       const pre = text.slice(0, start);
+       let m = pre.match(/([A-Za-z]+)-$/);                     // attached prefix: co-, vice-
+-      if (m) { start -= m[0].length; continue; }
+-      m = pre.match(/([A-Za-z][A-Za-z'-]*)\s$/);              // single preceding word
++      if (m) { start -= m[0].length; if (steps) steps.push(start); continue; }
++      m = pre.match(/([A-Za-z][A-Za-z'’-]*)\s$/);             // single preceding word
+       if (!m) break;
+       const w = m[1], lw = w.toLowerCase();
+       if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
++      if (/['’]s$|s['’]$/i.test(w)) break;                    // Group 14 (G): a possessive ("Protection's fire marshal") ends the title
+       let ok = JOB_MOD_ADJ.has(lw);
+       // Group 6: when the finding is backed only by a possessive trigger ("my sourdough starter"),
+       // extend over qualification adjectives only, never over noun modifiers.
+@@ -2441,10 +2446,25 @@ const TrustLinguisticDetector = (() => {
+       }
+       if (!ok) break;
+       start -= m[0].length;
++      if (steps) steps.push(start);
+     }
+     return start;
+   }
+ 
++  // Group 14 (cause A): the structural cues ("as a", "Job:", ", a", "Name, the") must stand directly before the title, but a modifier
++  // can sit between them and the dictionary head ("as a registered nurse", "Job: tricycle driver"). Walk the modifiers that
++  // extendJobHeadLeft accepts (at most 3) and look for a before-side cue at each stop. Returns [start, end] of the extended title or null.
++  function findLeadingModifierCue(text, occs) {
++    for (const [s, e] of occs) {
++      const steps = [];
++      extendJobHeadLeft(text, s, false, steps);
++      for (const ns of steps) {
++        if (hasStructuralJobCue(text, ns, e, true) || checkJobContext(text, text.slice(ns, e), true)) return [ns, e];
++      }
++    }
++    return null;
++  }
++
+   function validateJobTitlesWithCompromise(csvFindings, text, doc) {
+     if (!COMPROMISE_AVAILABLE || csvFindings.length === 0) {
+       // If no compromise or no findings, return all CSV findings
+@@ -2473,6 +2493,14 @@ const TrustLinguisticDetector = (() => {
+           let keepStructural = -1;
+           for (const [s2, e2] of occs) { if (hasStructuralJobCue(text, s2, e2)) { keepStructural = s2; break; } }
+           if (!trig && keepStart < 0) {
++            // Group 14 (cause A): a cue that stands before accepted modifier words ("as a registered nurse") counts for the whole title
++            const lead = findLeadingModifierCue(text, occs);
++            if (lead) {
++              const ext = text.slice(lead[0], lead[1]);
++              validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));
++              console.debug(`[PATH_C/VAL_JOB] PASS (cue before modifiers): "${ext}"`);
++              continue;
++            }
+             console.debug(`[PATH_C/VAL_JOB] FILTER (no context/cue): "${finding.name}"`);
+             continue;
+           }

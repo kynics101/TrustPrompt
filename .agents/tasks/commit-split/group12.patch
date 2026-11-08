@@ -1,0 +1,51 @@
+diff --git a/linguistic-detector.js b/linguistic-detector.js
+index 923992d..68d92b4 100644
+--- a/linguistic-detector.js
++++ b/linguistic-detector.js
+@@ -2254,6 +2254,17 @@ const TrustLinguisticDetector = (() => {
+             console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - first/last letter differs: "${match}" vs "${title}"`);
+             continue;
+           }
++          // Group 12b: the first/last-letter rule above looks only at the ends of the whole phrase. In a multi-word match the same rule
++          // is applied to every word (an end-of-word change inside "change person" -> "changed person" is a different word, not a typo).
++          // Phrases with a different word count (a space typo such as "bar tender") keep the old behaviour.
++          {
++            const mw = match.split(/\s+/), tw = titleLower.split(/\s+/);
++            if (tw.length > 1 && mw.length === tw.length &&
++                mw.some((w, k) => w[0] !== tw[k][0] || w[w.length - 1] !== tw[k][tw[k].length - 1])) {
++              console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - word ends differ: "${match}" vs "${title}"`);
++              continue;
++            }
++          }
+           // ★ NEW: Reject if matched text is too short
+           if (match.length <= 5) {
+             console.debug(`[PATH_C/CSV_JOB] Pass 3 (fuzzy): SKIP - matched text too short: "${match}" (${match.length} chars) → title: "${title}"`);
+@@ -2385,6 +2396,13 @@ const TrustLinguisticDetector = (() => {
+       // Group 6: the first capitalised word must not be a function word (determiner, pronoun,
+       // conjunction, preposition, auxiliary...): "main breaker. The Bureau of Fire" is not a name,
+       // "nurse. Grace Cruz" still is.
++      // Group 12: an honorific between the title and the name ("principal, Mr. Armando Dizon") is skipped; the honorific itself
++      // is the evidence of a person, so one or more capitalised words after it are enough.
++      const honM = after.match(/^([.,]?\s+)(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Atty|Engr|Arch|Hon|Fr|Rev|Sen|Gov)\.?\s+(?=[A-Z][a-z'’-]+)/);
++      if (honM) {
++        const nm = after.slice(honM[0].length).match(/^[A-Z][a-z'’-]+(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){0,3}\b/);
++        if (nm) return true;                                                                                          // 5b
++      }
+       const nameM = after.match(/^[.,]?\s+([A-Z][a-z'’-]+)(?:\s+(?:[A-Z]\.?|[A-Z][a-z'’.-]+)){1,3}\b/);
+       if (nameM && !JOB_FUNCTION_WORDS.has(nameM[1].toLowerCase()) &&
+           !JOB_NOT_NAME_START.test(after.replace(/^[.,]?\s+/, ''))) return true;                                        // 5
+@@ -2482,8 +2500,12 @@ const TrustLinguisticDetector = (() => {
+         }
+         
+         // Lower-confidence findings must pass both context and POS checks
+-        const hasJobContext = checkJobContext(text, actualSpan);
+-        
++        // Group 12: a typo'd title right after an appositive "X, a/an" is in the same position as cue 3b for exact matches
++        let hasJobContext = checkJobContext(text, actualSpan);
++        if (!hasJobContext && finding.source === 'csv_fuzzy_match') {
++          hasJobContext = jobOccurrences(text, actualSpan).some(([s]) => /\w,\s*an?\s+$/i.test(text.slice(Math.max(0, s - 60), s)));
++        }
++
+         // POS validation with compromise
+         const nlpSpan = window.nlp ? window.nlp(actualSpan) : null;
+         const hasBadPOS = nlpSpan ? checkBadPOS(nlpSpan) : false;

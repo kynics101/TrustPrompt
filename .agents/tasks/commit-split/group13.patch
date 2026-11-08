@@ -1,0 +1,84 @@
+diff --git a/linguistic-detector.js b/linguistic-detector.js
+index 68d92b4..4f6df57 100644
+--- a/linguistic-detector.js
++++ b/linguistic-detector.js
+@@ -3798,6 +3798,70 @@ const TrustLinguisticDetector = (() => {
+   const PERSON_DIRECTED_VERB_RE =/^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)$/i;
+   const PERSON_DIRECTED_LEAD_RE = /^(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting|sent|send(?:s|ing)?|gave|give[sn]?|giving|help(?:ed|s|ing)?|named?|names)$/i;
+   const PERSON_DIRECTED_BEFORE_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\s+(?:(?:to|with|for|that)\s+)?$/i;
++  // ═══════════════════════════════════════════════════════════════════════
++  // GROUP 13: occurrence-level filters for dictionary organizations (no policy change)
++  //   (a) an occurrence inside an e-mail address ("ramon@meralco.com.ph") is not a mention of the organization;
++  //   (b) a SINGLE-WORD organization written entirely in lowercase is kept only if an affiliation cue stands right before it, or if it
++  //       shows no sign of being an ordinary word. The only sign is that Compromise's own lexicon lists the word with a verb/adjective/
++  //       etc. tag ("target", "smart", "wise"). A determiner or possessive before the word is NOT a sign: "the shopee app", "my gcash
++  //       account" are brands (measured: a determiner-based sign lost 100% of real lowercase brands in the/my/our/a frames).
++  //       A Title Case or UPPER CASE occurrence is always kept.
++  //   A finding survives while at least one occurrence survives.
++  // ═══════════════════════════════════════════════════════════════════════
++  // true only for a word that Compromise's own lexicon lists with a verb/adjective/etc. tag (unknown words get guessed tags from their
++  // suffix: "harpic" -> Adjective, "chowking" -> Gerund; those guesses are not evidence of an ordinary word)
++  function isLexiconOrdinaryWord(w) {
++    try {
++      const lex = window.nlp.world().model.one.lexicon, t = lex[w.toLowerCase()];
++      return !!t && COMMON_WORD_TAGS.includes(t);
++    } catch (_) { return false; }
++  }
++  function hasOrgAffiliationCue(text, s) {
++    const before = text.slice(Math.max(0, s - 80), s);
++    // "works at / worked for / employed by / interning with / formerly with / now at / joined / left ..."
++    if (/\b(?:work(?:s|ed|ing)?|employed|hired|intern(?:s|ed|ing)?|joined|left|resigned|formerly|previously|currently|now|staff|seaman)\s+(?:\w+\s+){0,2}?(?:at|for|with|by|from|of|in)\s+(?:the\s+)?$/i.test(before)) return true;
++    // "my employer is / our company, ..."
++    if (/\b(?:my|our|his|her|their)\s+(?:current\s+|former\s+|previous\s+|prospective\s+)?(?:employer|company|firm|workplace)\b[^.]{0,25}$/i.test(before)) return true;
++    // "<job title> at / of / for / with / from <Org>"
++    const jm = before.replace(/[\s,]+$/, '').match(/((?:[\w'-]+\s+){0,2}[\w'-]+)\s+(?:at|of|for|with|from)\s*(?:the\s*)?$/i);
++    if (jm) {
++      const w = jm[1].toLowerCase().split(/\s+/);
++      for (let n = 1; n <= w.length; n++) if (EXTENSIVE_JOB_TITLES.has(w.slice(w.length - n).join(' '))) return true;
++    }
++    // "<First> <Last> from / of <Org>"
++    if (/\b[A-Z][\w'’-]+\s+[A-Z][\w'’-]+,?\s+(?:from|of)\s+(?:the\s+)?$/.test(before)) return true;
++    // the same in lowercase chat ("rodel aquino of pldt"): one of the two words must be an anchored name
++    const lm = before.match(/([a-z][\w'’-]*)\s+([a-z][\w'’-]*),?\s+(?:from|of)\s+(?:the\s+)?$/i);
++    if (lm && (nameHasPersonTag(isolatedNameTags(lm[1])) || nameHasPersonTag(isolatedNameTags(lm[2])))) return true;
++    // header / record fields: "From: Name, Org", "Employer: Org", "\"employer\": \"Org\""
++    if (/(?:^|\n)\s*(?:from|employer|company|organization|affiliation)\s*[:=]\s*[^\n]{0,60}$/i.test(before) || /"(?:employer|company|organization)"\s*:\s*"$/i.test(before)) return true;
++    return false;
++  }
++  function refineOrganizationFindings(findings, text) {
++    // normalizePath_C may already have split an address ("ramon. Dizon@meralco. Com. Ph"), so an occurrence counts as "inside an e-mail
++    // address" when the whitespace-delimited token that contains it also contains an "@".
++    const inEmail = (s, e) => /\S*@\S*$/.test(text.slice(Math.max(0, s - 120), s)) || /^\S*@/.test(text.slice(e, e + 120));
++    const drop = new Set();
++    findings.forEach((f, idx) => {
++      if (f.patternId !== 'nlp_organization' || !f.rawMatch) return;
++      const raw = f.rawMatch.trim();
++      let occs = jobOccurrences(text, raw);
++      if (!occs.length) return;
++      occs = occs.filter(([s, e]) => !inEmail(s, e));
++      if (!occs.length) { drop.add(idx); console.debug(`[PATH_C/G13] Dropped organization inside e-mail address: "${raw}"`); return; }
++      if (/\s/.test(raw)) return;
++      const commonTag = isLexiconOrdinaryWord(raw);
++      occs = occs.filter(([s, e]) => {
++        const seg = text.slice(s, e);
++        if (seg !== seg.toLowerCase()) return true;                                  // Title Case / UPPER CASE
++        if (hasOrgAffiliationCue(text, s)) return true;
++        return !commonTag;
++      });
++      if (!occs.length) { drop.add(idx); console.debug(`[PATH_C/G13] Dropped lowercase ordinary-word organization: "${raw}"`); }
++    });
++    return findings.filter((_, i) => !drop.has(i));
++  }
++
+   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
+     const orgs = findings
+       .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
+@@ -4746,6 +4810,8 @@ const TrustLinguisticDetector = (() => {
+       splitPersonFindingsAtY(findings);
+       trimJobSpansOverNames(findings);
+       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
++      // Group 13: e-mail addresses and lowercase ordinary words are not organization mentions (runs before Group 1 so it sees the final organizations).
++      { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
+       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
+       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
+       

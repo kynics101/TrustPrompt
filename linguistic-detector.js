@@ -3883,7 +3883,194 @@ const TrustLinguisticDetector = (() => {
       console.debug(`[PATH_C/STRUCTURAL] Institution match: "${finalSpan}"`);
     }
 
+    // ── (d) GROUP 7 stage 1 ──────────────────────────────────────────────────
+    const pushG7 = (span, tag) => {
+      const lowerSpan = span.toLowerCase();
+      if (alreadyFoundLower.has(lowerSpan)) return;
+      // a longer span replaces a shorter structural finding it contains ("Reyes & Associates" inside "Reyes & Associates Law Offices")
+      for (let i = found.length - 1; i >= 0; i--) { const fl = found[i].name.toLowerCase(); if (fl !== lowerSpan && lowerSpan.includes(fl)) found.splice(i, 1); }
+      alreadyFoundLower.add(lowerSpan);
+      // g7: the place word is part of the name (checked by the rule itself), so the generic place filter must not drop it, and a
+      // person finding with the same text must not hide it (the person finding is removed later as "inside an organization")
+      found.push({ name: span, rawMatch: span, confidence: 'medium', source: 'structural_match', csvValidated: false, validated: false, g7: true });
+      console.debug(`[PATH_C/STRUCTURAL] ${tag}: "${span}"`);
+    };
+    findOrgsLawFirms(text, pushG7);
+    findOrgsInstitutionOfPlace(text, pushG7);
+    findOrgsBrandDescriptor(text, pushG7);
+
     return found;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROUP 7 (stage 1): three structural organization rules
+  //   (a) law / audit firm: a run of capitalised surnames joined by "&" / "and" that either ends in a firm suffix
+  //       (Law Offices, Law Firm, & Associates, & Co) or has a firm / affiliation cue before it;
+  //   (b1) "<institution head> of <Place>": Archdiocese, Diocese, Prelature, Vicariate always; Province, Municipality unless
+  //       the phrase is used as a location ("born in the Province of ...");
+  //   (b2) "<known brand> <descriptor> [<Place>]": descriptor Unibank (alone) or City / Mall / Malls (place required).
+  // None of these uses a list of firm or brand names. Brands come from the organization dictionary (see getOrgBrandTokens).
+  // ═══════════════════════════════════════════════════════════════════════
+  const G7_SURNAME_TOKEN = "[A-Z][A-Za-zÀ-ÿ'’-]*";
+  const G7_HONORIFIC_RE = /^(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov|st)\.?$/i;
+  const G7_STOP_RE = /^(?:the|a|an|of|for|in|at|on|by|to|and|or|but|with|from|this|that|our|my|your|their|his|her)$/i;
+  // a word that cannot be a surname: a closed-class or verb/adjective-class word with no person-name tag ("Call", "Best", "Your")
+  function g7IsCommonWord(w) {
+    if (G7_STOP_RE.test(w) || G7_HONORIFIC_RE.test(w)) return true;
+    if (/^(?:Associates|Partners|Company|Brothers|Sons)$/.test(w)) return false;   // ordinary plural nouns, but normal inside a firm name
+    const tg = isolatedNameTags(w);
+    return !nameHasPersonTag(tg) && !!tg && tg.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t));
+  }
+  // cue words before a firm name that mean "a firm" in plain words (used for the "and" joiner and as an extra cue for "&")
+  const G7_FIRM_CUE_RE = /(?:\b(?:partners?|associates?|counsel|attorneys?|lawyers?|solicitors?|litigators?|auditors?|accountants?|paralegals?)\s+(?:at|of|from)\s+(?:the\s+)?(?:(?:law|audit|accounting)\s+(?:firm|offices?)\s+(?:of\s+)?)?|\b(?:law|audit|accounting|legal)\s+(?:firm|offices?)\s+(?:of\s+|called\s+|named\s+)?|\bfirm\s+(?:of\s+|called\s+|named\s+)?|\b(?:represented|audited|advised|retained|sued|handled|drafted)\s+by\s+(?:the\s+)?(?:(?:law|audit)\s+(?:firm|offices?)\s+(?:of\s+)?)?)$/i;
+  const G7_FIRM_SUFFIX_RE = /^(?:Law\s+(?:Offices?|Firms?|Group)|LLP|CPAs?)$/;
+
+  function findOrgsLawFirms(text, push) {
+    // maximal run of capitalised words with "&", "and" and commas between them
+    const RUN = new RegExp(`${G7_SURNAME_TOKEN}\\.?(?:(?:,?\\s+(?:&|and)\\s+|,\\s+|\\s+)${G7_SURNAME_TOKEN}\\.?)+`, 'g');
+    let m;
+    while ((m = RUN.exec(text)) !== null) {
+      const run = m[0], runStart = m.index;
+      if (!/(?:&|\band\b)/.test(run) && !/\bLaw\s+(?:Offices?|Firms?|Group)\b/.test(run)) continue;
+      // tokens with positions: words, "&"/"and" connectors, commas
+      const toks = [];
+      const TK = new RegExp(`(${G7_SURNAME_TOKEN}\\.?)|(&)|(\\band\\b)|(,)`, 'g');
+      let t;
+      while ((t = TK.exec(run)) !== null) toks.push({ w: t[0], word: !!t[1], conn: !!(t[2] || t[3]), amp: !!t[2], s: t.index, e: t.index + t[0].length });
+      // 0. a firm name ends at its first suffix; the run may go on into the next name ("... Law Offices and Santos-Lim Trading")
+      for (let i = 0; i < toks.length; i++) {
+        const w1 = toks[i].word ? toks[i].w.replace(/\.$/, '') : '', w0 = i > 0 && toks[i - 1].word ? toks[i - 1].w : '';
+        const closes = G7_FIRM_SUFFIX_RE.test(w1) || (w0 && G7_FIRM_SUFFIX_RE.test(w0 + ' ' + w1)) ||
+          (i > 0 && toks[i - 1].conn && /^(?:Associates|Partners|Co|Company)$/.test(w1) && (toks[i - 1].amp || /^(?:Associates|Partners)$/.test(w1)));
+        const lawNext = toks[i + 2] && toks[i + 1].word && toks[i + 2].word && G7_FIRM_SUFFIX_RE.test(toks[i + 1].w + ' ' + toks[i + 2].w);
+        if (closes && !lawNext) { toks.length = i + 1; break; }
+      }
+      // 1. firm suffix at the end
+      let end = toks.length, kind = '';
+      const words = i => toks[i] && toks[i].word ? toks[i].w.replace(/\.$/, '') : '';
+      const lastW = end - 1;
+      if (/^Co(?:mpany)?$/.test(words(lastW)) && toks[lastW - 1] && toks[lastW - 1].amp) { kind = 'co'; end = lastW - 1; }
+      else if (/^(?:Associates|Partners)$/.test(words(lastW)) && toks[lastW - 1] && toks[lastW - 1].conn) { kind = 'assoc'; end = lastW - 1; }
+      else if (lastW >= 1 && G7_FIRM_SUFFIX_RE.test(words(lastW - 1) + ' ' + words(lastW))) { kind = 'law'; end = lastW - 1; }
+      else if (G7_FIRM_SUFFIX_RE.test(words(lastW))) { kind = 'law'; end = lastW; }
+      // 2. name part: trim leading words that cannot be surnames; commas between names are dropped from the count
+      let begin = 0;
+      while (begin < end && (!toks[begin].word || g7IsCommonWord(toks[begin].w))) begin++;
+      // trailing connectors / commas
+      while (end > begin && !toks[end - 1].word) end--;
+      const nameToks = toks.slice(begin, end).filter(x => x.word);
+      if (nameToks.length < 1) continue;
+      if (nameToks.some(x => g7IsCommonWord(x.w) || x.w.length < 2)) {
+        // a common word inside the run: keep only the last stretch of surname-like words
+        let k = end - 1; while (k >= begin && (!toks[k].word || !g7IsCommonWord(toks[k].w))) k--;
+        begin = k + 1; while (begin < end && !toks[begin].word) begin++;
+      }
+      const names = toks.slice(begin, end).filter(x => x.word);
+      const hasConn = toks.slice(begin, end).some(x => x.conn);
+      let spanEnd;
+      if (kind === 'co' || kind === 'assoc') {
+        if (names.length < 1 || names.length > 4) continue;
+        if (kind === 'assoc' && names.length < 1) continue;
+        spanEnd = toks[toks.length - 1].e;
+      } else if (kind === 'law') {
+        if (names.length < 2 || names.length > 5) continue;   // "Best Law Firm", "Family Law Firm": one stray word is not a firm name
+        spanEnd = toks[toks.length - 1].e;
+      } else {
+        // no suffix: at least two surnames joined by a connector, and a cue before the run
+        if (names.length < 2 || names.length > 5 || !hasConn) continue;
+        const ends = toks[end - 1].e, s0 = runStart + toks[begin].s;
+        const before = text.slice(Math.max(0, s0 - 90), s0);
+        const usesAmp = toks.slice(begin, end).some(x => x.amp);
+        // affiliation cue: "&" accepts any of them; "and" only the employer prepositions (at / for / by), because "works with A and B" names people
+        const affil = hasOrgAffiliationCue(text, s0) && (usesAmp || /\b(?:at|for|by)\s+(?:the\s+)?$/i.test(before));
+        if (!(G7_FIRM_CUE_RE.test(before) || affil)) continue;
+        spanEnd = ends;
+      }
+      if (kind === 'law' || kind === 'co' || kind === 'assoc') {
+        // the surnames of a suffixed firm have to be real words of a name: reject if the first one is a person's given name followed by a verb etc.
+        if (names.some(x => g7IsCommonWord(x.w))) continue;
+      }
+      let span = text.slice(runStart + toks[begin].s, runStart + spanEnd).replace(/\s+/g, ' ').replace(/\s+,/g, ',');
+      if (/[.]$/.test(span) && !/\b(?:Co|Inc|Ltd)\.$/.test(span)) span = span.replace(/\.$/, '');
+      if (span.split(/\s+/).length < 2) continue;
+      push(span, 'Law/audit firm');
+    }
+  }
+
+  // religious bodies always; civic bodies unless used as a location
+  const G7_HEAD_RE = /\b(Archdiocese|Diocese|Prelature|Vicariate|Eparchy|Province|Municipality)\s+of\s+((?:the\s+)?)([A-Z][A-Za-zñÑ'’-]*(?:\s+(?:(?:de|del|dela|ng|la|las)\s+)*[A-Z][A-Za-zñÑ'’-]*){0,3})/g;
+  const G7_LOCATIVE_BEFORE_RE = /\b(?:in|within|near|across|around|throughout|outside|inside|to|into|through|toward|towards|visit(?:ed|ing)?|born)\s+(?:the\s+)?$/i;
+  function g7PlaceKnown(phrase) {
+    try { if (typeof PH_ADDRESS_DB !== 'undefined' && PH_ADDRESS_DB && PH_ADDRESS_DB.isPlaceNameExact && PH_ADDRESS_DB.isPlaceNameExact(phrase)) return true; } catch (_) { /* optional */ }
+    return PLACE_NAME_WORDS.has(phrase.toLowerCase());
+  }
+  // the longest prefix of a capitalised word run that is a place; returns the number of words (0 = none)
+  function g7PlacePrefix(ws, allowUnknownFirst) {
+    for (let k = ws.length; k >= 1; k--) if (g7PlaceKnown(ws.slice(0, k).join(' '))) return k;
+    if (allowUnknownFirst && ws.length && !g7IsCommonWord(ws[0]) && ws[0].length >= 3) {
+      let k = 1;
+      while (k < ws.length && g7PlaceKnown(ws[k])) k++;
+      return k;
+    }
+    return 0;
+  }
+  function findOrgsInstitutionOfPlace(text, push) {
+    let m;
+    G7_HEAD_RE.lastIndex = 0;
+    while ((m = G7_HEAD_RE.exec(text)) !== null) {
+      const head = m[1], religious = /^(?:Archdiocese|Diocese|Prelature|Vicariate|Eparchy)$/.test(head);
+      const ws = m[3].split(/\s+/);
+      const k = g7PlacePrefix(ws, religious);
+      if (!k) continue;
+      if (!religious && G7_LOCATIVE_BEFORE_RE.test(text.slice(Math.max(0, m.index - 30), m.index)) && !hasOrgAffiliationCue(text, m.index)) continue;
+      const placeText = ws.slice(0, k).join(' ');
+      push(`${head} of ${m[2]}${placeText}`, 'Institution of place');
+    }
+  }
+
+  // ── known brand + descriptor ───────────────────────────────────────────
+  let G7_BRANDS = null;
+  // Brand evidence from the organization dictionary (built once): (1) a complete single-word entry; (2) the first word of at least 2 entries;
+  // (3) a short upper-case first word of an entry or of a parenthetical alternate name ("Banco de Oro (BDO Unibank)" gives "bdo").
+  function getOrgBrandTokens() {
+    if (G7_BRANDS) return G7_BRANDS;
+    const single = new Set(), firstCount = new Map(), caps = new Set();
+    for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
+      const o = String(org);
+      const words = o.split(/\s+/);
+      const w0 = words[0].toLowerCase();
+      if (words.length === 1) single.add(w0);
+      else firstCount.set(w0, (firstCount.get(w0) || 0) + 1);
+      const pm = o.match(/\(([^)]+)\)/);
+      if (pm) { const w = pm[1].trim().split(/\s+/)[0]; if (/^[A-Z]{2,6}$/.test(w)) caps.add(w.toLowerCase()); }
+      if (/^[A-Z]{2,6}$/.test(words[0]) && words.length > 1) caps.add(w0);
+    }
+    G7_BRANDS = { single, firstCount, caps };
+    return G7_BRANDS;
+  }
+  function g7IsKnownBrand(tok) {
+    if (!tok || tok.length < 2) return false;
+    const low = tok.toLowerCase(), B = getOrgBrandTokens();
+    const upper = tok === tok.toUpperCase();
+    if (upper) return B.caps.has(low) || B.single.has(low);
+    if (!/^[A-Z][a-z]/.test(tok)) return false;
+    if (g7IsCommonWord(tok) || g7PlaceKnown(tok)) return false;
+    return B.single.has(low) || (B.firstCount.get(low) || 0) >= 2;
+  }
+  const G7_BRAND_DESC_RE = /\b([A-Za-z][A-Za-z0-9&'’-]*)\s+(Unibank|City|Malls?)\b(?:\s+([A-Z][A-Za-zñÑ'’-]*(?:\s+(?:(?:de|del|dela|ng|la|las)\s+)*[A-Z][A-Za-zñÑ'’-]*){0,2}))?/g;
+  function findOrgsBrandDescriptor(text, push) {
+    let m;
+    G7_BRAND_DESC_RE.lastIndex = 0;
+    while ((m = G7_BRAND_DESC_RE.exec(text)) !== null) {
+      const brand = m[1], desc = m[2];
+      if (!g7IsKnownBrand(brand)) continue;
+      if (desc === 'Unibank') { push(`${brand} ${desc}`, 'Brand + descriptor'); continue; }
+      if (!m[3]) continue;
+      const ws = m[3].split(/\s+/);
+      const k = g7PlacePrefix(ws, true);
+      if (!k) continue;
+      push(`${brand} ${desc} ${ws.slice(0, k).join(' ')}`, 'Brand + descriptor + place');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -4861,12 +5048,12 @@ const TrustLinguisticDetector = (() => {
           console.debug(`[TrustPrompt/PATH_C] Filtered structural org (common word): "${orgRaw}"`);
           continue;
         }
-        if (looksLikePlaceName(orgRaw)) {
+        if (!org.g7 && looksLikePlaceName(orgRaw)) {
           console.debug(`[TrustPrompt/PATH_C] Filtered structural org (place name): "${orgRaw}"`);
           continue;
         }
         // Skip if already present as any finding (name or org) with the same rawMatch
-        if (findings.some(f => f.rawMatch.toLowerCase() === orgRaw.toLowerCase())) {
+        if (findings.some(f => f.rawMatch.toLowerCase() === orgRaw.toLowerCase() && (!org.g7 || f.patternId === 'nlp_organization'))) {
           console.debug(`[TrustPrompt/PATH_C] Skipped structural org (duplicate in findings): "${orgRaw}"`);
           continue;
         }

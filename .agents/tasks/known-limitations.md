@@ -14,3 +14,8 @@
 6. **Hyphenated modifiers**: Compromise already tags most hyphenated words as nouns, so adjectives such as "on-site", "self-employed",
    "world-class" before a job head are accepted as part of the title (pre-existing).
 7. **"store" before a job head** is tagged Verb in isolation, so "store owner" is not extended (C-055 "sari-sari store owner" stays "owner").
+8. **Lowercase ordinary-word brands (N1).** A lowercase single-word organization with no affiliation cue is dropped only if Compromise's own
+   lexicon lists it as a verb/adjective-class word ("target", "wise", "slack"). "an apple", "a shell collection", "a work visa" are therefore
+   reported as organizations again (C-071, C-153): no general signal separates them from "my gcash account" without an English word list.
+9. **"use ... as a <cleaner>"** still yields a job when the head is a plausible person's job ("designed as a hospital cleaner"); only the
+   verb-of-use exclusion (Group 15 a) removes the clear cases.

@@ -2368,6 +2368,7 @@ const TrustLinguisticDetector = (() => {
    *   6. directly after "First Last," (appositive), optionally with a/an/the
    *   7. next to a list/résumé delimiter ("|", "•")
    */
+  const JOB_OBJECT_ROLE_BEFORE_AS_RE = /\b(?:us(?:e|es|ed|ing)|design(?:ed|s|ing)?|intend(?:ed|s)?|meant|treat(?:ed|s|ing)?|regard(?:ed|s|ing)?|consider(?:ed|s|ing)?|view(?:ed|s|ing)?|seen|describ(?:ed|es|ing))\b(?:\s+[\w'’-]+){0,3}?\s+as\s+(?:an?\s+|the\s+)?$/i;
   function hasStructuralJobCue(text, s, e, leadOnly) {
     // Group 14 (cause A): leadOnly = look only at what stands BEFORE the span (cues 2, 3, 3b, 6, 7-before); used for a span that was
     // extended leftwards over modifier words, so the "multi-word" cue 1 and the after-side cues (4, 5, 5b) say nothing new.
@@ -2389,7 +2390,9 @@ const TrustLinguisticDetector = (() => {
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
     if (!leadOnly && /\s/.test(span.trim()) && !definiteBefore) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
-    if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before)) return true;      // 3
+    // Group 15 (a): a bare "as a" right after a verb of use / purpose / treatment ("use it as a", "designed as a", "treated as a") names the
+    // role of a THING; it is not evidence of a person's job. "works as", "serves as", "employed as", "hired as" are not in that class.
+    if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before) && !JOB_OBJECT_ROLE_BEFORE_AS_RE.test(before)) return true;      // 3
     if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
     if (!capsUseless && !leadOnly) {
       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
@@ -2422,7 +2425,7 @@ const TrustLinguisticDetector = (() => {
    * word from the small closed qualification/seniority adjective set; hyphen
    * prefixes ("co-teacher") are attached directly. Returns the new start index.
    */
-  function extendJobHeadLeft(text, s, adjOnly, steps) {
+  function extendJobHeadLeft(text, s, adjOnly, steps, e) {
     // steps (optional array): receives the start index after each accepted modifier word (Group 14, cause A)
     let start = s;
     for (let k = 0; k < 3; k++) {
@@ -2442,6 +2445,13 @@ const TrustLinguisticDetector = (() => {
           const d = window.nlp(w);
           ok = d.has('#Noun') && !d.has('#Pronoun') && !d.has('#Value') && !d.has('#Person') &&
                !d.has('#Adjective');
+          // Group 15 (b): an ambiguous noun/verb ("store", "run", "play") is judged together with the part of the title already accepted
+          // ("store owner"), where Compromise tags it as a noun; a word that stays a verb/adjective there ("hired nurse") is still refused.
+          if (!ok && e !== undefined) {
+            const t0 = window.nlp(w + ' ' + text.slice(start, e)).json({ terms: { tags: true } })[0];
+            const tg = (t0 && t0.terms[0] && t0.terms[0].tags) || [];
+            ok = tg.includes('Noun') && !tg.some(t => ['Pronoun', 'Value', 'Person', 'Adjective', 'Verb', 'Gerund'].includes(t));
+          }
         } catch (_) { ok = false; }
       }
       if (!ok) break;
@@ -2457,7 +2467,7 @@ const TrustLinguisticDetector = (() => {
   function findLeadingModifierCue(text, occs) {
     for (const [s, e] of occs) {
       const steps = [];
-      extendJobHeadLeft(text, s, false, steps);
+      extendJobHeadLeft(text, s, false, steps, e);
       for (const ns of steps) {
         if (hasStructuralJobCue(text, ns, e, true) || checkJobContext(text, text.slice(ns, e), true)) return [ns, e];
       }
@@ -2514,7 +2524,7 @@ const TrustLinguisticDetector = (() => {
           if (keepStart >= 0) {
             // Group 6: noun-modifier extension needs a non-possessive trigger or a structural cue.
             const nounExtOk = keepStructural >= 0 || checkJobContext(text, actualSpan, true);
-            const ns = extendJobHeadLeft(text, keepStart, !nounExtOk);
+            const ns = extendJobHeadLeft(text, keepStart, !nounExtOk, undefined, keepEnd);
             if (ns < keepStart) {
               const ext = text.slice(ns, keepEnd);
               validated.push(Object.assign({}, finding, { name: ext, rawMatch: ext, source: 'csv_head_extension' }));

@@ -1,0 +1,43 @@
+A. held-out typo recall: 10800 prompts (300 organizations x 4 edit types x 3 templates x 3 cases)
+   | slice | prompts | no fuzzy | OLD rule | NEW (narrow) | lost (old found, new not) | gained |
+   | ALL | 10800 | 1149 (10.6%) | 3915 (36.3%) | 3804 (35.2%) | 123 | 12 |
+   | edit: sub | 2700 | 303 (11.2%) | 954 (35.3%) | 954 (35.3%) | 0 | 0 |
+   | edit: ins | 2700 | 279 (10.3%) | 963 (35.7%) | 963 (35.7%) | 0 | 0 |
+   | edit: del | 2700 | 267 (9.9%) | 990 (36.7%) | 879 (32.6%) | 123 | 12 |
+   | edit: trans | 2700 | 300 (11.1%) | 1008 (37.3%) | 1008 (37.3%) | 0 | 0 |
+   | case: as in dictionary | 3600 | 1077 (29.9%) | 1305 (36.3%) | 1302 (36.2%) | 15 | 12 |
+   | case: UPPER | 3600 | 72 (2.0%) | 1305 (36.3%) | 1251 (34.8%) | 54 | 0 |
+   | case: lower | 3600 | 0 (0.0%) | 1305 (36.3%) | 1251 (34.8%) | 54 | 0 |
+   entries whose typo the OLD rule found but the NEW rule did not (first 12):
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "Alpha Beacon Bands Ltd"  (dictionary: "Alpha Beacon Brands Ltd", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+     "AQEme Financial Ltda"  (dictionary: "AQUEme Financial Ltda", del)
+
+B. expected-loss sets (found = organization finding equal to the modified phrase; B4: equal to the canonical name)
+   | set | prompts | no fuzzy | OLD | NEW | lost |
+   | B1 two edits in one word | 100 | 27 | 27 | 25 | 6 |
+   | B2 one edit in each of two words | 100 | 30 | 27 | 30 | 7 |
+   | B3 one word missing | 100 | 20 | 20 | 20 | 0 |
+   | B4 words reversed | 100 | 0 | 0 | 0 | 0 |
+   | B5 single-word brand, one edit | 133 | 0 | 0 | 0 | 0 |
+   | B6 short multi-word name (< 10 chars), one edit | 50 | 4 | 4 | 4 | 0 |
+   | B7 edit in a 3-5 letter word of a long name | 100 | 28 | 29 | 28 | 9 |
+
+C. benign sentences: 300
+   prompts with ANY nlp finding: OLD 45, NEW 17; with an organization finding: OLD 33, NEW 4
+   findings the NEW build has and the OLD build does not (STOP condition): 1
+     "A University is what the teacher asked us to discuss." -> ["nlp_person_name:university"]
+   organization false positives that remain after narrowing: 4 prompts
+
+D. fictional organizations with suffixes: 50
+   found as that exact organization: OLD 32, NEW 32; different between OLD and NEW: 0
+   not found by either build (suffix not in the structural list), e.g.: "Abella Learning Center Industries", "Stonebridge Power Systems Holdings", "Quintanilla Power Systems Airlines", "Whitfield Farm Equipment Industries", "Brightwater Printing Press Holdings", "Brightwater Power Systems Enterprises"

@@ -462,6 +462,31 @@ const TrustLinguisticDetector = (() => {
     return matches;
   }
 
+  // Group 10: NARROWED fuzzy matching for ORGANIZATIONS (job-title fuzzy matching is unchanged). Edit distance 2 over a whole short window let
+  // ordinary English phrases match short brand names ("make it" ~ "Move It", "best way" ~ "Best Buy", "the philippines" ~ "TTEC Philippines",
+  // "a university" ~ "AMA University", "to store" ~ "SM Store"), while the matches that are real typos are a single slip inside one long word
+  // ("universty of the philippines", "philippine general hospitl"). A fuzzy organization match is now accepted only when:
+  //   - the dictionary entry has at least 2 words and at least 10 characters;
+  //   - the text window has the same number of words as the entry and exactly ONE word differs (all other words are identical);
+  //   - the differing word has at least 6 letters in both forms and differs by one insertion, deletion, substitution or adjacent transposition.
+  // Everything this accepts was also accepted by the old rule; it only removes matches. Exact matches (PASS 1) are not affected.
+  const FUZZY_ORG_MIN_ENTRY_CHARS = 10, FUZZY_ORG_MIN_WORD_LEN = 6;
+  function fuzzyOrgEntryEligible(org) { return org.length >= FUZZY_ORG_MIN_ENTRY_CHARS && /\S\s+\S/.test(org); }
+  function narrowFuzzyOrgMatch(match, org) {
+    const ow = org.toLowerCase().split(/\s+/).filter(Boolean), mw = match.split(' ');
+    if (ow.length < 2 || ow.length !== mw.length) return false;
+    let diff = 0, x = '', y = '';
+    for (let i = 0; i < ow.length; i++) if (ow[i] !== mw[i]) { diff++; x = ow[i]; y = mw[i]; }
+    if (diff !== 1) return false;
+    if (x.length < FUZZY_ORG_MIN_WORD_LEN || y.length < FUZZY_ORG_MIN_WORD_LEN) return false;
+    if (levenshteinWithin(x, y, 1)) return true;
+    if (x.length === y.length) {   // adjacent transposition ("mircosoft")
+      let i = 0; while (i < x.length && x[i] === y[i]) i++;
+      if (i + 1 < x.length && x[i] === y[i + 1] && x[i + 1] === y[i] && x.slice(i + 2) === y.slice(i + 2)) return true;
+    }
+    return false;
+  }
+
   /**
    * Escape special regex characters
    * @private
@@ -2062,8 +2087,8 @@ const TrustLinguisticDetector = (() => {
     //   "what" (4) → "wist" (4) — BLOCKED: match length = 4, too short
     //   "trust" (5) → "trusts" (6) — ALLOWED: match length = 5, ratio = 0.83
     for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
-      if (org.length > 5) {  // Only fuzzy match longer orgs (avoid noise)
-        const fuzzyMatches = fuzzyFind(text, org, 2);
+      if (org.length > 5 && fuzzyOrgEntryEligible(org)) {  // Only fuzzy match longer orgs (avoid noise); Group 10: and only multi-word entries
+        const fuzzyMatches = fuzzyFind(text, org, 2).filter(m => narrowFuzzyOrgMatch(m, org));
         
         for (const match of fuzzyMatches) {
           // ★ NEW: Reject if matched text is suspiciously short
@@ -2100,47 +2125,11 @@ const TrustLinguisticDetector = (() => {
     // ────────────────────────────────────────────────────────────────────────
     // PASS 3: Keyword component matching
     // ────────────────────────────────────────────────────────────────────────
-    // Example: "Santo Tomas University" (reverse order) → extract keywords
-    const textWords = textLower.split(/\s+/).filter(w => w.length > 3);
-    
-    for (const word of textWords) {
-      // Remove punctuation from word
-      const cleanWord = word.replace(/[.,;!?'"\-()]/g, '');
-      
-      if (ORG_KEYWORDS_INDEX.has(cleanWord)) {
-        const potentialOrgs = ORG_KEYWORDS_INDEX.get(cleanWord);
-        
-        for (const potentialOrg of potentialOrgs) {
-          // Verify multiple keywords from same org appear in text proximity
-          const orgKeywords = potentialOrg.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-          const textWindowWords = textLower.split(/\s+/).slice(
-            Math.max(0, textWords.indexOf(cleanWord) - 5),
-            textWords.indexOf(cleanWord) + 6
-          );
-          
-          const keywordMatches = orgKeywords.filter(keyword =>
-            textWindowWords.some(tw => tw.includes(keyword))
-          ).length;
-          
-          // If at least 60% of org keywords appear in proximity, flag it
-          if (keywordMatches >= Math.ceil(orgKeywords.length * 0.6)) {
-            const normalized = potentialOrg.toLowerCase();
-            if (!seen.has(normalized)) {
-              seen.add(normalized);
-              found.push({
-                name: potentialOrg,
-                confidence: 'medium',
-                source: 'csv_keyword_component',
-                csvValidated: true
-              });
-              console.debug(`[PATH_C/CSV_ORG] Pass 3 (component): found via keywords: "${potentialOrg}"`);
-              break;
-            }
-          }
-        }
-      }
-    }
-    
+    // Group 10: REMOVED. The keyword-proximity pass flagged an organization when 60% of its keywords (words longer than 3 letters) appeared
+    // within 5 words of each other, in any order. On the 161 test rows it produced no final finding, and it generated candidates such as
+    // "DBS Bank", "AMA University", "Best Buy" or "Van Travel Pte Ltd" from ordinary sentences. It also cost a second text split per hit.
+    // Reversed-order mentions ("Santo Tomas University" for "University of Santo Tomas") are therefore no longer matched.
+
     return found;
   }
 

@@ -13,11 +13,65 @@
 'use strict';
 const fs = require('fs');
 
+// ── Finding-level precision / recall / F1 ───────────────────────────────────────────────────────────────────────────────────
+// Every EXPECTED finding of a row (type + text) and every ACTUAL nlp_* finding is matched one-to-one, per type:
+//   TP (correct)  = an expected finding that is matched by an actual finding of the same type
+//   FN (missed)   = an expected finding with no matching actual finding
+//   FP (spurious) = an actual finding that matches no expected finding (every finding of a "should not flag" row is spurious)
+//   precision = TP / (TP + FP), recall = TP / (TP + FN), F1 = 2PR / (P + R); "overall" sums the counts of the three types (micro average).
+// Two ways to decide "matches":
+//   exact   : patternId equal AND text equal after lower-casing, whitespace folding, removing leading honorifics (Dr., Mr., Atty...), leading and
+//             trailing punctuation (diacritics are kept). The expected finding takes the first unused actual finding that fits.
+//   lenient : the matcher stored in each result file (row.comparison): patternId equal AND the actual text equals or CONTAINS the expected text
+//             (after lower-casing, removing a leading honorific / Filipino title and trailing punctuation). Same one-to-one use of actual findings.
+const PRF_TYPES = [['person', 'nlp_person_name'], ['job', 'nlp_job_title'], ['org', 'nlp_organization']];
+const prfHON = /^(?:(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|arch|sir|madam|hon|fr|rev|sen|gov)\.?\s+)+/i;
+const prfNrm = t => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(prfHON, '').replace(/[\s.,;:!?'"”’)\]]+$/g, '').replace(/^["'“‘(\[]+/, '').trim();
+const prfSplit = id => { const n = parseInt(id.replace(/\D/g, ''), 10); return (n <= 110 || ['C-160', 'C-133', 'C-152', 'C-153', 'C-154'].includes(id)) ? 'dev' : 'hidden'; };
+function prfCounts(rows, pred, mode) {
+  const c = {}; for (const [, id] of PRF_TYPES) c[id] = { tp: 0, fp: 0, fn: 0 };
+  const bump = (id, k) => { (c[id] = c[id] || { tp: 0, fp: 0, fn: 0 })[k]++; };
+  for (const r of rows.filter(pred)) {
+    if (mode === 'lenient') {
+      r.comparison.matched.forEach(m => bump(m.patternId, 'tp')); r.comparison.missing.forEach(m => bump(m.patternId, 'fn')); r.comparison.spurious.forEach(s => bump(s.patternId, 'fp'));
+    } else {
+      const act = r.actualNlpFindings.map(f => ({ id: f.patternId, t: prfNrm(f.rawMatch) })), used = act.map(() => false);
+      for (const e of r.expectedFindings) {
+        const en = prfNrm(e.text), i = act.findIndex((a, k) => !used[k] && a.id === e.patternId && a.t === en);
+        if (i >= 0) { used[i] = true; bump(e.patternId, 'tp'); } else bump(e.patternId, 'fn');
+      }
+      act.forEach((a, k) => { if (!used[k]) bump(a.id, 'fp'); });
+    }
+  }
+  return c;
+}
+function prfCell(x) {
+  const P = x.tp + x.fp ? x.tp / (x.tp + x.fp) : 0, Rc = x.tp + x.fn ? x.tp / (x.tp + x.fn) : 0, F = P + Rc ? 2 * P * Rc / (P + Rc) : 0;
+  return `${(100 * P).toFixed(1)} / ${(100 * Rc).toFixed(1)} / ${(100 * F).toFixed(1)}`;
+}
+function prfLines(label, rows) {
+  const L = [`**${label}** (each cell: precision / recall / F1, %)`, '| rows | match | person | job | organization | OVERALL | overall TP / FP / FN |', '|---|---|---|---|---|---|---|'];
+  for (const [name, pred] of [['ALL 161', () => true], ['dev', r => prfSplit(r.id) === 'dev'], ['hidden', r => prfSplit(r.id) === 'hidden']]) {
+    for (const mode of ['exact', 'lenient']) {
+      const c = prfCounts(rows, pred, mode), tot = { tp: 0, fp: 0, fn: 0 };
+      Object.values(c).forEach(x => { tot.tp += x.tp; tot.fp += x.fp; tot.fn += x.fn; });
+      L.push(`| ${name} | ${mode} | ${PRF_TYPES.map(([, id]) => prfCell(c[id])).join(' | ')} | ${prfCell(tot)} | ${tot.tp} / ${tot.fp} / ${tot.fn} |`);
+    }
+  }
+  return L;
+}
+
 const args = process.argv.slice(2);
+if (args.includes('--prf')) {   // node compare-runs.js --prf a.json [b.json ...]  : only the finding-level table, one block per file
+  const fl = args.filter(a => !a.startsWith('--'));
+  if (!fl.length) { console.error('usage: node compare-runs.js --prf result1.json [result2.json ...]'); process.exit(1); }
+  fl.forEach(f => { console.log(prfLines(f, JSON.parse(fs.readFileSync(f, 'utf8')).rows).join('\n') + '\n'); });
+  process.exit(0);
+}
 const detailIdx = args.indexOf('--detail');
 const detailOut = detailIdx >= 0 ? args[detailIdx + 1] : null;
 const files = args.filter((a, i) => !a.startsWith('--') && (detailIdx < 0 || i !== detailIdx + 1));
-if (files.length < 2) { console.error('usage: node compare-runs.js before.json after.json [--detail out.md]'); process.exit(1); }
+if (files.length < 2) { console.error('usage: node compare-runs.js before.json after.json [--detail out.md]   |   node compare-runs.js --prf result.json [...]'); process.exit(1); }
 
 const load = f => JSON.parse(fs.readFileSync(f, 'utf8')).rows;
 const A = load(files[0]), B = load(files[1]);
@@ -102,6 +156,10 @@ p('\nFindings the lenient matcher hides (after run; person names listed, other t
   p(rows.length ? rows.map(x => '- ' + x).join('\n') : '- none');
   p('other types hidden: ' + (Object.keys(other).length ? JSON.stringify(other) : 'none'));
 }
+
+p('\n### 1c. Finding-level precision / recall / F1 (definitions in the header of this file)');
+p(prfLines('before: ' + files[0], A).join('\n')); p('');
+p(prfLines('after: ' + files[1], B).join('\n'));
 
 p('\n### 2. Total nlp_* findings by type');
 const ta = tally(A, () => true), tb = tally(B, () => true);

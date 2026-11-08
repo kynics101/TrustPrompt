@@ -139,4 +139,33 @@ if (mode === 'gen') {
   console.log(`compared ${items.length} prompts: identical ${same}, DIFFERENT ${diff}, missing ${missing}, reference errors ${errs}; scan time ref ${(A.ms / 1000).toFixed(1)} s, new ${(B.ms / 1000).toFixed(1)} s`);
   for (const id of diffs.slice(0, 15)) { const it = byId.get(id); console.log(`  DIFF ${id} [${it.mode}] ${JSON.stringify(it.text.slice(0, 120))}\n     ref: ${JSON.stringify((A.r[id] || []).map ? A.r[id].map(f => f.patternId + ':' + f.rawMatch) : A.r[id])}\n     new: ${JSON.stringify((B.r[id] || []).map ? B.r[id].map(f => f.patternId + ':' + f.rawMatch) : B.r[id])}`); }
   process.exit(diff || missing ? 1 : 0);
-} else { console.error('usage: gen | run <detector> <out> [i n] | compare <ref.json[,..]> <new.json[,..]>'); process.exit(2); }
+} else if (mode === 'classify') {
+  // classify <ref> <new> <ref-with-fuzzy-disabled> <ref-with-keyword-pass-disabled>
+  // Every difference between ref and new must be a REMOVED nlp_organization finding. A removed finding is "fuzzy-only" when the reference build
+  // does not produce it with fuzzy matching disabled, "keyword pass" when it is produced without fuzzy matching but not without the keyword
+  // pass. Anything else (an added finding, a removed person/job finding, a changed field, a changed order) is a VIOLATION.
+  const load = f => { const r = {}; for (const x of f.split(',')) Object.assign(r, JSON.parse(fs.readFileSync(x, 'utf8')).results); return r; };
+  const REF = load(process.argv[3]), NEW = load(process.argv[4]), NOF = load(process.argv[5]), NO3 = load(process.argv[6]);
+  const items = JSON.parse(fs.readFileSync(PROMPTS, 'utf8'));
+  const key = f => f.patternId + '|' + f.rawMatch, keys = a => (a || []).map(key);
+  const counts = { identical: 0, 'removed: fuzzy-only organization': 0, 'removed: keyword-pass organization': 0, VIOLATION: 0 };
+  const listed = []; const viol = [];
+  for (const it of items) {
+    const a = REF[it.id], b = NEW[it.id];
+    if (JSON.stringify(a) === JSON.stringify(b)) { counts.identical++; continue; }
+    const ka = keys(a), kb = keys(b), removed = (a || []).filter(f => !kb.includes(key(f))), added = (b || []).filter(f => !ka.includes(key(f)));
+    let bad = added.length > 0; const cats = [];
+    for (const f of removed) {
+      if (f.patternId !== 'nlp_organization') { bad = true; cats.push('VIOLATION(removed ' + f.patternId + ')'); continue; }
+      if (!keys(NOF[it.id]).includes(key(f))) cats.push('fuzzy-only'); else if (!keys(NO3[it.id]).includes(key(f))) cats.push('keyword-pass'); else { bad = true; cats.push('VIOLATION(other)'); }
+    }
+    if (!removed.length && !added.length) bad = true;   // same findings but different order / fields
+    if (bad) { counts.VIOLATION++; viol.push({ it, removed, added }); }
+    else { for (const c of new Set(cats)) counts['removed: ' + (c === 'fuzzy-only' ? 'fuzzy-only organization' : 'keyword-pass organization')]++; }
+    listed.push({ id: it.id, group: it.group, mode: it.mode, text: it.text.slice(0, 90), removed: removed.map(key), added: added.map(key), cats, bad });
+  }
+  console.log(`classified ${items.length} prompts:`, JSON.stringify(counts));
+  console.log(`prompts that differ: ${listed.length}`);
+  listed.forEach(d => console.log(`  ${d.bad ? 'VIOLATION' : 'ok       '} ${d.id} [${d.mode}] ${JSON.stringify(d.text)}\n       removed ${JSON.stringify(d.removed)} added ${JSON.stringify(d.added)} -> ${d.cats.join(', ') || 'no set difference (order/fields)'}`));
+  process.exit(viol.length ? 1 : 0);
+} else { console.error('usage: gen | run <detector> <out> [i n] | compare <ref.json[,..]> <new.json[,..]> | classify <ref> <new> <ref-nofuzzy> <ref-nopass3>'); process.exit(2); }

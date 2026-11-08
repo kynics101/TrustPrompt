@@ -1,0 +1,136 @@
+classified 1127 prompts: {"identical":1060,"removed: fuzzy-only organization":56,"removed: keyword-pass organization":1,"VIOLATION":10}
+prompts that differ: 67
+  ok        row-0 [norm] "Hi, my name is Maria Clara Santos and I need help writing a cover letter for a position(ba"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        row-2 [norm] "Can you check if Roberto Villanueva Jr. is a common name in the Philippines, and what the "
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        row-39 [norm] "What is the best way to travel from Paris to Georgia, then to Victoria, and finally Jordan"
+       removed ["nlp_organization|best way"] added [] -> fuzzy-only
+  ok        row-42 [norm] "I have been working as a registered nurse for six years and I want to know how I can move "
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        row-55 [norm] "What does a pharmacist do compared to a pharmacy technician, and what licensure requiremen"
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        row-76 [norm] "Please explain how a bank, a hospital, and a university differ in their organizational str"
+       removed ["nlp_organization|a university"] added [] -> fuzzy-only
+  ok        row-78 [norm] "Compare the internship programs of Google, Microsoft, and Meta, and tell me which one has "
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        row-109 [norm] "Introduce Joshua Pangilinan, a graphic designer and illustrator, in a short bio for our ev"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        row-148 [norm] "Explain, in simple steps, how a family can prepare for a strong typhoon. Include what to p"
+       removed ["nlp_organization|to store"] added [] -> fuzzy-only
+  VIOLATION typo-org-715 [norm] "The meeting is hosted by Denver Cleve Brands Ltd next month."
+       removed ["nlp_organization|denver cleve brands ltd"] added ["nlp_organization|Denver Cleve Brands Ltd"] -> fuzzy-only
+  VIOLATION typo-org-717 [norm] "The meeting is hosted by Vergara Finarcing Corp. next month."
+       removed ["nlp_organization|vergara finarcing corp"] added ["nlp_organization|Vergara Finarcing Corp"] -> fuzzy-only
+  VIOLATION typo-org-723 [norm] "The meeting is hosted by Apex Ble Shipping Inc. next month."
+       removed ["nlp_organization|apex ble shipping inc"] added ["nlp_organization|Apex Ble Shipping Inc"] -> fuzzy-only
+  VIOLATION typo-org-732 [norm] "The meeting is hosted by San Francisc Solar Wate Management Ltd next month."
+       removed ["nlp_organization|san francisc solar wate management ltd"] added ["nlp_organization|San Francisc Solar Wate Management Ltd"] -> fuzzy-only
+  ok        typo-org-746 [norm] "The meeting is hosted by Iron Regal Construction Sonk Bhd next month."
+       removed ["nlp_organization|iron regal construction sonk bhd"] added [] -> fuzzy-only
+  VIOLATION typo-org-751 [norm] "The meeting is hosted by Emeraldsy sNetworks Pte Ltd next month."
+       removed ["nlp_organization|emeraldsy snetworks pte ltd"] added ["nlp_organization|Pte Ltd"] -> fuzzy-only
+  VIOLATION typo-org-767 [norm] "The meeting is hosted by ATLBet Avation Services Inc. next month."
+       removed ["nlp_organization|atlbet avation services inc"] added ["nlp_organization|ATLBet Avation Services Inc"] -> fuzzy-only
+  VIOLATION typo-org-776 [norm] "The meeting is hosted by Mercaoo Transport Serviice Cooperative next month."
+       removed ["nlp_organization|mercaoo transport serviice cooperative"] added ["nlp_organization|Mercaoo Transport Serviice Cooperative"] -> fuzzy-only
+  ok        boundary-836 [norm] "Please send it to Mercury Drug Corporation9 today."
+       removed ["nlp_organization|Mercury Drug Corporation"] added [] -> keyword-pass
+  VIOLATION boundary-850 [norm] "Please send it to Lumi Applied Fashion (Pty) Ltd_ today."
+       removed ["nlp_organization|Lumi Applied Fashion (Pty) Ltd"] added ["nlp_person_name|Lumi Applied Fashion"] -> keyword-pass
+  ok        boundary-858 [norm] "Please send it to Pure Iron Fitness Pty Ltd_ today."
+       removed ["nlp_organization|pure iron fitness pty ltd_"] added [] -> fuzzy-only
+  ok        nonascii-958 [raw] "The Microſoft contract was signed by the ſenior accountant."
+       removed ["nlp_organization|microſoft"] added [] -> fuzzy-only
+  ok        nonascii-973 [norm] "Straße Bank hired a Senior accountant on Straße 5."
+       removed ["nlp_organization|straße"] added [] -> fuzzy-only
+  ok        nonascii-974 [raw] "Straße Bank hired a Senior accountant on Straße 5."
+       removed ["nlp_organization|straße"] added [] -> fuzzy-only
+  ok        raw-row-1021 [raw] "I have been working as a registered nurse for six years and I want to know how I can move "
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        raw-row-1031 [raw] "Explain, in simple steps, how a family can prepare for a strong typhoon. Include what to p"
+       removed ["nlp_organization|to store"] added [] -> fuzzy-only
+  ok        raw-row-1034 [raw] "Can you check if Roberto Villanueva Jr. is a common name in the Philippines, and what the "
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        long-1057 [norm] "Our class made the hashtag #JusticeForMarianoDeLeon but I am not sure it is a good idea to"
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        long-1058 [norm] "Software engineers and data scientists are in demand, so explain which skills a fresh grad"
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        long-1059 [norm] "My cousin is a security guard at SM City Tarlac and he works twelve-hour shifts. Is that l"
+       removed ["nlp_organization|the philippines","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1060 [norm] "My mother told me to call Dr. Ramil Evangelista, the dentist, to confirm my appointment. W"
+       removed ["nlp_organization|best way","nlp_organization|move into"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1062 [norm] "Maria Santos applied for the grant. Maria said the deadline is tight. Ms. Santos hopes the"
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        long-1063 [norm] "Hi, my name is Maria Clara Santos and I need help writing a cover letter for a position(ba"
+       removed ["nlp_organization|the philippines","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1064 [norm] "What is the best way to travel from Paris to Georgia, then to Victoria, and finally Jordan"
+       removed ["nlp_organization|the philippines","nlp_organization|best way"] added [] -> fuzzy-only, fuzzy-only
+  VIOLATION long-1067 [norm] "My neighbor Mang Tonyo is a tricycle driver, and he asked me to help him compute his daily"
+       removed ["nlp_organization|ayala lane"] added ["nlp_person_name|Ayala Lane"] -> fuzzy-only
+  ok        long-1069 [norm] "What is the best way to travel from Paris to Georgia, then to Victoria, and finally Jordan"
+       removed ["nlp_organization|best way","nlp_organization|move into"] added [] -> fuzzy-only, fuzzy-only
+  VIOLATION long-1071 [norm] "My father is a jeepney driver in Tarlac City, and he is worried about the jeepney moderniz"
+       removed ["nlp_organization|the philippines","nlp_organization|ayala lane","nlp_organization|make it"] added ["nlp_person_name|Ayala Lane"] -> fuzzy-only, fuzzy-only, fuzzy-only
+  ok        long-1072 [norm] "message from rodel aquino of pldt says the technician will come tomorrow morning, so pleas"
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        long-1073 [norm] "Introduce Joshua Pangilinan, a graphic designer and illustrator, in a short bio for our ev"
+       removed ["nlp_organization|the philippines","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1076 [norm] "Atty. Liza Soriano, our family lawyer, said we need to update the deed of sale before the "
+       removed ["nlp_organization|the philippines","nlp_organization|make it","nlp_organization|years:"] added [] -> fuzzy-only, fuzzy-only, fuzzy-only
+  ok        long-1084 [norm] "Draft a polite follow-up email to Dr. Aris Thorne regarding the status of my research gran"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1085 [norm] "The Bureau of Fire Protection's fire marshal and the city engineer disagree about the exit"
+       removed ["nlp_organization|read that"] added [] -> fuzzy-only
+  ok        long-1087 [norm] "Write to Ms. Imelda Baltazar, director of the Henry Sy Foundation, and thank her for the s"
+       removed ["nlp_organization|best way"] added [] -> fuzzy-only
+  ok        long-1088 [norm] "I read that the Henry Sy Foundation funds scholarships, so can you help me draft a request"
+       removed ["nlp_organization|years:"] added [] -> fuzzy-only
+  ok        long-1090 [norm] "Prepare the invoice for Santos-Lim Trading Corporation, attention to Mr. Dennis Lim, and m"
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        long-1091 [norm] "I applied to the Department of Health and the Philippine National Bank last month, but nei"
+       removed ["nlp_organization|best way","nlp_organization|move into","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only, fuzzy-only
+  ok        long-1092 [norm] "Should I call my older cousin Ate or Manang, and does Kuya or Dodong sound more natural in"
+       removed ["nlp_organization|years:"] added [] -> fuzzy-only
+  ok        long-1094 [norm] "Is it safe to use my full name in my username, like gabriela.fajardo2001@example.com? Some"
+       removed ["nlp_organization|a university"] added [] -> fuzzy-only
+  ok        long-1095 [norm] "message from rodel aquino of pldt says the technician will come tomorrow morning, so pleas"
+       removed ["nlp_organization|the philippines","nlp_organization|a university"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1098 [norm] "Please address the memo to Mr. Alfredo Quimpo and Ms. Divina Esguerra, and then add a line"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1099 [norm] "Invoice from Northgate Logistics Corp., cc: Eastwind Packaging Ltd. and Southpoint Supplie"
+       removed ["nlp_organization|the philippines"] added [] -> fuzzy-only
+  ok        long-1100 [norm] "Write to Ms. Imelda Baltazar, director of the Henry Sy Foundation, and thank her for the s"
+       removed ["nlp_organization|philippine national bnak"] added [] -> fuzzy-only
+  ok        long-1101 [norm] "Explain this record to a non-technical colleague: {\"name\": \"Luis Montano\", \"job\": \"mechani"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1102 [norm] "i work as a freelance graphic designer and virtual assistant, and my rates are too low acc"
+       removed ["nlp_organization|years:"] added [] -> fuzzy-only
+  ok        long-1103 [norm] "Tarlac City, Capas, and Concepcion are all in Central Luzon. Which of them is the best bas"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1104 [norm] "I am handling a customer dispute and copied this note directly from our CRM log: 'Maria Sa"
+       removed ["nlp_organization|philippine national bnak","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1105 [norm] "Congratulate Fernando Manalo on winning the barangay chess tournament. Draft a short Faceb"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1106 [norm] "Write a thank-you letter addressed to Ms. Charlene Dizon, my former teacher who I heard be"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1108 [norm] "Please look up the policy, and then follow up with the office. I think it is up to the man"
+       removed ["nlp_organization|a university"] added [] -> fuzzy-only
+  ok        long-1113 [norm] "Write a review of the book 'The Diary of Corazon Magsaysay' for my literature class, focus"
+       removed ["nlp_organization|a university"] added [] -> fuzzy-only
+  ok        long-1114 [norm] "Apple released a new phone, and Amazon is having a sale, while Shell raised fuel prices ag"
+       removed ["nlp_organization|the philippines","nlp_organization|make it","nlp_organization|read that"] added [] -> fuzzy-only, fuzzy-only, fuzzy-only
+  ok        long-1115 [norm] "The Bureau of Fire Protection's fire marshal and the city engineer disagree about the exit"
+       removed ["nlp_organization|the philippines","nlp_organization|make it"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1116 [norm] "Explain the difference between a mayor, a vice mayor, and a councilor in a Philippine muni"
+       removed ["nlp_organization|best way"] added [] -> fuzzy-only
+  ok        long-1120 [norm] "Write a short thank-you note to Ma. Cristina Peña-Muñoz for hosting us last weekend. She p"
+       removed ["nlp_organization|make it","nlp_organization|years:"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1121 [norm] "Draft a recommendation letter for my classmate, Beatriz Mangahas, who is applying for a sc"
+       removed ["nlp_organization|the philippines","nlp_organization|read that"] added [] -> fuzzy-only, fuzzy-only
+  ok        long-1122 [norm] "Does a call center agent at Concentrix or Teleperformance earn more than a customer servic"
+       removed ["nlp_organization|move into"] added [] -> fuzzy-only
+  ok        long-1123 [norm] "As a teacher at the Department of Education, I need a simple way to track student attendan"
+       removed ["nlp_organization|make it"] added [] -> fuzzy-only
+  ok        long-1125 [norm] "Write a short thank-you note to Ma. Cristina Peña-Muñoz for hosting us last weekend. She p"
+       removed ["nlp_organization|read that"] added [] -> fuzzy-only

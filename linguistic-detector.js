@@ -361,39 +361,104 @@ const TrustLinguisticDetector = (() => {
    * @returns {Array} array of matched strings
    * @private
    */
-  function fuzzyFind(text, pattern, maxDistance = 2) {
-    const textWords = text.toLowerCase().split(/[\s,;.!?'"\-()]+/).filter(w => w.length > 0);
-    const patternWords = pattern.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    
-    if (patternWords.length === 0) return [];
-    
-    const matches = [];
-    const patternLength = patternWords.length;
-    
-    // Slide window over text words and compute distance
-    for (let i = 0; i <= textWords.length - patternLength; i++) {
-      const textPhrase = textWords.slice(i, i + patternLength).join(' ');
-      
-      // ★ NEW: Reject prefix/suffix variations before calculating distance
-      if (isPrefixSuffixVariation(textPhrase, pattern.toLowerCase(), 20)) {
-        continue;  // Skip this potential match
+  // Group 9 (speed, O2/O3): fuzzyFind is called once per dictionary entry (about 39,000 times per scan) with the SAME text. The lower-cased
+  // word list and the window strings (and their lengths) for each window size depend only on the text, so they are built once per text
+  // and reused; the cheap length test now runs before isPrefixSuffixVariation. isPrefixSuffixVariation is a pure function, and both tests
+  // only skip a window, so the set and the ORDER of the returned matches are exactly what the original loop produced.
+  // Group 9 (speed, O4): bounded edit distance. fuzzyFind only needs to know whether levenshteinDistance(a, b) <= d. This computes exactly
+  // that with the standard banded dynamic programme (only cells with |i - j| <= d can lie on a path of cost <= d), on two reused
+  // Int32Arrays and with an early exit as soon as every cell of a row exceeds d. Same comparison of UTF-16 code units as levenshteinDistance.
+  let _lvPrev = new Int32Array(256), _lvCurr = new Int32Array(256);
+  function levenshteinWithin(a, b, d) {
+    const n = a.length, m = b.length;
+    if (n - m > d || m - n > d) return false;
+    if (n === 0) return m <= d;
+    if (m === 0) return n <= d;
+    if (m + 1 > _lvPrev.length) { _lvPrev = new Int32Array(m + 1); _lvCurr = new Int32Array(m + 1); }
+    const INF = d + 1;
+    let prev = _lvPrev, curr = _lvCurr;
+    for (let j = 0; j <= m; j++) prev[j] = j <= d ? j : INF;
+    for (let i = 1; i <= n; i++) {
+      const jlo = i - d > 1 ? i - d : 1, jhi = i + d < m ? i + d : m;
+      curr[jlo - 1] = jlo === 1 ? (i <= d ? i : INF) : INF;
+      if (jhi < m) curr[jhi + 1] = INF;
+      const ac = a.charCodeAt(i - 1);
+      let rowMin = INF;
+      for (let j = jlo; j <= jhi; j++) {
+        const sub = prev[j - 1] + (ac === b.charCodeAt(j - 1) ? 0 : 1);
+        const del = prev[j] + 1;
+        const ins = curr[j - 1] + 1;
+        let v = sub < del ? sub : del;
+        if (ins < v) v = ins;
+        if (v > INF) v = INF;
+        curr[j] = v;
+        if (v < rowMin) rowMin = v;
       }
-      
+      if (rowMin > d) return false;
+      const t = prev; prev = curr; curr = t;
+    }
+    return prev[m] <= d;
+  }
+
+  // O6: per-pattern data (lower-cased form and word count) computed once instead of on each of the ~39,000 calls per scan
+  const _fzPat = new Map();
+  function fuzzyPattern(pattern) {
+    let p = _fzPat.get(pattern);
+    if (!p) { const lower = pattern.toLowerCase(); p = { lower, k: lower.split(/\s+/).filter(w => w.length > 0).length }; _fzPat.set(pattern, p); }
+    return p;
+  }
+
+  let _fzText = null, _fzWords = null, _fzByK = null;
+  function fuzzyWindows(text, k) {
+    if (_fzText !== text) {
+      _fzText = text;
+      _fzWords = text.toLowerCase().split(/[\s,;.!?'"\-()]+/).filter(w => w.length > 0);
+      _fzByK = new Map();
+    }
+    let w = _fzByK.get(k);
+    if (!w) {
+      const n = Math.max(0, _fzWords.length - k + 1), phrases = new Array(n), lens = new Int32Array(n);
+      for (let i = 0; i < n; i++) { const p = _fzWords.slice(i, i + k).join(' '); phrases[i] = p; lens[i] = p.length; }
+      w = { phrases, lens };
+      _fzByK.set(k, w);
+    }
+    return w;
+  }
+
+  // firstLast (O5, optional): the caller will discard every match whose first or last character differs from the pattern's, so such windows
+  // are skipped here before any distance is computed. Same returned set and order as the caller's own check applied afterwards.
+  function fuzzyFind(text, pattern, maxDistance = 2, firstLast = false) {
+    const { lower: patLower, k } = fuzzyPattern(pattern);
+
+    if (k === 0) return [];
+
+    const matches = [];
+    const { phrases, lens } = fuzzyWindows(text, k);
+    const plen = pattern.length;
+    const pFirst = patLower.charCodeAt(0), pLast = patLower.charCodeAt(patLower.length - 1);
+
+    // Slide window over text words and compute distance
+    for (let i = 0; i < phrases.length; i++) {
       // Length lower-bound pre-check: edit distance can never be smaller than
       // the difference in lengths (levenshtein(a,b) >= |len(a)-len(b)|), so a
       // window whose length differs from the pattern by more than maxDistance
       // can never satisfy distance <= maxDistance. Skip the DP for those pairs.
-      if (Math.abs(textPhrase.length - pattern.length) > maxDistance) {
+      if (Math.abs(lens[i] - plen) > maxDistance) {
         continue;
       }
-      
-      const distance = levenshteinDistance(textPhrase, pattern.toLowerCase());
-      
-      if (distance <= maxDistance) {
+      const textPhrase = phrases[i];
+      if (firstLast && (textPhrase.charCodeAt(0) !== pFirst || textPhrase.charCodeAt(textPhrase.length - 1) !== pLast)) continue;
+
+      // ★ NEW: Reject prefix/suffix variations before calculating distance
+      if (isPrefixSuffixVariation(textPhrase, patLower, 20)) {
+        continue;  // Skip this potential match
+      }
+
+      if (levenshteinWithin(textPhrase, patLower, maxDistance)) {
         matches.push(textPhrase);
       }
     }
-    
+
     return matches;
   }
 
@@ -403,6 +468,25 @@ const TrustLinguisticDetector = (() => {
    */
   function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Group 9 (speed, O1): exact-match prefilter for PASS 1 of the organization and job-title dictionaries. A case-insensitive
+  // (non-Unicode) RegExp built from an ASCII-only pattern can match only where the text contains the same letters in some case: a
+  // non-ASCII text character never canonicalises to an ASCII letter, and toLowerCase() leaves ASCII characters where they are. So
+  // `textLower.indexOf(patternLower) === -1` proves "the RegExp cannot match" and the RegExp need not be built. A pattern with any
+  // non-ASCII character is NOT prefiltered and always goes through the original RegExp.
+  const _ASCII_ONLY = /^[\x00-\x7f]*$/;
+  // O6: the lower-case form and the "ASCII only" flag of every dictionary entry, computed once per dictionary instead of on every scan.
+  // lowerPattern = true for organizations (their RegExp is built from the lower-cased name), false for job titles (built from the title).
+  const _p1Meta = new Map();
+  function p1Meta(arr, lowerPattern) {
+    let m = _p1Meta.get(arr);
+    if (!m || m.n !== arr.length) {
+      const n = arr.length, lower = new Array(n), ascii = new Uint8Array(n);
+      for (let i = 0; i < n; i++) { const l = arr[i].toLowerCase(); lower[i] = l; ascii[i] = _ASCII_ONLY.test(lowerPattern ? l : arr[i]) ? 1 : 0; }
+      m = { n, lower, ascii }; _p1Meta.set(arr, m);
+    }
+    return m;
   }
 
   /**
@@ -1934,8 +2018,11 @@ const TrustLinguisticDetector = (() => {
     // whitespace, end-of-string, or common punctuation — while keeping the
     // leading \b so we still require a word boundary at the start.
     console.debug(`[PATH_C/CSV_ORG] PASS 1: Testing ${EXTENSIVE_ORGANIZATIONS_ARRAY.length} organizations for exact match`);
-    for (const org of EXTENSIVE_ORGANIZATIONS_ARRAY) {
-      const orgLower = org.toLowerCase();
+    const _om = p1Meta(EXTENSIVE_ORGANIZATIONS_ARRAY, true);
+    for (let oi = 0; oi < EXTENSIVE_ORGANIZATIONS_ARRAY.length; oi++) {
+      const org = EXTENSIVE_ORGANIZATIONS_ARRAY[oi];
+      const orgLower = _om.lower[oi];
+      if (_om.ascii[oi] === 1 && textLower.indexOf(orgLower) === -1) continue;   // O1: provably no match
       const escaped = escapeRegex(orgLower);
       // Use a trailing lookahead instead of \b when the org name ends in a
       // non-word character (e.g. "Inc." ends with ".").
@@ -2091,7 +2178,10 @@ const TrustLinguisticDetector = (() => {
     // ────────────────────────────────────────────────────────────────────────
     // PASS 1: Exact substring match (case-insensitive, word boundaries)
     // ────────────────────────────────────────────────────────────────────────
-    for (const title of EXTENSIVE_JOB_TITLES_ARRAY) {
+    const _jm = p1Meta(EXTENSIVE_JOB_TITLES_ARRAY, false);
+    for (let ji = 0; ji < EXTENSIVE_JOB_TITLES_ARRAY.length; ji++) {
+      const title = EXTENSIVE_JOB_TITLES_ARRAY[ji];
+      if (_jm.ascii[ji] === 1 && textLower.indexOf(_jm.lower[ji]) === -1) continue;   // O1: provably no match
       const escaped = escapeRegex(title);
       const pattern = new RegExp(`\\b${escaped}\\b`, 'gi');
       
@@ -2167,7 +2257,7 @@ const TrustLinguisticDetector = (() => {
     // change such as scheduler/servicer/helper/handler is never treated as a typo).
     for (const title of EXTENSIVE_JOB_TITLES_ARRAY) {
       if (title.length >= FUZZY_JOB_MIN_TITLE_LEN) {  // Only fuzzy match longer titles
-        const fuzzyMatches = fuzzyFind(text, title, 1);
+        const fuzzyMatches = fuzzyFind(text, title, 1, true);   // O5: the first/last-letter rule below is applied inside fuzzyFind
         const titleLower = title.toLowerCase();
 
         for (const match of fuzzyMatches) {

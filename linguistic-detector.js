@@ -793,6 +793,36 @@ const TrustLinguisticDetector = (() => {
   const PERSON_LIST_ENABLED = true;
   const PERSON_LOWERCASE_INTRO_ENABLED = true;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CAUSE B: METHOD 4 (a standalone 2-3 word Title Case phrase, no trigger phrase) needs NAME EVIDENCE.
+  // Without it every Title Case phrase that is not an organization or place became a person ("Cell Cycle", "Mango Float", "Worksheet Instructions").
+  // Evidence (any one):
+  //   (a) a word is a dictionary given name / surname, or Compromise tags it as a person;
+  //   (b) a cue next to the phrase: a person-directed verb before it (thank, ask, tell, call, contact, email, meet, remind, invite), "named",
+  //       "name is", dear / hi / hello / hey, "this is", "it's", "I'm", "I am", an honorific, or a verb of speech / work right after it
+  //       ("said", "works"), or an appositive ", a / an / the ...". A bare preposition (to, for, with, from, by) is NOT a cue
+  //       (G_B_PREP_CUES switches it on for measurement only);
+  //   (c) initials followed by a surname ("J. P. Rizal-Alonso").
+  // The gate is active only when the name dictionary is loaded (NAMES_DICT_AVAILABLE); without it METHOD 4 behaves as before.
+  // ═══════════════════════════════════════════════════════════════════════
+  const G_B_PREP_CUES = false;
+  const G_B_BEFORE_CUE_RE = /(?:\b(?:named|called|name\s+is|name['’]s|dear|hi|hello|hey|greetings|this\s+is|it['’]s|i['’]m|i\s+am|call\s+me|attn:?|attention:?|cc:?|regards,?|sincerely,?|thanks,?|cheers,?|(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|sir|madam)\.?)\s+)$/i;
+  const G_B_PREP_CUE_RE = /\b(?:to|for|with|from|by)\s+$/i;
+  const G_B_AFTER_CUE_RE = /^\s*,?\s*(?:said|says|told|asked|asks|works?|worked|replied|wrote|writes|called|speaking)\b/i;
+  const G_B_FIRST_WORD_CUES = new Set(['dear', 'hi', 'hello', 'hey', 'greetings', 'thanks', 'cheers', 'regards', 'sincerely']);
+  function standaloneHasNameEvidence(text, start, candidate) {
+    const words = candidate.split(/\s+/);
+    if (words.some(w => isKnownNameWord(w) || nameHasPersonTag(isolatedNameTags(w)))) return true;                          // (a)
+    if (/^(?:\p{Lu}\.\s*)+\p{Lu}/u.test(candidate)) return true;                                                             // (c)
+    // normalizePath_C may have put a period before the capital ("ask. Chidinma Okoro"); it is not a sentence end for this purpose
+    const before = text.slice(Math.max(0, start - 50), start).replace(/\.?\s*$/, ' '), after = text.slice(start + candidate.length, start + candidate.length + 40);
+    if (G_B_FIRST_WORD_CUES.has(words[0].toLowerCase()) || LEAD_PERSON_VERBS.has(words[0].toLowerCase())) return true;       // the cue word is inside the run
+    if (G_B_BEFORE_CUE_RE.test(before) || PERSON_DIRECTED_BEFORE_RE.test(before)) return true;                               // (b) before
+    if (G_B_PREP_CUES && G_B_PREP_CUE_RE.test(before)) return true;
+    if (G_B_AFTER_CUE_RE.test(after) || /^\s*,\s*(?:an?|the)\s/i.test(after)) return true;                                   // (b) after
+    return false;
+  }
+
   // A word that is evidently NOT a bare name: non-name list, closed class, dictionary job title, digit, or a word Compromise tags
   // as ordinary (verb, adjective, adverb...). Used only for words that carry no Person tag.
   function isOrdinaryNonNameWord(w) {
@@ -5044,6 +5074,11 @@ const TrustLinguisticDetector = (() => {
           continue;
         }
         
+        // Cause B: an unanchored Title Case phrase needs name evidence (dictionary / Compromise person tag / cue / initials)
+        if (NAMES_DICT_AVAILABLE && !standaloneHasNameEvidence(textNLP, standaloneMatch.index + Math.max(0, standaloneMatch[0].indexOf(candidateName)), candidateName)) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - no name evidence: "${candidateName}"`);
+          continue;
+        }
         // Must pass common name filter
         if (!shouldFilterCommonName(candidateName)) {
           nameCount++;

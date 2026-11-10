@@ -173,7 +173,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 
-/* global TrustNormalizer, TRUSTPROMPT_PATTERNS, TrustValidator, TrustGazetteer, TrustLinguisticDetector */
+/* global TrustNormalizer, TRUSTPROMPT_PATTERNS, TrustValidator, TrustGazetteer, TrustLinguisticDetector, TrustAttribution */
 /* global shannonEntropy, isKnownPlaceholder, PLACEHOLDER_PATTERNS */
 
 const TrustScanner = (() => {
@@ -924,15 +924,16 @@ const TrustScanner = (() => {
     blood_type_mention:  2,  // Blood type
     height_mention:      2,  // Height
     weight_mention:      2,  // Weight
+    gazetteer_religion:  2,  // Religion term (B1) — Low, scored; grouped with trigger_religion
 
     // ── Context indicators — score 0 (Table 11) ──────────────────────────
-    // Ethnic origin, medical, financial terms carry NO independent base score.
+    // Nationality, medical, financial terms carry NO independent base score.
     // They only participate in the Sensitive-Context Co-occurrence governance rule.
     trigger_health:               0,
     trigger_financial:            0,
     gazetteer_medical:            0,
     gazetteer_financial:          0,
-    gazetteer_nationality_religion: 0,  // Ethnic origin context — no independent score
+    gazetteer_nationality:        0,  // Nationality context — no independent score
   };
 
   // ENTITY_TIER is used only for governance Rule 1 (critical entity check).
@@ -975,6 +976,7 @@ const TrustScanner = (() => {
     trigger_employer:    "limited",
     trigger_location:    "limited",
     trigger_religion:    "limited",
+    gazetteer_religion:  "limited",
     nlp_person_name:     "limited",
     nlp_job_title:       "limited",
     nlp_organization:    "limited",
@@ -999,7 +1001,7 @@ const TrustScanner = (() => {
   const SENSITIVE_CONTEXT_IDS = new Set([
     "gazetteer_medical",
     "gazetteer_financial",
-    "gazetteer_nationality_religion",  // Ethnic origin — Rule 2 context indicator
+    "gazetteer_nationality",  // Nationality — Rule 2 context indicator (religion is NOT a context indicator)
     "trigger_health",
     "trigger_financial",
   ]);
@@ -1030,6 +1032,8 @@ const TrustScanner = (() => {
   //
   //   Contact Information      → email address and/or phone number  (base 5)
   //   Organizational Affiliation → org name, job title/role, dept   (base 2)
+  //   Personal Attribute       → age, height, weight, eye color,
+  //                              blood type, sex                    (base 2)
   //
   // Any patternId not listed here forms its own scoring unit keyed by its
   // own patternId (1:1), preserving existing behaviour for all other types.
@@ -1044,12 +1048,30 @@ const TrustScanner = (() => {
       "nlp_organization",
       "nlp_job_title",
     ]),
+    // Personal physical/demographic attributes collapse into one unit so that
+    // listing several of them (common in a self-description) is not inflated
+    // across multiple distinct types. Counted once if any are detected.
+    personal_attribute: new Set([
+      "age_value",
+      "height_mention",
+      "weight_mention",
+      "eye_color_mention",
+      "blood_type_mention",
+      "sex_mention",
+    ]),
+    // Religion term found by the B1 gazetteer and/or the B2 trigger counts once.
+    religion: new Set([
+      "gazetteer_religion",
+      "trigger_religion",
+    ]),
   };
 
   // Base score assigned to a grouped scoring unit (counted once per unit).
   const SCORING_UNIT_BASE = {
     contact_information:        5,
     organizational_affiliation: 2,
+    personal_attribute:         2,
+    religion:                   2,
   };
 
   // Returns the scoring-unit key for a given patternId. Grouped fields map to
@@ -1079,129 +1101,62 @@ const TrustScanner = (() => {
   //
   // The list is intentionally narrow to avoid treating the bare pronoun "I"
   // as an anchor; each phrase expresses explicit self-attribution.
-  const FIRST_PERSON_ANCHORS = [
-    /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
-    /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
-    /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-    /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
-    /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
-    /\bi\s+(?:earn|owe|make)\b/i,
-    /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
-    /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-  ];
-
-  // ── Rule 2 — Contextual exclusion filter (Table: Contextual exclusion) ───
   //
-  // Deterministic non-disclosure patterns. When the sentence that contains
-  // the eligible identifier (or anchor) and the context indicator matches one
-  // of these and NO attribution pattern overrides it, the Rule 2 escalation
-  // is suppressed. Only the escalation is suppressed — detected identifiers,
-  // context terms, and the numeric base score are left unchanged.
-  const EXCLUSION_PATTERNS = [
-    // Research / academic reference
-    /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper))\b/i,
-    // Educational / informational inquiry
-    /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about)\b/i,
-    // General discussion
-    /\b(?:commonly\s+affects|refers?\s+to|is\s+defined\s+as|are\s+defined\s+as|examples?\s+of|generally\s+known\s+as)\b/i,
-    // Hypothetical reference
-    /\b(?:imagine\s+if|suppose\s+that|for\s+example|hypothetically|let's\s+say|what\s+if)\b/i,
-  ];
+  // The canonical anchor set now lives in trust-attribution.js, modelled as a
+  // grammatical pattern family (first-person subject + living-with verb +
+  // with/from) rather than a hand-maintained verb whitelist. We prefer the
+  // shared module when it is loaded (BEFORE this file in manifest.json) and
+  // fall back to this inline list so scanning still works if it is absent. The
+  // fallback mirrors the original eight patterns to preserve behaviour.
+  const FIRST_PERSON_ANCHORS =
+    (typeof TrustAttribution !== "undefined" && TrustAttribution.FIRST_PERSON_ANCHORS)
+      ? TrustAttribution.FIRST_PERSON_ANCHORS
+      : [
+          /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
+          /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
+          /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
+          /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
+          /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
+          /\bi\s+(?:earn|owe|make)\b/i,
+          /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
+          /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
+        ];
 
-  // ── Rule 2 — Positive attribution override patterns ──────────────────────
+  // ── Rule 2 — Sentence-level co-occurrence (context-attribution.js) ───────
   //
-  // A clear personal disclosure/attribution. If present in the same sentence,
-  // it OVERRIDES any exclusion phrase and keeps the Rule 2 escalation. The
-  // exclusion filter must be conservative — an exclusion phrase alone must not
-  // suppress escalation when explicit attribution is also present.
-  const ATTRIBUTION_PATTERNS = [
-    /\bi\s+(?:have|had)\b/i,
-    /\bi\s+(?:was|were|got|am|been)\s+diagnosed\s+(?:with|for)?\b/i,
-    /\bmy\s+diagnosis\s+is\b/i,
-    /\bi\s+(?:take|am\s+taking|am\s+on)\b/i,
-    /\bmy\s+(?:salary|income|wage|debt|loan)\s+(?:is|was)\b/i,
-    // Third-person explicit attribution, e.g. "Carlo was diagnosed with ..."
-    /\b[A-Z][a-z]+\s+(?:was|were|got|is|has\s+been)\s+diagnosed\s+(?:with|for)?\b/,
-    /\b[A-Z][a-z]+(?:'s)?\s+(?:salary|income|diagnosis|condition)\s+(?:is|was)\b/,
-  ];
-
-  // Splits text into sentences on ., !, ? and newlines. Returns an array of
-  // trimmed, non-empty sentence strings.
-  function splitSentences(text) {
-    if (!text || typeof text !== "string") return [];
-    return text
-      .split(/(?<=[.!?])\s+|\n+/)
-      .map(s => s.trim())
-      .filter(Boolean);
-  }
-
-  // Returns the first sentence in `fullText` that contains `needle`
-  // (case-insensitive substring match). Falls back to the whole text when no
-  // sentence boundary contains the needle (e.g. multi-sentence match).
-  function findSentenceContaining(fullText, needle) {
-    if (!fullText || !needle) return fullText || "";
-    const sentences = splitSentences(fullText);
-    const lowNeedle = String(needle).toLowerCase();
-    for (const s of sentences) {
-      if (s.toLowerCase().includes(lowNeedle)) return s;
+  // The positive-attribution and exclusion codebook, the sentence split, and
+  // the per-sentence decision live in context-attribution.js (loaded before
+  // this file; see manifest.json). This file supplies the eligible
+  // identifiers and sensitive context findings from the scan.
+  //
+  // Decision per sentence containing BOTH an eligible identifier (or anchor)
+  // AND a context term:
+  //   positive pattern  → escalate (overrides exclusion)
+  //   exclusion pattern → suppress escalation for that sentence only
+  //   otherwise         → escalate
+  // Suppression never removes findings or changes base scores.
+  function evaluateSentenceCooccurrence(findings, fullText) {
+    if (typeof ContextAttribution === "undefined") {
+      console.warn("[TrustPrompt/governance] context-attribution.js not loaded; Rule 2 escalates without the exclusion filter");
+      return { escalate: true, rule: "module_missing", patternId: null, category: null, polarity: null, sentence: null };
     }
-    return fullText;
+    const triggerTexts = findings
+      .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
+      .map(f => f.rawMatch);
+    const contextTexts = findings
+      .filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId))
+      .map(f => f.rawMatch);
+    return ContextAttribution.evaluateCooccurrence(fullText, {
+      triggerTexts: triggerTexts,
+      contextTexts: contextTexts,
+      hasAnchor: sentence => hasFirstPersonAnchor(sentence),
+    });
   }
 
   // Returns true if any first-person self-attribution anchor appears in text.
   function hasFirstPersonAnchor(text) {
     if (!text) return false;
     return FIRST_PERSON_ANCHORS.some(re => re.test(text));
-  }
-
-  // Returns true if any non-disclosure exclusion pattern appears in text.
-  function matchesExclusion(text) {
-    if (!text) return false;
-    return EXCLUSION_PATTERNS.some(re => re.test(text));
-  }
-
-  // Returns true if any positive attribution pattern appears in text.
-  function matchesAttribution(text) {
-    if (!text) return false;
-    return ATTRIBUTION_PATTERNS.some(re => re.test(text));
-  }
-
-  // ── Rule 2 — Contextual exclusion decision ───────────────────────────────
-  //
-  // Determines whether the Rule 2 escalation should be SUPPRESSED for the
-  // sentence(s) linking a scored entity / anchor to a sensitive context term.
-  //
-  // Returns true (suppress) only when an exclusion phrase is present in the
-  // relevant sentence AND no attribution pattern overrides it. Conservative
-  // by design: absence of an exclusion phrase never suppresses escalation.
-  function shouldSuppressContextEscalation(findings, fullText) {
-    if (!fullText) return false;  // no text → cannot evaluate → do not suppress
-
-    // Collect the sentences that link a context indicator to its nearest
-    // scored entity / anchor. We inspect every sentence that contains a
-    // sensitive context term.
-    const contextFindings = findings.filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
-    const sentences = [];
-    for (const cf of contextFindings) {
-      const sentence = findSentenceContaining(fullText, cf.rawMatch);
-      if (sentence) sentences.push(sentence);
-    }
-    // If we could not isolate a sentence, evaluate the whole prompt once.
-    if (sentences.length === 0) sentences.push(fullText);
-
-    // Suppress only if EVERY relevant sentence is a non-disclosure context
-    // with no overriding attribution. If any relevant sentence carries a
-    // genuine disclosure/attribution (or lacks an exclusion phrase), the
-    // escalation stands.
-    for (const sentence of sentences) {
-      const excluded    = matchesExclusion(sentence);
-      const attributed  = matchesAttribution(sentence);
-      if (!excluded || attributed) {
-        // This sentence does not justify suppression → escalation stands.
-        return false;
-      }
-    }
-    return true;  // all relevant sentences are excluded, none attributed
   }
 
   // ── STEP 2: Distinct entity-type multiplier (Table 12) ───────────────────
@@ -1280,25 +1235,31 @@ const TrustScanner = (() => {
     console.log("[TrustPrompt/governance] Rule 2 condition 2 - hasSensitiveContext:", hasSensitiveContext);
 
     if (triggerPresent && hasSensitiveContext) {
-      // Contextual exclusion filter — suppress escalation for academic,
-      // informational, general-discussion, or hypothetical references unless
-      // an explicit attribution overrides the exclusion.
-      const suppress = shouldSuppressContextEscalation(findings, fullText);
-      if (suppress) {
-        console.log("[TrustPrompt/governance] Rule 2 suppressed by contextual exclusion filter (no attribution override)");
-      } else {
+      // Sentence-level co-occurrence, then positive-over-exclusion decision.
+      // Logs the pattern (positive or exclusion) that decided the outcome.
+      const cooc = evaluateSentenceCooccurrence(findings, fullText);
+      console.log("[TrustPrompt/governance] Rule 2 decision:", cooc.rule,
+        "| pattern:", cooc.patternId ?? "none",
+        "| category:", cooc.category ?? "none",
+        "| polarity:", cooc.polarity ?? "none",
+        "| sentence:", cooc.sentence ?? "none");
+      if (cooc.escalate) {
         const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
           ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
           : "high";
         console.log("[TrustPrompt/governance] Rule 2 triggered: sensitive context, raising", preliminary, "→", raised);
-        return { rule: "sensitive_context", result: raised };
+        return { rule: "sensitive_context", result: raised, pattern: cooc.patternId };
       }
+      console.log("[TrustPrompt/governance] Rule 2 not applied; falling through to Rule 3");
     }
 
     // ── Rule 3: Low-Impact Entity Cap ─────────────────────────────────────
     // Condition: every *scored* entity has BASE_SCORES === 2 (no moderate or
     // critical entity present). Uses base score value directly, not tier name.
-    const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+    // Use the same scoring-eligibility gate as computeRiskScore so a
+    // non-attributed nlp_job_title (detected but not scored) does not count as
+    // a scored entity for the Low-Impact Cap.
+    const scoredFindings = findings.filter(isScorable);
     const hasAnyScoredEntity = scoredFindings.length > 0;
     const allLowImpact = scoredFindings.every(
       f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -1330,8 +1291,24 @@ const TrustScanner = (() => {
 
   // ── Main scoring function ─────────────────────────────────────────────────
 
+  // Scoring eligibility gate. A finding contributes a base score only when it
+  // has a positive base score AND passes any entity-specific scoring rule.
+  //
+  // nlp_job_title (Option A): a job title is scored ONLY when it is first-person
+  // self-attributed ("I am a / I work as / my role is / as the [title] of").
+  // The detector tags attributed:true on such findings. Non-attributed titles
+  // (third-person, dictionary matches with no self-attribution) are still
+  // detected and shown in the UI, but do not contribute to the risk score or
+  // the distinct-unit count. This prevents correctly-detected titles in the
+  // wrong context (e.g. "her doctor", "the project manager said") from scoring.
+  function isScorable(f) {
+    if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
+    if (f.patternId === "nlp_job_title") return f.attributed === true;
+    return true;
+  }
+
   function computeRiskScore(findings, fullText) {
-    const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+    const scorable = findings.filter(isScorable);
     
     console.log("[TrustPrompt/scorer] computeRiskScore called with", findings.length, "findings");
     console.log("[TrustPrompt/scorer] Scorable findings:", scorable.map(f => f.patternId).join(", "));

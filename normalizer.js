@@ -196,7 +196,8 @@ const TrustNormalizer = (() => {
     text = text.replace(/,\s+/g, ", ");
     
     // Step 5: Restore code blocks as placeholders (gazetteer won't match inside them)
-    text = text.replace(new RegExp(CODE_PH, "g"), " [CODE BLOCK] ");
+    // Literal replacement: CODE_PH contains brackets, which a RegExp would read as a character class.
+    text = text.split(CODE_PH).join(" [CODE BLOCK] ");
     
     // Step 6: Preserve case (important for org/location matching)
     text = text.trim();
@@ -235,22 +236,12 @@ const TrustNormalizer = (() => {
     // Remove space before punctuation
     text = text.replace(/\s+([,;:!?.])/g, "$1");
     
-    // Step 5: Sentence boundary detection (avoid false sentence breaks)
-    // Insert period between lowercase word + uppercase word, UNLESS:
-    //   - Preceded by preposition/connector
-    //   - Followed by title (Mr, Dr, etc.)
-    //   - Preceded by common first name
-    //   - Preceded by verbs like "taught", "taught me" (object verbs)
-    const prepositionsAndConnectors = /\b(?:for|to|with|in|at|by|from|as|or|of|on|up|and|the|is|are|was|were|be|have|has|had)$/i;
-    const commonFirstNames = /\b(?:John|Mary|James|David|Robert|Michael|William|Richard|Charles|Joseph|Thomas|Alice|Bob|Charlie|Maria|Jose|Anna|Juan|Carlos|Luis|Pedro|Miguel|Jennifer|Jessica|Sarah|Laura|Susan|Karen|Nancy|Lisa|Sandra|Betty|Patricia|Margaret|Barbara|Dorothy|Kyleen|Maricel|Jerralyn)$/i;
-    const languagesAndSubjects = /\b(?:Filipino|English|Spanish|French|German|Mandarin|Japanese|Korean|Arabic|Portuguese|Italian|Russian|Chinese|Algebra|Geometry|Biology|Chemistry|Physics|History|Geography|Literature|Mathematics|Science|Economics|Philosophy|Art|Music|Design)$/i;
-    
-    text = text.replace(/(\b[a-z]+)( )([A-Z][a-z]{2,})/g, (full, word, sp, start) => {
-      if (prepositionsAndConnectors.test(word) || commonFirstNames.test(word) || languagesAndSubjects.test(start)) {
-        return full;  // Don't insert period
-      }
-      return word + "." + sp + start;
-    });
+    // Step 5: No sentence-break inference. Sentence boundaries come only from the
+    // user's own punctuation. The previous rule inserted a period after any
+    // lowercase word followed by a Capitalized word, which split phrases such as
+    // "As a Muslim" into "As a. Muslim", "born-again Christian" into "born-again.
+    // Christian", and "I am a Filipino" into "I am a. Filipino". Each exception
+    // (hyphens, connector words, name lists) fixed one case and left the rest.
     
     // Step 6: Ensure correct sentence case
     // Capitalize first letter

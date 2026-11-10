@@ -26,17 +26,18 @@ const TrustUI = (() => {
   const ID_OVERLAY = "tp-overlay";
 
   // ── Context-indicator pattern IDs → badge label ─────────────────────────────
-  // Financial, medical, and nationality / ethnic-origin terms are context
-  // indicators: they have NO independent risk score and only participate in the
-  // Sensitive-Context Co-occurrence governance rule. In the panel they are shown
-  // with a blue category-specific badge ("Context: …") rather than a
-  // LOW/MODERATE/HIGH tier, so it is clear they have no individual bearing.
+  // Financial, medical, and nationality terms are context indicators: they have
+  // NO independent risk score and only participate in the Sensitive-Context
+  // Co-occurrence governance rule. In the panel they are shown with a blue
+  // category-specific badge ("Context: …") rather than a LOW/MODERATE/HIGH tier,
+  // so it is clear they have no individual bearing. Religion is NOT a context
+  // indicator; it is a scored Low entity and uses the normal tier badge.
   const CONTEXT_INDICATOR_LABELS = {
     gazetteer_financial:            "CONTEXT: FINANCIAL",
     trigger_financial:              "CONTEXT: FINANCIAL",
     gazetteer_medical:              "CONTEXT: HEALTH",
     trigger_health:                 "CONTEXT: HEALTH",
-    gazetteer_nationality_religion: "CONTEXT: ETHNIC ORIGIN",
+    gazetteer_nationality:          "CONTEXT: NATIONALITY",
   };
 
   // ── Day / Night state (panel only) ─────────────────────────────────────────
@@ -144,7 +145,8 @@ const TrustUI = (() => {
     ph_id_voters:     "Matched pattern: voter's ID number (COMELEC).\nWhy it matters: government-issued numbers can be used to verify or impersonate you.\nRule: Government-issued identifier (RA 10173, SPI).\nCategory: Electoral ID.",
     gazetteer_medical:   "Detected a health-related term.\nWhy it matters: health details can be sensitive when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Health information, a sensitive category (RA 10173).\nCategory: Health Information.",
     gazetteer_financial: "Detected a finance-related term.\nWhy it matters: money details can matter when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Financial context (not a listed sensitive category in RA 10173).\nCategory: Financial Information.",
-    gazetteer_nationality_religion: "Detected a nationality or religion term.\nWhy it matters: beliefs and affiliations can be sensitive when tied to a person. A term alone does not identify anyone and adds no score by itself.\nRule: Religious affiliation is sensitive under RA 10173; nationality is not.\nCategory: Belief / Affiliation.",
+    gazetteer_nationality: "Detected a nationality term.\nWhy it matters: nationality can add to what identifies a person when combined with other details. A term alone does not identify anyone and adds no score by itself.\nRule: Nationality is a context indicator for the co-occurrence rule; it is not scored.\nCategory: Nationality.",
+    gazetteer_religion:    "Detected a religion term.\nWhy it matters: religious affiliation is sensitive when tied to a person.\nRule: Religious affiliation is sensitive under RA 10173. Scored as Low.\nCategory: Religion / Belief.",
     trigger_person_name: "Trigger phrase matched a person's name.\nWhy it matters: names become more revealing when combined with other details.\nRule: Personal information (RA 10173).\nCategory: Personal Identifier.",
     trigger_location:    "Trigger phrase matched a location.\nWhy it matters: specific locations can reveal where you live or work.\nRule: Personal information when specific (RA 10173).\nCategory: Location Data.",
     trigger_health:      "Trigger phrase matched a health condition.\nWhy it matters: health details can be sensitive when tied to a person.\nRule: Health information, a sensitive category (RA 10173).\nCategory: Health Information.",

@@ -18125,7 +18125,9 @@ const OCCUPATIONS_EXTRA = [
   "SEO Writer", "Digital Marketer", "Digital Marketing Specialist", "Email Marketing Specialist", "Ad Specialist", "Media Buyer",
   "UI/UX Designer", "UX Designer", "UI Designer", "Video Editor", "Podcast Editor", "Audio Editor", "Thumbnail Designer", "Motion Graphics Designer",
   "E-Commerce Specialist", "Ecommerce Seller", "Amazon Virtual Assistant", "Shopify Developer", "WordPress Developer", "Remote Developer",
-  "Remote Customer Service Representative", "Work From Home Agent", "Home-Based Agent", "Dropshipper", "Copywriter", "Videographer"
+  "Remote Customer Service Representative", "Work From Home Agent", "Home-Based Agent", "Dropshipper", "Copywriter", "Videographer",
+  // small item 5 follow-up: the bare noun was missing (only Claim / Insurance / Patent / Tax / Title Attorney existed); single word, cue-gated
+  "Attorney"
 ];
 // make the additions part of the dictionary (case-insensitive de-duplication; the generic-sentence rule is kept for the extras)
 // OCCUPATIONS_EXTRA_ADDED = only the entries that were NOT already in the dictionary (titles that were already there keep their old behavior)

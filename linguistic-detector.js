@@ -72,6 +72,11 @@ const TrustLinguisticDetector = (() => {
     return NAMES_FIRST.has(k) || NAMES_SURNAMES.has(k);
   }
 
+  function isKnownGivenName(word) {
+    if (!NAMES_DICT_AVAILABLE || !word) return false;
+    return NAMES_FIRST.has(word.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
+  }
+
   // Group 4c: placeholders only. A common first name ("John", "Mary") no longer disqualifies a name: "John Reyes" is a real name.
   // Only these placeholder words (as the first word) and these complete placeholder names are filtered.
   const COMMON_FIRST_NAMES = new Set(['example', 'user', 'test', 'demo', 'sample', 'admin', 'root']);
@@ -814,7 +819,7 @@ const TrustLinguisticDetector = (() => {
   // The gate is active only when the name dictionary is loaded (NAMES_DICT_AVAILABLE); without it METHOD 4 behaves as before.
   // ═══════════════════════════════════════════════════════════════════════
   const G_B_PREP_CUES = true;
-  const G_B_BEFORE_CUE_RE = /(?:\b(?:named|called|name\s+is|name['’]s|dear|hi|hello|hey|greetings|this\s+is|it['’]s|i['’]m|i\s+am|call\s+me|attn:?|attention:?|cc:?|regards,?|sincerely,?|thanks,?|cheers,?|(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|sir|madam)\.?)\s+)$/i;
+  const G_B_BEFORE_CUE_RE = /(?:\b(?:named|called|name\s+is|name['’]s|dear|hi|hello|hey|greetings|this\s+is|it['’]s|it\s+is|i['’]m|i\s+am|call\s+me|attn:?|attention:?|cc:?|regards,?|sincerely,?|thanks,?|cheers,?|(?:mr|mrs|ms|miss|mx|dr|prof|atty|engr|sir|madam)\.?)\s+)$/i;
   const G_B_PREP_CUE_RE = /\b(?:to|for|with|from|by)\s+$/i;
   const G_B_AFTER_CUE_RE = /^\s*,?\s*(?:said|says|told|asked|asks|works?|worked|replied|wrote|writes|called|speaking)\b/i;
   const G_B_FIRST_WORD_CUES = new Set(['dear', 'hi', 'hello', 'hey', 'greetings', 'thanks', 'cheers', 'regards', 'sincerely']);
@@ -862,6 +867,46 @@ const TrustLinguisticDetector = (() => {
         if (!nameHasPersonTag(isolatedNameTags(w)) && (isOrdinaryNonNameWord(w) || isPlaceOrOrgWord(w))) continue;
         if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === w.toLowerCase())) continue;
         findings.push({ patternId: 'nlp_person_name', label: 'Person Name (List)', risk: 'low', rawMatch: w, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'name_list' });
+      }
+    }
+  }
+
+  // holidays and seasons are in the given-name list but are not what "it's <Word> at <Place>" introduces
+  const G_INTRO_NOT_NAMES = new Set(['easter', 'christmas', 'thanksgiving', 'halloween', 'ramadan', 'diwali', 'lent', 'advent', 'pentecost', 'hanukkah', 'carnival', 'summer', 'winter', 'spring', 'autumn', 'fall']);
+
+  // Small item 4. "X and Y" with two single Title-Case words (the list rule above needs 3+). X must be a dictionary given name that is not an ordinary
+  // word, a place or an organization, AND the sentence must carry a CUE (decision: no cue, no finding; no list of famous pairs): a person-directed
+  // verb, a relationship word (friend, cousin, colleague...), a dictionary job title, "named", "my" / "our" before X, or a trailing verb of speech /
+  // work / presence ("said", "works", "are both"). Y is reported when it passes the name tests. A pair glued to another Title-Case
+  // word ("Bread and Butter Pudding", "Maria and Ben Santos") is left to the other passes. Pairs of ordinary nouns ("Salt and Pepper") fail on X.
+  const G_AND_VERB_RE = /\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\b/i;
+  const G_AND_REL_RE = /\b(?:friends?|classmates?|schoolmates?|colleagues?|co-?workers?|teammates?|cousins?|sisters?|brothers?|siblings?|twins?|aunt|uncle|nephew|niece|mother|father|mom|dad|parents?|son|daughter|children|kids?|wife|husband|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|neighbou?rs?|roommates?|housemates?|grandparents?|grandmother|grandfather|godparents?|in-laws?|relatives?|family)\b/i;
+  const G_AND_TRAIL_RE = /^\s*(?:(?:are|were)\s+both\b|both\b|(?:said|says|told|asked|replied|wrote|works?|worked|lives?|lived|went|came|arrived|joined|presented|attended|left|called|live|work)\b)/i;
+  function extractNamePairsWithAnd(text, findings) {
+    const re = new RegExp(`${NAME_LB}(${NAME_WORD})\\s+(?:and|&)\\s+(${NAME_WORD})${NAME_RB}`, 'gu');
+    const okName = (w, givenOnly) => {
+      const tg = isolatedNameTags(w), lw = w.toLowerCase();
+      if (NON_NAME_WORDS.has(lw) || isPlaceOrOrgWord(w) || EXTENSIVE_JOB_TITLES.has(lw) || G_INTRO_NOT_NAMES.has(lw) || tg.some(t => COMMON_WORD_TAGS.includes(t) && !nameHasPersonTag(tg))) return false;
+      return givenOnly ? isKnownGivenName(w) : (isKnownNameWord(w) || (nameHasPersonTag(tg) && !tg.includes('NameDictionary')));
+    };
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const x = m[1], y = m[2], s = m.index, e = m.index + m[0].length;
+      if (/\p{Lu}[\p{L}\p{M}'’.-]*\s+$/u.test(text.slice(Math.max(0, s - 40), s))) continue;
+      if (/^\s+\p{Lu}[\p{L}\p{M}]/u.test(text.slice(e, e + 3))) continue;
+      if (!okName(x, true)) continue;
+      const yName = okName(y, false);
+      const sentStart = Math.max(text.lastIndexOf('. ', s), text.lastIndexOf('? ', s), text.lastIndexOf('! ', s)) + 1;
+      let sentEnd = text.length;
+      for (const ch of ['. ', '? ', '! ']) { const k = text.indexOf(ch, e); if (k !== -1 && k < sentEnd) sentEnd = k + 1; }
+      const sentence = text.slice(sentStart, sentEnd), beforeX = text.slice(sentStart, s);
+      const sentWords = (sentence.toLowerCase().match(/[a-z][a-z'-]*/g) || []);
+      const cue = G_AND_VERB_RE.test(sentence) || G_AND_REL_RE.test(sentence) || /\bnamed\b/i.test(sentence) || /\b(?:my|our)\s+(?:[\p{L}'’-]+\s+){0,2}$/iu.test(beforeX) || G_AND_TRAIL_RE.test(text.slice(e, e + 40)) ||
+        sentWords.some(w => w !== x.toLowerCase() && w !== y.toLowerCase() && EXTENSIVE_JOB_TITLES.has(w));
+      if (!cue) continue;
+      for (const w of yName ? [x, y] : [x]) {
+        if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === w.toLowerCase())) continue;
+        findings.push({ patternId: 'nlp_person_name', label: 'Person Name (Pair)', risk: 'low', rawMatch: w, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'name_pair' });
       }
     }
   }
@@ -4545,6 +4590,45 @@ const TrustLinguisticDetector = (() => {
     return findings.filter((_, i) => !drop.has(i));
   }
 
+  // Small item 5. Appositive / descriptive frame "a / an / the <job title> from | at | of <Capitalised run>": the run is the person's organization.
+  // The frame itself is the evidence, so an organization that no dictionary or head-word rule knows is still reported. Not reported: a place,
+  // a weekday / month / holiday, a run that reads as a person's name (no organization head word), a single word after "of" (the mayor of <Place>,
+  // the head of <Department word> are too often places or functions), anything inside a Title Case heading.
+  function addAppositiveOrganizations(findings, text) {
+    const W = String.raw`\p{Lu}[\p{L}\p{M}'’&-]*`;
+    const reAfter = new RegExp(String.raw`^\s*(?:,\s*)?(from|at|of)\s+(?:the\s+)?(${W}(?:\s+(?:(?:of|and|&|for)\s+)?${W}){0,3})(?![\p{L}\p{M}\d_])`, 'u');
+    const jobs = new Set(findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch).map(f => f.rawMatch.trim()));
+    const added = [];
+    for (const raw of jobs) {
+      for (const [s, e] of jobOccurrences(text, raw)) {
+        if (!/\b(?:an?|the)\s+$/i.test(text.slice(Math.max(0, s - 8), s))) continue;
+        const m = text.slice(e, e + 120).match(reAfter);
+        if (!m) continue;
+        let run = m[2].replace(/\s+(?:of|and|&|for)$/i, '');
+        const toks = run.split(/\s+/).filter(t => /^\p{Lu}/u.test(t));
+        if (m[1].toLowerCase() === 'of' && toks.length < 2) continue;
+        if (isKnownPlaceWord(run) || looksLikePlaceName(run) || toks.every(t => isKnownPlaceWord(t) || looksLikePlaceName(t) || isolatedNameTags(t).some(g => ['City', 'Country', 'Region'].includes(g)))) continue;
+        { let cityLike = false; try { cityLike = window.nlp(run).has('#City') || window.nlp(run).has('#Country') || window.nlp(run).has('#Region'); } catch (_) { /* no nlp */ } if (cityLike) continue; }
+        // the first word decides (later words may be ordinary: Harbor Light); a word that Compromise's own lexicon lists as a verb / closed-class
+        // word is refused, a tag guessed from an unknown word's ending is not (caEligibleToken)
+        if (G_INTRO_NOT_NAMES.has(toks[0].toLowerCase()) || NON_NAME_WORDS.has(toks[0].toLowerCase()) || !caEligibleToken(toks[0]) ||
+            isolatedNameTags(toks[0]).some(t => ['Place', 'City', 'Country', 'Region', 'Date', 'Month', 'WeekDay', 'Holiday', 'Demonym'].includes(t))) continue;
+        { let lt; try { lt = window.nlp.world().model.one.lexicon[toks[0].toLowerCase()]; } catch (_) { lt = null; }
+          if (lt && [].concat(lt).includes('Adjective') && !nameHasPersonTag(isolatedNameTags(toks[0]))) continue; }   // English, Spanish, Green...
+        const hasHead = toks.some(t => STRONG_ORG_HEAD_WORDS.has(t.toLowerCase()) || RUN_ORG_HEAD_WORDS.has(t.toLowerCase()));
+        // "of" can introduce a person (the teacher of <Name>); "from / at" only when every word of a 2+ word run is an anchored name
+        const allAnchored = toks.length >= 2 && toks.every(t => isKnownNameWord(t) || nameHasPersonTag(isolatedNameTags(t)));
+        if (!hasHead && ((m[1].toLowerCase() === 'of' && looksLikePersonNameRun(toks)) || allAnchored)) continue;
+        const rs = text.indexOf(run, e);
+        if (inTitleCaseRun(text, rs, rs + run.length)) continue;
+        if (findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && f.rawMatch.toLowerCase().includes(run.toLowerCase())) ||
+            added.some(a => a.rawMatch.toLowerCase() === run.toLowerCase())) continue;
+        added.push({ patternId: 'nlp_organization', label: 'Organization (title frame)', risk: 'low', rawMatch: run, safeVersion: '[ORGANIZATION REDACTED]', source: 'C_linguistic', extractionMethod: 'title_frame_org', validated: false });
+      }
+    }
+    findings.push(...added);
+  }
+
   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
     const orgs = findings
       .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
@@ -4731,6 +4815,12 @@ const TrustLinguisticDetector = (() => {
     } catch (_) { tags = []; }
     // Group 8: a word in the common-names dictionary counts as a Person word, exactly like Compromise's own Person tag
     if (isKnownNameWord(word) && !tags.includes('Person')) tags = tags.concat(['Person', 'NameDictionary']);
+    // Small item 2: a hyphenated pair ("Mary-Ann", "Jay-Rose") is a Person word when one half is a dictionary given name or has a Person tag and
+    // the other half is not an ordinary word (a verb, adjective, closed-class word...). "Rose-Colored", "Will-Call" stay ordinary.
+    if (!nameHasPersonTag(tags) && /^\p{L}[\p{L}\p{M}]*-\p{L}[\p{L}\p{M}]*$/u.test(word)) {
+      const hs = word.split('-').map(h => { const ht = isolatedNameTags(h); return { given: isKnownGivenName(h) || (!ht.includes('NameDictionary') && ht.some(t => PERSON_TAG_NAMES.includes(t))), common: !nameHasPersonTag(ht) && ht.some(t => COMMON_WORD_TAGS.includes(t) || NAME_CLOSED_TAGS.includes(t)) }; });
+      if (hs.some(h => h.given) && !hs.some(h => h.common)) tags = tags.concat(['Person', 'HyphenatedName']);
+    }
     _isolatedTagCache.set(lw, tags);
     return tags;
   }
@@ -4994,7 +5084,35 @@ const TrustLinguisticDetector = (() => {
    *   }
    * @public
    */
-  function scan(textNLP) {
+  // Small item 1: a salutation word right before an honorific ("Dear Mr. <Name>", "Hi Dr <Name>", "Hello Ms,") is never part of a name, and an
+  // honorific with no name after it ("Dear Mr", "Dear Sir or Madam", "Hi Dr,") is a fragment, not a person. Both are blanked with spaces (the
+  // length is kept, so every index is unchanged) before any pass runs. The honorific is kept when a capitalised word follows it, because the
+  // honorific passes read it as the cue for that name. Rule: salutation + honorific, case as written (capitalised), whole words only.
+  const G_SALUTE_RE = /(?<![\p{L}\p{N}])((?:Dear|Hi|Hello|Hey|Greetings|Good\s+(?:morning|afternoon|evening|day))\s+)((?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Atty|Engr|Sir|Madam)\.?)(?![\p{L}\p{N}])/gu;
+  function maskSalutationFragments(text) {
+    if (typeof text !== 'string' || !/(?:Dear|Hi|Hello|Hey|Greetings|Good)\s/.test(text)) return text;
+    return text.replace(G_SALUTE_RE, (m, sal, hon, off) => {
+      const after = text.slice(off + m.length);
+      const named = /^\s+\p{Lu}/u.test(after) && !/^(?:Sir|Madam)$/.test(hon.replace(/\.$/, '')) || (/^Sir$/.test(hon) && /^\s+\p{Lu}\p{Ll}/u.test(after) && !/^\s+(?:Or|And)\b/.test(after));
+      return ' '.repeat(sal.length) + (named ? hon : ' '.repeat(hon.length));
+    });
+  }
+
+  // Small item 2: the normalizer's sentence splitter writes a period after a hyphenated first name that is followed by a surname
+  // ("Mei-ling Silva" -> "Mei-ling. Silva"). When the hyphenated word is a name (either half a given name / Person word, see
+  // isolatedNameTags) or a dictionary surname follows, that period is not a sentence end: it is dropped.
+  const G_HYPHEN_SPLIT_RE = /(?<![\p{L}\p{M}\d_])(\p{Lu}[\p{L}\p{M}]*-\p{L}[\p{L}\p{M}]*)\.(\s+)(\p{Lu}[\p{L}\p{M}]*)(?![\p{L}\p{M}\d_])/gu;
+  function repairHyphenatedNameSplit(text) {
+    if (typeof text !== 'string' || !/\p{L}-\p{L}[\p{L}\p{M}]*\.\s/u.test(text)) return text;
+    return text.replace(G_HYPHEN_SPLIT_RE, (m, tok, sp, nxt) => {
+      const k = nxt.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      return (NAMES_DICT_AVAILABLE && NAMES_SURNAMES.has(k)) || nameHasPersonTag(isolatedNameTags(tok)) ? tok + sp + nxt : m;
+    });
+  }
+
+  function scan(textNLP) { return scanCore(repairHyphenatedNameSplit(maskSalutationFragments(textNLP))); }
+
+  function scanCore(textNLP) {
     // Validate input
     if (!textNLP || typeof textNLP !== 'string' || textNLP.trim().length === 0) {
       console.debug('[TrustPrompt/PATH_C] Empty input');
@@ -5035,6 +5153,7 @@ const TrustLinguisticDetector = (() => {
       }
       
       // METHOD 2: Names from trigger phrases - "my name is", "i am", "call me"
+      const G_INTRO_PATTERN = new RegExp(String.raw`(?<![\p{L}\p{M}])(?:[Tt]his\s+is|[Ii]t['’]s|[Ii]t\s+is)\s+(${NAME_WORD})(?=\s+(?:from|of|at)\s+\p{Lu})${NAME_RB}`, 'gu');
       const nameTriggerPatterns = [
         // The trigger words accept an upper-case first letter so a sentence-initial
         // "My name is Carlo" / "Call me Maria" matches. The captured name stays
@@ -5045,6 +5164,9 @@ const TrustLinguisticDetector = (() => {
         new RegExp(String.raw`\b(?:i\s+)?(?:am|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\b[Cc]all\s+me\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\bi['’]m\s+called\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
+        // Small item 3: "this is X" / "it's X" / "it is X" introduces the speaker. A bare first name is accepted only when the self-introduction
+        // goes on with "from / of / at <Capitalised>" ("Hi, this is X from <Org>") and the word is a dictionary given name or a Person word.
+        G_INTRO_PATTERN,
       ];
       
       for (const pattern of nameTriggerPatterns) {
@@ -5053,6 +5175,12 @@ const TrustLinguisticDetector = (() => {
           // Group 4: the run can now be up to six words. Trailing words that cannot be part of a name (a job title, a
           // closed-class word or a known non-name word: "my name is Ana Cruz Manager at ...") are cut off, so the name keeps its own words.
           let name = match[1].trim();
+          if (pattern === G_INTRO_PATTERN) {
+            const itags = isolatedNameTags(name);
+            if (!(isKnownGivenName(name) || nameHasPersonTag(itags)) || NON_NAME_WORDS.has(name.toLowerCase()) ||
+                itags.some(t => ['Date', 'Month', 'WeekDay', 'Holiday', 'Place', 'Country', 'City', 'Region', 'Organization', 'Currency', 'Unit'].includes(t)) ||
+                looksLikePlaceName(name) || G_INTRO_NOT_NAMES.has(name.toLowerCase())) continue;
+          }
           for (let tw = name.split(/\s+/); tw.length > 1; tw = name.split(/\s+/)) {
             const lastW = tw[tw.length - 1], lw = lastW.toLowerCase(), lt = isolatedNameTags(lastW);
             if (!(NON_NAME_WORDS.has(lw) || EXTENSIVE_JOB_TITLES.has(lw) || (lt.some(t => NAME_CLOSED_TAGS.includes(t)) && !nameHasPersonTag(lt)))) break;
@@ -5428,6 +5556,7 @@ const TrustLinguisticDetector = (() => {
         'experiencing', 'reporting', 'stating', 'saying', 'telling', 'asking', 'calling'
       ]);
       
+      const G_INTRO_BEFORE_FROM_RE = /(?:[Tt]his\s+is|[Ii]t['’]s|[Ii]t\s+is)\s+\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*){0,2}\s*$/u;
       const directiveContextPatterns = [
         // Prepositions: "for [Name]", "to [Name]", "with [Name]"
         // Captures the capitalized name directly after these prepositions
@@ -5449,13 +5578,15 @@ const TrustLinguisticDetector = (() => {
         let match;
         while ((match = pattern.exec(textNLP)) !== null) {
           const name = match[1].trim();
-          
+
           // Filter: Name must be 2+ characters
           if (name.length < 2) continue;
-          
+          // Small item 3: "this is <Name> from <Org>": the word after "from" is the organization, not a second person
+          if (patternObj.name === 'from_context' && G_INTRO_BEFORE_FROM_RE.test(textNLP.slice(Math.max(0, match.index - 80), match.index))) continue;
+
           // Filter: Reject common non-names and placeholder words
           if (shouldFilterCommonName(name)) continue;
-          
+
           // Filter: Reject if it's a known non-name word (adjectives, verbs, discourse markers)
           if (nonNameWordsDirective.has(name.toLowerCase())) continue;
 
@@ -5494,6 +5625,7 @@ const TrustLinguisticDetector = (() => {
 
       // Group 3 (D6): titles, honorifics, leading verbs and ordinary words must not be reported as person names.
       if (PERSON_LIST_ENABLED) extractNameLists(textNLP, findings);
+      extractNamePairsWithAnd(textNLP, findings);
       if (PERSON_LOWERCASE_INTRO_ENABLED) extractLowercaseSelfIntros(textNLP, findings);
       splitPersonFindingsAtY(findings);
       trimJobSpansOverNames(findings);
@@ -5502,6 +5634,7 @@ const TrustLinguisticDetector = (() => {
       { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
       // Cause A: a "<name> <business noun>" run is not a person (the organization, if there is evidence, comes from the structural pass).
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
+      addAppositiveOrganizations(findings, textNLP);
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       

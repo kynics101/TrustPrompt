@@ -306,10 +306,13 @@ const TrustNormalizer = (() => {
 
 })();
 
-// ── Export TrustNormalizer to global scope ────────────────────────────────────
+// ── Export TrustNormalizer to global scope and module exports ─────────────────
 if (typeof globalThis !== 'undefined') {
   globalThis.TrustNormalizer = TrustNormalizer;
 }
 if (typeof window !== 'undefined') {
   window.TrustNormalizer = TrustNormalizer;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = TrustNormalizer;
 }

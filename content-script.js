@@ -90,6 +90,21 @@ function reportScanTiming() {
 // ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
 function findPromptBox() {
+  // Priority 0 — Check the actively focused element first
+  // This ensures we pick the textbox the user is currently typing in,
+  // not an earlier message box that's scrolled up in the conversation.
+  const activeEl = document.activeElement;
+  if (activeEl && isVisible(activeEl)) {
+    // Accept contenteditable divs, textareas, or inputs that are in editable mode
+    if (
+      activeEl.tagName === "TEXTAREA" ||
+      activeEl.tagName === "INPUT" ||
+      (activeEl.tagName === "DIV" && activeEl.contentEditable === "true")
+    ) {
+      console.log("[TrustPrompt/Claude] found via activeElement (focused)");
+      return activeEl;
+    }
+  }
 
   // Layer 1 — Claude's stable data-testid
   const testIds = [
@@ -197,7 +212,41 @@ function normaliseText(raw) {
 
 // ── 3. PATTERN MATCHING + VALIDATION ─────────────────────────────────────────
 
+function shouldFilterByContext(patternId, rawMatch, fullText, matchIndex) {
+  // Color palette/design system contexts (for mac_address)
+  // Filters MAC address patterns that appear in design/color contexts
+  // Examples: "AA-BB-CC-DD-EE-FF" in "color palette", "hex code", "design token"
+  if (patternId === 'mac_address') {
+    // Extract context: before and after the match (±150 chars)
+    const beforeStart = Math.max(0, matchIndex - 150);
+    const beforeText = fullText.slice(beforeStart, matchIndex).toLowerCase();
+    
+    const afterStart = matchIndex + rawMatch.length;
+    const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
+    
+    const fullContext = beforeText + " [MATCH] " + afterText;
+
+    const colorPaletteMarkers = [
+      /\b(color|palette|swatch|hex|design|token|brand|theme|ui|ux|interface)\b/,
+      /\b(rgb|hsv|hsl|color code|hex code|color value)\b/,
+      /\b(design system|color scheme|color reference|palette name)\b/,
+    ];
+
+    if (colorPaletteMarkers.some(m => m.test(fullContext))) {
+      console.log(`[TrustPrompt/content-script] filtered ${patternId}: color palette context`);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function scanText(text) {
+  if (!TRUSTPROMPT_PATTERNS) {
+    console.error('[TrustPrompt/scanText] TRUSTPROMPT_PATTERNS is not loaded!');
+    return [];
+  }
+  
   const normalised = normaliseText(text);
   const findings   = [];
 
@@ -206,7 +255,35 @@ function scanText(text) {
     let match;
     while ((match = re.exec(normalised)) !== null) {
       const raw = match[0];
-      if (!TrustValidator.validate(pattern.validate, raw)) continue;
+      const matchIndex = match.index;
+      
+      if (pattern.id === 'email') {
+        console.log(`[TrustPrompt/scanText] email regex MATCHED: ${raw}`);
+      }
+      
+      // Apply legacy shouldFilterByContext (for mac_address color palette filtering)
+      if (shouldFilterByContext(pattern.id, raw, text, matchIndex)) {
+        continue;  // Skip this match due to context
+      }
+      
+      // TASK-4.8: Apply pattern-specific context filter (if defined)
+      // This is the primary filtering mechanism for false positive suppression
+      if (pattern.contextFilter && typeof pattern.contextFilter === 'function') {
+        const shouldSuppress = !pattern.contextFilter(raw, text, matchIndex);
+        if (shouldSuppress) {
+          console.log(`[TrustPrompt/contextFilter] pattern filter suppressed ${pattern.id}: ${raw.slice(0, 30)}`);
+          continue;
+        }
+      }
+      
+      // Validate before adding to findings
+      const isValid = TrustValidator.validate(pattern.validate, raw);
+      if (!isValid) {
+        if (pattern.id === 'email') {
+          console.log(`[TrustPrompt/scanText] email validation FAILED for: ${raw}`);
+        }
+        continue;
+      }
       const safeVersion = pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]";
       findings.push({
         patternId:   pattern.id,

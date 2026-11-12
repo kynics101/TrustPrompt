@@ -18,6 +18,57 @@
 //     → Step 4: governance rule evaluation
 //     → Step 5: final risk classification
 
+// ── IMPORTS ──────────────────────────────────────────────────────────────────
+// Load normalizer in Node.js environment
+if (typeof require !== 'undefined' && !globalThis.TrustNormalizer) {
+  try {
+    const normalizer = require('./normalizer.js');
+    if (normalizer) {
+      globalThis.TrustNormalizer = normalizer;
+    }
+  } catch (e) {
+    // Normalizer not available in this environment
+  }
+}
+
+// Load patterns in Node.js environment
+if (typeof require !== 'undefined' && !globalThis.TRUSTPROMPT_PATTERNS) {
+  try {
+    const patterns = require('./patterns.js');
+    if (patterns && patterns.TRUSTPROMPT_PATTERNS) {
+      globalThis.TRUSTPROMPT_PATTERNS = patterns.TRUSTPROMPT_PATTERNS;
+      globalThis.isKnownPlaceholder = patterns.isKnownPlaceholder;
+      globalThis.shannonEntropy = patterns.shannonEntropy;
+    }
+  } catch (e) {
+    // Patterns not available in this environment
+  }
+}
+
+// Load validator wrapper in Node.js environment
+if (typeof require !== 'undefined' && !globalThis.TrustValidator) {
+  try {
+    const validator = require('./validator-wrapper.js');
+    if (validator) {
+      globalThis.TrustValidator = validator;
+    }
+  } catch (e) {
+    // Validator not available in this environment
+  }
+}
+
+// Load gazetteer in Node.js environment
+if (typeof require !== 'undefined' && !globalThis.TrustGazetteer) {
+  try {
+    const gazetteer = require('./gazetteer.js');
+    if (gazetteer) {
+      globalThis.TrustGazetteer = gazetteer;
+    }
+  } catch (e) {
+    // Gazetteer not available in this environment
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // TASK 17.1: MULTI-FEATURE SOURCE CODE DETECTION FRAMEWORK — INLINE DOCUMENTATION
 // ══════════════════════════════════════════════════════════════════════════════
@@ -630,6 +681,115 @@ const TrustScanner = (() => {
 
   };
 
+  // ── MARKDOWN FENCE AND PROSE DETECTION (Requirement 20) ─────────────────
+  // Helper functions to detect formatted code blocks and distinguish prose from code
+
+  /**
+   * Detects if text is wrapped in markdown code fences (triple backticks)
+   * If true, it ALWAYS classifies as code without scoring
+   * @param {string} text
+   * @returns {object|null} {isFormatted: true, language: 'js'} or null if not formatted
+   */
+  function detectFormattedCodeBlock(text) {
+    if (!text || typeof text !== 'string') return null;
+    
+    // Match triple backticks with optional language specifier
+    const fenceMatch = text.match(/^```([\w-]*)\n([\s\S]*)\n```$/m);
+    if (fenceMatch) {
+      console.log('[TrustPrompt/CodeDetection] Formatted code block detected: triple backticks wrapper');
+      console.log('[TrustPrompt/CodeDetection] Language: ' + (fenceMatch[1] || 'unspecified'));
+      console.log('[TrustPrompt/CodeDetection] Classification: CODE (formatted block bypass - no scoring required)');
+      return {
+        isFormatted: true,
+        language: fenceMatch[1] || 'unspecified',
+        innerCode: fenceMatch[2]
+      };
+    }
+    
+    // Check for indented code blocks (4+ spaces = code in markdown)
+    const lines = text.split('\n');
+    const indentedLines = lines.filter(line => /^\s{4,}\S/.test(line)).length;
+    if (indentedLines > 0 && indentedLines / Math.max(lines.length, 1) > 0.5) {
+      console.log('[TrustPrompt/CodeDetection] Formatted code block detected: indented markdown block');
+      console.log('[TrustPrompt/CodeDetection] Indented lines: ' + indentedLines + '/' + lines.length);
+      console.log('[TrustPrompt/CodeDetection] Classification: CODE (formatted block bypass - no scoring required)');
+      return {
+        isFormatted: true,
+        language: 'indented',
+        innerCode: text
+      };
+    }
+    
+    return null;
+  }
+
+  /**
+   * Detects if text is prose (long paragraphs) rather than code
+   * Uses prose heuristics to reduce false positives on natural language
+   * @param {string} text
+   * @returns {object} {isProse: boolean, score: number, reason: string}
+   */
+  function detectProsePatterns(text) {
+    if (!text || typeof text !== 'string') return { isProse: false, score: 0, reason: '' };
+    
+    const words = text.split(/\s+/);
+    if (words.length < 10) return { isProse: false, score: 0, reason: 'too_short' };
+    
+    let proseScore = 0;
+    let proseReasons = [];
+    
+    // Check 1: Proper English sentences (capitalized + punctuation)
+    const sentences = text.split(/[.!?]+/);
+    const capitalizedSentences = sentences.filter(s => {
+      const trimmed = s.trim();
+      return trimmed.length > 0 && /^[A-Z]/.test(trimmed);
+    });
+    const sentenceRatio = capitalizedSentences.length / Math.max(sentences.length, 1);
+    if (sentenceRatio > 0.6) {
+      proseScore += 3;
+      proseReasons.push('has_capitalized_sentences(' + Math.round(sentenceRatio * 100) + '%)');
+    }
+    
+    // Check 2: English articles and connectors (the, a, an, and, or, but, in, on, etc.)
+    const articlePattern = /\b(the|a|an|and|or|but|in|on|at|to|for|of|with|from|is|are|was|were|have|has|be|been)\b/gi;
+    const articleMatches = text.match(articlePattern) || [];
+    const articleRatio = articleMatches.length / Math.max(words.length, 1);
+    if (articleRatio > 0.15) {  // >15% articles = likely prose
+      proseScore += 3;
+      proseReasons.push('high_article_density(' + Math.round(articleRatio * 100) + '%)');
+    }
+    
+    // Check 3: Common prose words (said, told, according, believe, think, found, etc.)
+    const proseWordsPattern = /\b(said|told|according|believe|think|found|showed|reported|noted|indicated|suggests?|explained|clarified|described|mentioned|discussed|suggests?|appears?|seems?)\b/gi;
+    const proseWordMatches = text.match(proseWordsPattern) || [];
+    if (proseWordMatches.length > 3) {
+      proseScore += 2;
+      proseReasons.push('prose_indicators(' + proseWordMatches.length + ')');
+    }
+    
+    // Check 4: Absence of code indicators
+    const codeKeywords = /\b(function|const|let|var|class|if|for|while|return|import|export|def|async|await|try|catch|SELECT|INSERT|UPDATE|DELETE)\b/gi;
+    const codeKeywordMatches = text.match(codeKeywords) || [];
+    if (codeKeywordMatches.length === 0) {
+      proseScore += 1;
+      proseReasons.push('no_code_keywords');
+    }
+    
+    const isProse = proseScore >= 6;  // Need at least 2 strong indicators
+    
+    if (isProse) {
+      console.log('[TrustPrompt/CodeDetection] PROSE HEURISTIC MATCH - Text classified as prose (score: ' + proseScore + ')');
+      console.log('[TrustPrompt/CodeDetection] Prose indicators: ' + proseReasons.join(', '));
+      console.log('[TrustPrompt/CodeDetection] Classification: PROSE (suppressed from code classification)');
+    }
+    
+    return {
+      isProse: isProse,
+      score: proseScore,
+      reason: proseReasons.join(', ')
+    };
+  }
+
   // ── TASK 1.2: LANGUAGE-SPECIFIC KEYWORD SETS (Requirement 3) ─────────────
   // Comprehensive keyword list covering control flow, declarations, types, modules, and common objects.
   // Matched case-insensitively with word boundaries to avoid partial word matches.
@@ -799,6 +959,27 @@ const TrustScanner = (() => {
       /ftp:\/\/(?:[a-zA-Z0-9_\-]+:[a-zA-Z0-9_\-]+@)[^\s\)>\]]+/g
     ],
 
+    // ── Sub-category: Philippine Government IDs ────────────────────────────
+    // Detects Philippine national IDs (SSS, UMID, PRC, PhilID, etc.)
+    // These are high-impact credentials (score 10) per NIST SP 800-122
+    // NOTE: Patterns optimized for accuracy in code context
+    ph_ids: [
+      // SSS (Social Security System): XX-XXXXXXX-X format (exact)
+      /\d{2}-\d{7}-\d/g,
+      
+      // UMID (Unified Multi-Purpose ID): XXXX XXXXXXX X format (spaces, not hyphens)
+      /\d{4}\s\d{7}\s\d/g,
+      
+      // PhilID (PSA National ID): XXXX-XXXX-XXXX-XXXX format (4 groups of 4)
+      /\d{4}-\d{4}-\d{4}-\d{4}/g,
+      
+      // TIN (Tax Identification Number): XXX-XXX-XXX format (exact)
+      /\d{3}-\d{3}-\d{3}/g,
+      
+      // Driver's License: 1-3 digits, hyphen, 2 digits, hyphen, 6-7 digits
+      /\d{1,3}-\d{2}-\d{6,7}/g
+    ],
+
     // ── Sub-category: Variable Names Suggesting Secrets ──────────────────────
     // Keyword-based patterns for variable names and assignment patterns
     credential_variable_names: [
@@ -812,7 +993,8 @@ const TrustScanner = (() => {
       "aws_access_key", "aws_secret", "aws_key",
       "github_token", "gitlab_token", "bitbucket_token",
       "client_secret", "oauth_secret", "client_id",
-      "jwt", "jwttoken", "jwt-token"
+      "jwt", "jwttoken", "jwt-token",
+      "sss", "umid", "prc", "philid", "tin", "gsis", "philhealth", "postal_id", "pwd_id", "voter_id"
     ],
 
     // ── Sub-category: Sensitive Keywords ────────────────────────────────────
@@ -821,7 +1003,8 @@ const TrustScanner = (() => {
       "password", "secret", "token", "api_key", "private_key",
       "database_url", "credential", "auth", "oauth", "jwt",
       "sensitive", "confidential", "encrypted", "decrypted",
-      "apikey", "access_key", "secret_key", "bearer"
+      "apikey", "access_key", "secret_key", "bearer",
+      "sss", "umid", "prc", "philid", "tin", "gsis", "philhealth", "postal_id", "pwd_id", "voter_id"
     ]
   };
 
@@ -1419,6 +1602,40 @@ const TrustScanner = (() => {
     return kept;
   }
 
+  // ── TASK-4.8: Filter Trigger-Only Patterns ──────────────────────────────────
+  // Some patterns (like personal_label) are triggers to help identify PII but should NOT
+  // be reported as findings themselves. They mark where PII might be (e.g., "Name: ...")
+  // but the actual sensitive data is the value after the colon.
+  //
+  // This function removes findings marked with `isTriggerOnly: true` from the final results.
+  // The pattern is still used during scanning to identify structured PII locations.
+
+  function filterTriggerOnlyFindings(findings) {
+    const kept = [];
+    const filtered = [];
+
+    for (const f of findings) {
+      if (f.isTriggerOnly === true) {
+        filtered.push(f);
+        if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.verbosity === 'debug') {
+          console.log(
+            `[TrustPrompt/filter] Trigger-only finding excluded: ${f.patternId}:${f.rawMatch.slice(0, 30)}...`
+          );
+        }
+      } else {
+        kept.push(f);
+      }
+    }
+
+    if (filtered.length > 0 && CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.verbosity === 'debug') {
+      console.log(
+        `[TrustPrompt/filter] Removed ${filtered.length} trigger-only findings`
+      );
+    }
+
+    return kept;
+  }
+
   // ── Context-aware filtering helper ──────────────────────────────────────────
   // TASK-4.7: Rejects matches that appear in measurement/unit contexts
   // This prevents false positives like "0909835056 grams" being flagged as a phone number.
@@ -1455,19 +1672,25 @@ const TrustScanner = (() => {
       'api_key', 'jwt',                // Code/documentation blocks
       'birthday_date',                 // Calendar dates (can appear in "today is October 26, 2026" references)
       'ph_address',                    // Street address can appear in song/book/movie titles, directions, lyrics
+      'mac_address',                   // MAC addresses can appear as hex color tokens in design contexts
+      // REMOVED: 'height_mention' - Uses pattern-level contextFilter only
+      // REMOVED: 'weight_mention' - Uses pattern-level contextFilter only
       // REMOVED: 'ph_mobile' - PII that must ALWAYS be flagged
-      // REMOVED: 'ipv4', 'ipv6', 'mac_address' - Network PII that must ALWAYS be flagged
+      // REMOVED: 'ipv6' - Network PII that must ALWAYS be flagged
       // NOTE: ALL Philippine ID patterns are NOT in this list
       //       All PH government IDs are sensitive credentials that should ALWAYS be detected
       //       regardless of context (educational, validation, format discussion, etc.)
-      // NOTE: height_mention and weight_mention are EXCLUDED from context filtering
-      //       because they are ALWAYS relevant even in measurement contexts
     ];
 
     // Only apply context filtering to patterns that need it
     // Phone/IP/MAC addresses ALWAYS pass through (never filtered by context)
     if (!contextAwarePatterns.includes(patternId)) {
       return false;
+    }
+    
+    // Early logging for weight_mention
+    if (patternId === 'weight_mention') {
+      console.log(`[TrustPrompt/context-entry] Processing weight_mention: "${rawMatch}" at index ${matchIndex}`);
     }
 
     // Extract context: before and after the match (±150 chars)
@@ -1479,10 +1702,30 @@ const TrustScanner = (() => {
     
     const fullContext = beforeText + " [MATCH] " + afterText;
 
+    // ── SPECIAL: JWT-in-debugging context suppresses api_key false positives ──
+    // When api_key pattern matches a JWT (eyJ...) in a debugging/troubleshooting context,
+    // filter it out since it's a JWT being debugged, not a real API key being exposed
+    if (patternId === 'api_key' && rawMatch.startsWith('eyJ')) {
+      const debuggingMarkers = [
+        /\b(token|jwt|jwttoken|json web token|auth token|bearer|session)\b/i,
+        /\b(expire|expiry|expiration|early|logout|logging.*out|sign.*out)\b/i,
+        /\b(troubleshoot|debug|issue|problem|fix|why|help|error|failing)\b/i,
+        /\b(keep logging out|keeps logging out|keeps signing out|stay logged in)\b/i,
+      ];
+      if (debuggingMarkers.some(m => m.test(fullContext))) {
+        console.log(`[TrustPrompt/context] filtered api_key: JWT in debugging context`);
+        return true;
+      }
+    }
+
     // ── SAFE CONTEXT MARKERS ──────────────────────────────────────────────────
     
     // Critical sensitive data that should NEVER be filtered by context markers
-    const criticalPatterns = ['credit_card', 'api_key', 'jwt'];
+    // birthday_date is included because it's a direct personal identifier (RA 10173)
+    // that should only be filtered by temporal markers, not by validation/example/educational contexts
+    // email is included because even in example contexts (example.com), real emails are PII
+    // and should be detected (not suppressed just because the domain name contains "example")
+    const criticalPatterns = ['credit_card', 'api_key', 'jwt', 'birthday_date', 'email'];
     
     // 1. Educational/How-To contexts
     // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by educational context
@@ -1578,6 +1821,21 @@ const TrustScanner = (() => {
       }
     }
 
+    // 6.5. Color palette/design system contexts (for mac_address)
+    // Filters MAC address patterns that appear in design/color contexts
+    // Examples: "AA-BB-CC-DD-EE-FF" in "color palette", "hex code", "design token"
+    if (patternId === 'mac_address') {
+      const colorPaletteMarkers = [
+        /\b(color|palette|swatch|hex|design|token|brand|theme|ui|ux|interface)\b/,
+        /\b(rgb|hsv|hsl|color code|hex code|color value)\b/,
+        /\b(design system|color scheme|color reference|palette name)\b/,
+      ];
+      if (colorPaletteMarkers.some(m => m.test(fullContext))) {
+        console.log(`[TrustPrompt/context] filtered ${patternId}: color palette context`);
+        return true;
+      }
+    }
+
     // 7. Assignment/Placeholder contexts
     const placeholderMarkers = [
       /\b(replace|substitute|placeholder|with your own|your own|change this)\b/,
@@ -1593,17 +1851,66 @@ const TrustScanner = (() => {
     // Filters dates that are contextualized as "today is", "it is", "the date is", etc.
     // These indicate the date is being used as a reference point or calendar reference,
     // not as a personal information disclosure (birthday, DOB, etc.)
+    // ★ CRITICAL: Do NOT filter when the user is explicitly sharing their own birthday/birth date
+    // Examples:
+    //   ✓ FILTER: "today is March 14" → calendar reference, not PII
+    //   ✗ DON'T FILTER: "I was born on March 14, 1998" → actual birth date disclosure
+    //   ✗ DON'T FILTER: "my birthday is March 14" → intentional disclosure
+    //   ✗ DON'T FILTER: form field with just "07/22/1990" → document field entry
     if (patternId === 'birthday_date') {
-      const temporalMarkers = [
-        /\b(today is|it is|the date is|right now|at this moment|current date)\b/,
-        /\b(today|this (date|moment)|right now)\b/,
-        /\b(as of (today|now)|as of (this|the))\b/,
-        /\b(the (date|time) (is|was))\b/,
+      // Only filter if it's clearly a CURRENT DATE reference (calendar notation),
+      // NOT if the date is used in a calculation or disclosure context
+      // 
+      // FILTER these (calendar/temporal references):
+      //   "today is March 14, 2026"
+      //   "it is December 25, 1995"
+      //   "right now it's March 14"
+      //   "this moment in time: March 14, 2026"
+      //
+      // DO NOT FILTER these (personal information sharing):
+      //   "I was born on March 14, 1998" (direct disclosure)
+      //   "I was born on March 14, 1998 so as of today I'm 26" (disclosure + context)
+      //   "My birthdate is 07/22/1990" (direct disclosure)
+      //   "date of birth: 07/22/1990" (form field)
+      
+      const currentDateMarkers = [
+        /\b(today\s+is|it\s+is|right\s+now\s+it'?s|this\s+moment|at\s+this\s+moment)\b/i,
+        /\b(as\s+of\s+right\s+now|this\s+very\s+moment|currently\s+it\s+is)\b/i,
       ];
       
-      if (temporalMarkers.some(m => m.test(fullContext))) {
-        console.log(`[TrustPrompt/context] filtered ${patternId}: temporal reference context`);
+      const hasTemporalMarker = currentDateMarkers.some(m => m.test(fullContext));
+      
+      // Personal birth date markers - DO NOT FILTER these
+      const personalBirthdayMarkers = [
+        /\b(born|birthday|dob|birth date|i was|my birthday|born on)\b/i,
+        /(date\s+of\s+birth|dob|date\s+of\s+birth\s+date)/i,
+      ];
+      
+      const hasPersonalMarker = personalBirthdayMarkers.some(m => m.test(fullContext));
+      
+      // ★ FILTERING LOGIC ★
+      // If it's a calendar/temporal reference (today is, it is, etc), filter it
+      // But "as of today" in a personal context is NOT a calendar reference
+      if (hasTemporalMarker) {
+        console.log(`[TrustPrompt/context] filtered ${patternId}: current date reference`);
         return true;
+      }
+      
+      // If it has personal markers (born, birthday, date of birth), always allow
+      // This covers: "I was born...", "my birthday...", form fields with "date of birth"
+      if (hasPersonalMarker) {
+        return false;  // Do NOT filter
+      }
+      
+      // ★ FORM FIELD HEURISTIC: If context is very minimal (mostly just the date itself),
+      // this is likely a form field entry (e.g., passport form: "date of birth" field → "07/22/1990")
+      // Form labels are separate DOM elements, so they don't appear in the text context window.
+      const beforeText = fullText.slice(Math.max(0, matchIndex - 150), matchIndex).toLowerCase();
+      const afterText = fullText.slice(matchIndex + rawMatch.length, Math.min(fullText.length, matchIndex + rawMatch.length + 150)).toLowerCase();
+      
+      // If there's minimal text before/after the date (< 30 chars), it's likely a form field
+      if (beforeText.trim().length < 30 && afterText.trim().length < 30) {
+        return false;  // Do NOT filter
       }
     }
 
@@ -1620,6 +1927,26 @@ const TrustScanner = (() => {
         console.log(`[TrustPrompt/context] filtered ${patternId}: non-address (title/directions) context`);
         return true;
       }
+    }
+
+    // 10. height_mention and weight_mention: object/furniture vs. personal dimensions
+    // Filter when discussing measurements of objects (furniture, products, buildings)
+    // DO NOT filter when discussing personal physical characteristics (ID documents, medical)
+    // Examples to FILTER (object measurements):
+    //   "ceiling is 2.4 m high" (building dimension)
+    //   "shelf is 180 cm" (furniture dimension)
+    //   "the table weighs 50 kg" (product weight)
+    // Examples to KEEP (personal measurements):
+    //   "my height is 170 cm" (personal attribute)
+    //   "i am 5'10\"" (personal attribute)
+    //   "weight: 70 kg" (form field or medical context)
+    if (patternId === 'height_mention' || patternId === 'weight_mention') {
+      // Height and weight mentions now have pattern-level contextFilter functions
+      // in patterns.js that handle ID vs non-ID context distinction.
+      // This scanner-level filter is kept for backwards compatibility but
+      // the primary filtering now happens at pattern definition time.
+      // Both patterns require explicit ID/document context to be detected.
+      return false; // Let pattern-level contextFilter handle it
     }
 
     return false;
@@ -2155,6 +2482,32 @@ const TrustScanner = (() => {
   // ── NEW: Prose Detection Helper ──────────────────────────────────────────
   // Detects natural language prose markers to prevent false positives on conversational text
   function detectProseMarkers(text) {
+    // CRITICAL FIX: If text contains markdown code fences, it's NOT prose
+    // (the fences should have been handled by detectFormattedCodeBlock earlier)
+    // But if we're here, skip prose detection for safety
+    if (/```|~~~/.test(text)) {
+      return { isProse: false, proseScore: 0, reasons: [] };
+    }
+    
+    // ── TIER 1: FORMAL LETTER / DOCUMENT PATTERNS ──────────────────────────
+    // Detect structured formal correspondence (cover letters, requests, instructions)
+    // These have specific trigger phrases and narrative structure
+    const formalLetterPatterns = [
+      /(?:write|prepare|create|draft).*(?:letter|email|message|request|proposal|document)/i,
+      /(?:letter|email|cover letter|formal request).*(?:for|about|regarding|to)/i,
+      /(?:should be|must be|needs to be).*(?:professional|formal|well-structured|clear)/i,
+      /(?:opening|closing|middle|body|section|paragraph).*(?:paragraph|section|statement)/i,
+      /(?:addressing|addressing the|include|include an|express|highlight|call to action)/i
+    ];
+    
+    let matchedFormalPatterns = 0;
+    for (const pattern of formalLetterPatterns) {
+      if (pattern.test(text)) {
+        matchedFormalPatterns++;
+      }
+    }
+    
+    // ── TIER 2: GENERAL PROSE MARKERS ──────────────────────────────────────
     // Check for question marks, exclamation marks, or ellipsis (conversational)
     const conversationalPatterns = /[?!]\s|Could you|Can you|I\s(?:always|never|think|need|want|have)|registering|filling out|help me|get wrong|it insists|format|confirm|correct|proper/i;
     
@@ -2164,24 +2517,59 @@ const TrustScanner = (() => {
     // Check for common prose structures
     const proseStructures = /\b(?:I'm|it's|that's|what's|how|when|where|why|because|if|which|that|and|or|but)\b/gi;
     
+    // Check for articles and high English-prose density
+    const articleDensity = (text.match(/\b(?:a|an|the|this|that|which|whose)\b/gi) || []).length;
+    const totalWords = (text.match(/\b\w+\b/g) || []).length;
+    const articleRatio = totalWords > 0 ? articleDensity / totalWords : 0;
+    
     // Check for absence of typical code patterns
     const hasConversational = conversationalPatterns.test(text);
     const hasSentences = sentencePattern.test(text);
     const proseWordsCount = (text.match(proseStructures) || []).length;
+    const hasHighArticleDensity = articleRatio > 0.05; // 5%+ articles = prose
     
-    // Prose score: weight conversational markers higher
+    // ── SCORING LOGIC ──────────────────────────────────────────────────────
+    // Prose score: weight different indicators
     let proseScore = 0;
+    
+    // Formal letter patterns: strong indicator
+    if (matchedFormalPatterns >= 2) {
+      proseScore += 4; // Strong formal letter indicator
+    } else if (matchedFormalPatterns === 1) {
+      proseScore += 2;
+    }
+    
+    // General prose indicators
     if (hasConversational) proseScore += 3;
     if (hasSentences) proseScore += 2;
     if (proseWordsCount >= 5) proseScore += 2;
+    if (hasHighArticleDensity) proseScore += 2;
+    
+    // CRITICAL: Formal letters should be detected at score >= 2
+    const isProse = proseScore >= 2;
+    
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.verbosity === 'debug') {
+      console.log('[TrustPrompt/CodeDetection] detectProseMarkers results:', {
+        isProse,
+        proseScore,
+        formalLetterMatches: matchedFormalPatterns,
+        hasConversational,
+        hasSentences,
+        proseWordsCount,
+        hasHighArticleDensity
+      });
+    }
     
     return {
-      isProse: proseScore >= 3,
+      isProse,
       proseScore,
+      formalLetterMatches: matchedFormalPatterns,
       reasons: [
+        matchedFormalPatterns >= 2 ? `Formal letter/document pattern (${matchedFormalPatterns} indicators)` : null,
         hasConversational ? 'Has conversational markers' : null,
         hasSentences ? 'Has complete sentences' : null,
-        proseWordsCount >= 5 ? `Has ${proseWordsCount} prose connectors` : null
+        proseWordsCount >= 5 ? `Has ${proseWordsCount} prose connectors` : null,
+        hasHighArticleDensity ? `High article density (${(articleRatio * 100).toFixed(1)}%)` : null
       ].filter(r => r !== null)
     };
   }
@@ -2384,20 +2772,486 @@ const TrustScanner = (() => {
     return scoreObj;
   }
 
+  // ── TASK 16.1: MARKDOWN FENCE DETECTION ─────────────────────────────────────
+  // Detects formatted code blocks wrapped in triple backticks (```language ... ```)
+  // Returns {isFormatted: boolean, language: string, code: string}
+  // IMPORTANT: Searches for fences ANYWHERE in text, not just at line start
+  // CRITICAL FIX: Handles code on same line as fence marker (e.g., "```code here")
+  function detectFormattedCodeBlock(text) {
+    if (!text || typeof text !== 'string') {
+      return { isFormatted: false, language: '', code: '' };
+    }
+
+    // Try to find triple backticks or tildes with code on same line OR next line
+    // Pattern: ``` followed by optional language, then code (either on same line or next line)
+    
+    // CRITICAL: Split the search into two parts:
+    // 1. If code is on the SAME line: ```code...```
+    // 2. If code is on NEXT line: ```\nlanguage\ncode...```
+    
+    // First, try "code on same line" pattern (most common for inline code)
+    // Match: ``` (optional language word) (code content) ```
+    // FIX: Use [\s\S]*? instead of .*? to match newlines within code blocks
+    const sameLineMatch = text.match(/```([\w]*)([\s\S]*?)```/);
+    console.log("[TrustPrompt/CodeDetection] Trying sameLineMatch regex:", sameLineMatch ? "✓ MATCHED" : "✗ NO MATCH");
+    
+    if (sameLineMatch && sameLineMatch[2]) {
+      let codeContent = sameLineMatch[2].trim();
+      const potentialLang = sameLineMatch[1] || '';
+      
+      // If potentialLang looks like common language names, use it
+      const commonLanguages = ['javascript', 'python', 'java', 'cpp', 'csharp', 'c', 'php', 'ruby', 'go', 'rust', 'sql', 'html', 'css', 'json', 'xml', 'yaml', 'bash', 'shell', 'sh'];
+      const isLanguage = commonLanguages.includes(potentialLang.toLowerCase());
+      
+      // If potentialLang is NOT a known language, it's actually start of code
+      if (potentialLang && !isLanguage) {
+        // Add space between potentialLang and codeContent if needed
+        codeContent = potentialLang + ' ' + codeContent;
+      }
+      
+      const language = isLanguage ? potentialLang.toLowerCase() : '';
+      
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log('[TrustPrompt/CodeDetection] Formatted code block detected (same-line):', {
+          language: language || '(none)',
+          length: codeContent.length,
+          lineCount: (codeContent.match(/\n/g) || []).length + 1
+        });
+        console.log('[TrustPrompt/CodeDetection] Classification: CODE (formatted block bypass - no scoring required)');
+      }
+      
+      return {
+        isFormatted: true,
+        language: language,
+        code: codeContent
+      };
+    }
+
+    // Try line-start pattern (traditional markdown at line boundaries)
+    const markdownFenceRegex = /^```[\s\w]*$|^~~~[\s\w]*$/m;
+    const fenceStartMatch = text.match(markdownFenceRegex);
+    
+    if (fenceStartMatch) {
+      const fenceStart = fenceStartMatch[0];
+      const langMatch = fenceStart.match(/^`{3}(\w+)|^~{3}(\w+)/);
+      const language = (langMatch ? (langMatch[1] || langMatch[2]) : '').toLowerCase();
+
+      const closingFenceRegex = /^```|^~~~/m;
+      const firstNewline = text.indexOf('\n');
+      if (firstNewline === -1) {
+        return { isFormatted: false, language: '', code: '' };
+      }
+
+      const afterFirstFence = text.substring(firstNewline + 1);
+      const closingMatch = afterFirstFence.match(closingFenceRegex);
+
+      if (!closingMatch) {
+        return { isFormatted: false, language: '', code: '' };
+      }
+
+      const codeContent = afterFirstFence.substring(0, closingMatch.index);
+
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log('[TrustPrompt/CodeDetection] Formatted code block detected (line-start):', {
+          language: language || '(none)',
+          length: codeContent.length,
+          lineCount: (codeContent.match(/\n/g) || []).length + 1
+        });
+        console.log('[TrustPrompt/CodeDetection] Classification: CODE (formatted block bypass - no scoring required)');
+      }
+
+      return {
+        isFormatted: true,
+        language: language,
+        code: codeContent
+      };
+    }
+
+    // Try inline pattern as fallback: code on different lines than fences
+    const altFenceRegex = /```[\s\w]*\n|~~~[\s\w]*\n/;
+    const altMatch = text.match(altFenceRegex);
+    
+    if (!altMatch) {
+      return { isFormatted: false, language: '', code: '' };
+    }
+    
+    const fenceStartIdx = text.indexOf(altMatch[0]);
+    const afterFence = text.substring(fenceStartIdx + altMatch[0].length);
+    
+    const langMatch = altMatch[0].match(/```(\w+)|\s*~~~(\w+)/);
+    const language = (langMatch ? (langMatch[1] || langMatch[2]) : '').toLowerCase();
+    
+    const closingMatch = afterFence.match(/\n```|\n~~~/);
+    if (!closingMatch) {
+      return { isFormatted: false, language: '', code: '' };
+    }
+    
+    const codeContent = afterFence.substring(0, closingMatch.index);
+    
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+      console.log('[TrustPrompt/CodeDetection] Formatted code block detected (inline):', {
+        language: language || '(none)',
+        length: codeContent.length,
+        lineCount: (codeContent.match(/\n/g) || []).length + 1
+      });
+      console.log('[TrustPrompt/CodeDetection] Classification: CODE (formatted block bypass - no scoring required)');
+    }
+
+    return {
+      isFormatted: true,
+      language: language,
+      code: codeContent
+    };
+  }
+
+  // ── TASK 16.2: PROSE HEURISTICS DETECTION ────────────────────────────────────
+  // Distinguishes prose (natural language) from code using heuristic scoring.
+  // Returns {isProse: boolean, score: number, indicators: object}
+  function detectProsePatterns(text) {
+    if (!text || typeof text !== 'string') {
+      return { isProse: false, score: 0, indicators: {} };
+    }
+
+    const indicators = {
+      capitalized_sentences_pct: 0,
+      article_density_pct: 0,
+      prose_words_count: 0,
+      question_count: 0,
+      exclamation_count: 0,
+      ellipsis_count: 0,
+      dialogue_count: 0
+    };
+
+    let proseScore = 0;
+    const lines = text.split('\n');
+
+    // ── Indicator 1: Capitalized sentence starts (natural language tendency) ───────
+    const capitalizedSentences = (text.match(/\n[A-Z]|\s{2,}[A-Z][a-z]/g) || []).length;
+    const totalSentences = Math.max((text.match(/[.!?]/g) || []).length, 1);
+    if (totalSentences > 0) {
+      indicators.capitalized_sentences_pct = (capitalizedSentences / totalSentences) * 100;
+      if (indicators.capitalized_sentences_pct >= 40) {
+        proseScore += 2;
+      }
+    }
+
+    // ── Indicator 2: Article density (a/an/the) ─────────────────────────────────
+    const articles = (text.match(/\b(?:a|an|the)\b/gi) || []).length;
+    const wordCount = (text.match(/\b\w+\b/g) || []).length;
+    if (wordCount > 0) {
+      indicators.article_density_pct = (articles / wordCount) * 100;
+      if (indicators.article_density_pct >= 5) {
+        proseScore += 2;
+      }
+    }
+
+    // ── Indicator 3: Prose-specific vocabulary ─────────────────────────────────
+    const proseWords = text.match(/\b(?:the|this|that|as|with|from|which|would|should|could|might|about|after|before|during|through|between|among|under|above|below|without|within|throughout)\b/gi) || [];
+    indicators.prose_words_count = proseWords.length;
+    if (proseWords.length >= 5) {
+      proseScore += 2;
+    }
+
+    // ── Indicator 4: Questions and exclamations ───────────────────────────────
+    const questions = (text.match(/\?/g) || []).length;
+    const exclamations = (text.match(/!/g) || []).length;
+    indicators.question_count = questions;
+    indicators.exclamation_count = exclamations;
+    if ((questions + exclamations) >= 2) {
+      proseScore += 1;
+    }
+
+    // ── Indicator 5: Ellipsis and pauses (conversational style) ──────────────────
+    const ellipses = (text.match(/\.\.\.|…/g) || []).length;
+    indicators.ellipsis_count = ellipses;
+    if (ellipses >= 1) {
+      proseScore += 1;
+    }
+
+    // ── Indicator 6: Dialogue/conversation markers ───────────────────────────────
+    const dialogueMarkers = (text.match(/["'](?:he|she|they|i|we|you|me|us)\s+(?:said|asked|replied|answered|shouted|whispered|exclaimed)/gi) || []).length;
+    indicators.dialogue_count = dialogueMarkers;
+    if (dialogueMarkers >= 1) {
+      proseScore += 2;
+    }
+
+    const isProse = proseScore >= 4; // Threshold: at least 4 points indicates prose
+
+    if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+      console.log('[TrustPrompt/CodeDetection] Prose heuristics:', {
+        score: proseScore,
+        indicators: indicators,
+        isProse: isProse
+      });
+      if (isProse) {
+        console.log('[TrustPrompt/CodeDetection] Classification: PROSE (suppressed from code classification)');
+      }
+    }
+
+    return {
+      isProse: isProse,
+      score: proseScore,
+      indicators: indicators
+    };
+  }
+
   // ── TASK 12.2: UNFORMATTED CODE BLOCK EXTRACTION ─────────────────────────────
   // Identifies unformatted code blocks in plain text without markdown backticks.
   // Groups contiguous lines with code-like characteristics (up to MAX_CODE_BLOCK_LINES).
   // Applies computeSourceCodeScore() to each candidate block.
   function extractUnformattedCodeBlocks(normalisedText) {
     if (!normalisedText || typeof normalisedText !== 'string') return [];
+    
+    const blocks = [];
+
+    // ── TASK 16.3: Check for formatted code blocks FIRST (bypass scoring) ──────────
+    // If text contains ``` or ~~~, extract as formatted code without scoring
+    // IMPORTANT: Check for markdown fences BEFORE prose detection
+    // This ensures code blocks are detected even when embedded in prose
+    console.log("[TrustPrompt/scanner] ★ extractUnformattedCodeBlocks START, input length:", normalisedText.length, "has backticks:", /```/.test(normalisedText));
+    const formattedCodeResult = detectFormattedCodeBlock(normalisedText);
+    console.log("[TrustPrompt/scanner] ★ detectFormattedCodeBlock returned:", { isFormatted: formattedCodeResult.isFormatted, codeLength: formattedCodeResult.code ? formattedCodeResult.code.length : 0 });
+    if (formattedCodeResult.isFormatted) {
+      // Compute credential indicators for the extracted code
+      let credentialScore = 0;
+      try {
+        const credRes = computeCredentialIndicators(formattedCodeResult.code);
+        credentialScore = (credRes && typeof credRes.value === 'number') ? credRes.value : 0;
+      } catch (_e) {
+        credentialScore = 0;
+      }
+      
+      // Create a scoreObj that bypasses scoring (already validated as code)
+      // BUT INCLUDE credential indicators for escalation
+      const scoreObj = {
+        classification: 'code',
+        score: 99, // Bypass threshold
+        strong_evidence: true,
+        reason: `Formatted code block (${formattedCodeResult.language || 'unspecified'} language)`,
+        features: {
+          formatted_code: true,
+          credentialIndicators: credentialScore
+        }
+      };
+      blocks.push({
+        rawMatch: formattedCodeResult.code,
+        startIndex: 0,
+        scoreObj: scoreObj
+      });
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log('[TrustPrompt/CodeDetection] Detected formatted code block - skipping prose check');
+        console.log(`[TrustPrompt/CodeDetection] Credential indicators score: ${credentialScore}`);
+      }
+      return blocks; // Return immediately, don't process unformatted blocks
+    }
+
+    // ── CRITICAL FIX: Extract code BEFORE prose detection ────────────────────────────
+    // This ensures code embedded in prose questions/sentences is not suppressed by
+    // prose heuristics. Extract code first (backticks, method calls, DB statements),
+    // then check remaining text for prose classification.
+    
+    // 1. Extract inline backtick code
+    const inlineCodeRegex = /`([^`\n]+)`/g;
+    let inlineMatch;
+    const inlineCodeBlocks = [];
+    while ((inlineMatch = inlineCodeRegex.exec(normalisedText)) !== null) {
+      const codeSnippet = inlineMatch[1];
+      // Minimal check: if it looks like code (has operators, syntax, or assignment)
+      if (/[=(){}\[\];:,]/.test(codeSnippet)) {
+        inlineCodeBlocks.push({
+          code: codeSnippet,
+          rawMatch: codeSnippet,
+          startIndex: inlineMatch.index,
+          endIndex: inlineMatch.index + inlineMatch[0].length,
+          language: 'inline',
+          isFormatted: false,
+          scoreObj: {
+            classification: 'code',
+            score: 5,
+            features: {}
+          }
+        });
+        blocks.push({
+          code: codeSnippet,
+          rawMatch: codeSnippet,
+          language: 'inline',
+          isFormatted: false,
+          scoreObj: {
+            classification: 'code',
+            score: 5
+          }
+        });
+        if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+          console.log('[TrustPrompt/CodeDetection] Extracted inline backtick code: ' + codeSnippet.substring(0, 60));
+        }
+      }
+    }
+    
+    // 2. Extract unformatted code lines (method calls, SQL, DB operations)
+    // CRITICAL: Group consecutive code sections together, don't fragment on empty lines
+    // This preserves complete Python modules, functions with their calls, etc.
+    const extractedCodeLines = normalisedText.split('\n');
+    const codeLinePatterns = [
+      /^\s*\w+\.\w+\s*\([^)]*\)\s*;?\s*$/,           // method calls
+      /^\s*(SELECT|INSERT|UPDATE|DELETE)\s+/i,       // SQL
+      /^\s*const\s+\w+\s*=\s*\{/,                    // const
+      /^\s*db\.\w+\s*\([^)]*\)\s*;?\s*$/,            // db.execute
+      /^\s*\w+\s*=\s*.*[=>{}\[\];]/,                 // assignments
+      /^\s*(def|class|import|from)\s+/,              // Python keywords
+      /^\s*(function|const|let|var|async)\s+/       // JS keywords
+    ];
+    
+    const codeLines = [];
+    let currentCodeBlock = [];
+    
+    for (let i = 0; i < extractedCodeLines.length; i++) {
+      const line = extractedCodeLines[i];
+      const trimmed = line.trim();
+      const isIndented = /^\s+/.test(line);
+      const isCodeLike = codeLinePatterns.some(pattern => pattern.test(trimmed));
+      
+      // Check if next non-empty line is code
+      let nextLineIsCode = false;
+      for (let j = i + 1; j < extractedCodeLines.length; j++) {
+        const nextLine = extractedCodeLines[j].trim();
+        if (nextLine) {
+          nextLineIsCode = codeLinePatterns.some(p => p.test(nextLine)) || /^\s+/.test(extractedCodeLines[j]);
+          break;
+        }
+      }
+      
+      if (!trimmed) {
+        // Empty line: only end block if next line is NOT code
+        if (currentCodeBlock.length > 0 && !nextLineIsCode) {
+          const blockCode = currentCodeBlock.join('\n').trim();
+          if (blockCode && /[(){}\[\];=,:]/.test(blockCode)) {
+            codeLines.push({
+              code: blockCode,
+              rawMatch: blockCode,
+              language: 'unformatted',
+              isFormatted: false,
+              scoreObj: {
+                classification: 'code',
+                score: 4,
+                features: {}
+              }
+            });
+            blocks.push({
+              code: blockCode,
+              rawMatch: blockCode,
+              language: 'unformatted',
+              isFormatted: false,
+              scoreObj: {
+                classification: 'code',
+                score: 4
+              }
+            });
+            if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+              console.log('[TrustPrompt/CodeDetection] Extracted code block: ' + blockCode.substring(0, 60));
+            }
+          }
+          currentCodeBlock = [];
+        }
+        continue;
+      }
+      
+      // Non-empty line
+      if (isCodeLike || (isIndented && currentCodeBlock.length > 0)) {
+        currentCodeBlock.push(line);
+      } else if (currentCodeBlock.length > 0 && !isIndented && !isCodeLike) {
+        // Non-indented, non-code line = end of block
+        const blockCode = currentCodeBlock.join('\n').trim();
+        if (blockCode && /[(){}\[\];=,:]/.test(blockCode)) {
+          codeLines.push({
+            code: blockCode,
+            rawMatch: blockCode,
+            language: 'unformatted',
+            isFormatted: false,
+            scoreObj: {
+              classification: 'code',
+              score: 4,
+              features: {}
+            }
+          });
+          blocks.push({
+            code: blockCode,
+            rawMatch: blockCode,
+            language: 'unformatted',
+            isFormatted: false,
+            scoreObj: {
+              classification: 'code',
+              score: 4
+            }
+          });
+          if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+            console.log('[TrustPrompt/CodeDetection] Extracted code block: ' + blockCode.substring(0, 60));
+          }
+        }
+        currentCodeBlock = [];
+      } else if (isCodeLike) {
+        // Start of new block
+        currentCodeBlock.push(line);
+      }
+    }
+    
+    // Handle final block if exists
+    if (currentCodeBlock.length > 0) {
+      const blockCode = currentCodeBlock.join('\n').trim();
+      if (blockCode && /[(){}\[\];=,:]/.test(blockCode)) {
+        codeLines.push({
+          code: blockCode,
+          rawMatch: blockCode,
+          language: 'unformatted',
+          isFormatted: false,
+          scoreObj: {
+            classification: 'code',
+            score: 4,
+            features: {}
+          }
+        });
+        blocks.push({
+          code: blockCode,
+          rawMatch: blockCode,  // Store FULL code, not truncated
+          language: 'unformatted',
+          isFormatted: false,
+          scoreObj: {
+            classification: 'code',
+            score: 4
+          }
+        });
+        if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+          console.log('[TrustPrompt/CodeDetection] Extracted final code block: ' + blockCode.substring(0, 60));
+        }
+      }
+    }
+    
+    // If code was found (backticks or code lines), return immediately
+    if (inlineCodeBlocks.length > 0 || codeLines.length > 0) {
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log('[TrustPrompt/CodeDetection] Found ' + (inlineCodeBlocks.length + codeLines.length) + ' code block(s) - skipping prose check');
+      }
+      return blocks;
+    }
+
+    // ── Check for prose patterns (suppress from code classification) ──────────────
+    // ONLY check prose if NO markdown fences AND NO inline backtick code were found
+    // This prevents false negatives when code is embedded in prose text
+    const proseResult = detectProsePatterns(normalisedText);
+    if (proseResult.isProse) {
+      if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
+        console.log('[TrustPrompt/CodeDetection] Prose detected via heuristics - skipping code classification');
+        console.log('[TrustPrompt/CodeDetection] Prose indicators:', proseResult.indicators);
+      }
+      return blocks; // Return empty blocks, text is prose not code
+    }
+
     const maxLines = (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.MAX_CODE_BLOCK_LINES) || 20;
     const lines = normalisedText.split('\n');
     
     if (CODE_DETECTION_CONFIG && CODE_DETECTION_CONFIG.LOG_SIGNAL_DETAILS) {
       console.log('[TrustPrompt/CODE] extractUnformattedCodeBlocks - input lines:', lines.length);
     }
-    
-    const blocks = [];
+
     let currentBlock = [];
     let blockStartIndex = 0;
     let currentIndex = 0;
@@ -2577,38 +3431,56 @@ const TrustScanner = (() => {
       while ((match = re.exec(normalisedText)) !== null) {
         const raw = match[0];
         const matchIndex = match.index;
+        
+        // DEBUG: Log ALL matches for high-risk patterns
+        const isHighRisk = ['ph_id_philid', 'credit_card', 'email'].includes(pattern.id);
+        if (isHighRisk) {
+          console.log(`[TrustPrompt/Scanner] ${pattern.id} REGEX MATCHED: "${raw}"`);
+        }
+
+        // SPECIAL HANDLING for senior_citizen pattern: Extract only the 10-digit number
+        // The regex has capture groups that match the digits; use them instead of the full match
+        let effectiveMatch = raw;
+        if (pattern.id === "ph_id_senior_citizen") {
+          // match[1] = digits from first alternative (with OSCA:/etc prefix)
+          // match[2] = digits from second alternative (standalone)
+          const capturedDigits = match[1] || match[2];
+          if (capturedDigits) {
+            effectiveMatch = capturedDigits; // Use only the 10-digit number
+          }
+        }
 
         // TASK-4.7: Context-aware filtering for ALL PII patterns
         // Check if this match appears in an educational/example context that should be filtered
-        if (shouldFilterByContext(pattern.id, raw, normalisedText, matchIndex)) {
-          console.log(`[TrustPrompt/context] filtered ${pattern.id}: ${raw.slice(0, 30)}`);
+        if (shouldFilterByContext(pattern.id, effectiveMatch, normalisedText, matchIndex)) {
+          if (isHighRisk) console.log(`[TrustPrompt/context] filtered ${pattern.id}: ${effectiveMatch.slice(0, 30)}`);
           continue;
         }
 
         // TASK-4.8: Pattern-specific context filter (if defined)
         // Some patterns define their own contextFilter function for specialized filtering
         if (pattern.contextFilter && typeof pattern.contextFilter === 'function') {
-          const shouldSuppress = !pattern.contextFilter(raw, normalisedText, matchIndex);
+          const shouldSuppress = !pattern.contextFilter(effectiveMatch, normalisedText, matchIndex);
           if (shouldSuppress) {
-            console.log(`[TrustPrompt/contextFilter] pattern filter suppressed ${pattern.id}: ${raw.slice(0, 30)}`);
+            if (isHighRisk) console.log(`[TrustPrompt/contextFilter] suppressed ${pattern.id}: ${effectiveMatch.slice(0, 30)}`);
             continue;
           }
         }
 
         // TASK-4.4: Apply placeholder suppression for known test/dummy values
-        if (isKnownPlaceholder(pattern.id, raw)) {
-          console.log(`[TrustPrompt/placeholder] rejected known placeholder: ${raw.slice(0, 30)}`);
+        if (isKnownPlaceholder(pattern.id, effectiveMatch)) {
+          if (isHighRisk) console.log(`[TrustPrompt/placeholder] rejected placeholder: ${effectiveMatch.slice(0, 30)}`);
           continue;
         }
 
         // TASK-4.5: Entropy pre-check — reject low-entropy dummy values
         if (pattern.minEntropy !== undefined) {
           // Extract the value portion (after any label=... prefix) for entropy check
-          const valueMatch = raw.match(/[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{10,})["']?\s*$/)
-                          || raw.match(/^([A-Za-z0-9\-_\.+\/=]{10,})$/);
-          const valueStr = valueMatch ? valueMatch[1] : raw;
+          const valueMatch = effectiveMatch.match(/[:=]\s*["']?([A-Za-z0-9\-_\.+\/=]{10,})["']?\s*$/)
+                          || effectiveMatch.match(/^([A-Za-z0-9\-_\.+\/=]{10,})$/);
+          const valueStr = valueMatch ? valueMatch[1] : effectiveMatch;
           if (shannonEntropy(valueStr) < pattern.minEntropy) {
-            console.log(`[TrustPrompt/entropy] rejected low-entropy match: ${raw.slice(0, 30)}`);
+            console.log(`[TrustPrompt/entropy] rejected low-entropy match: ${effectiveMatch.slice(0, 30)}`);
             continue;
           }
         }
@@ -2617,7 +3489,7 @@ const TrustScanner = (() => {
         // When pattern.structuralValidate is defined, call it on matched value
         let isValidated = false;
         if (pattern.structuralValidate) {
-          isValidated = pattern.structuralValidate(raw);
+          isValidated = pattern.structuralValidate(effectiveMatch);
           if (!isValidated) {
             console.log(`[TrustPrompt/validator] structural validation failed: ${pattern.id} - ${raw.slice(0, 30)}`);
             continue;
@@ -2625,13 +3497,19 @@ const TrustScanner = (() => {
         } else {
           // Fall back to TrustValidator for patterns without structuralValidate
           isValidated = TrustValidator.validate(pattern.validate, raw);
+          
+          // DEBUG: Log validation result for high-risk patterns
+          if (isHighRisk) {
+            console.log(`[TrustPrompt/Scanner] ${pattern.id} VALIDATOR: "${raw}" → ${isValidated}`);
+          }
+          
           if (!isValidated) continue;
         }
 
         // ─── TASK 12.1: Multi-feature scoring for source_code pattern ─────────
         if (pattern.id === "source_code") {
           // Extract inner text if wrapped in markdown fences or backticks
-          let innerCode = raw;
+          let innerCode = effectiveMatch;
           if (innerCode.startsWith('```') && innerCode.endsWith('```')) {
             innerCode = innerCode.replace(/^```[a-zA-Z0-9_-]*\r?\n?/, '').replace(/\r?\n?```$/, '');
           } else if (innerCode.startsWith('`') && innerCode.endsWith('`')) {
@@ -2656,7 +3534,7 @@ const TrustScanner = (() => {
           let escalatedRisk = escalationResult.escalatedRisk;
 
           // ── TASK 10.2: Context-aware risk elevation ────────────────────────
-          const isContextual = isCodeContextual(raw, normalisedText, matchIndex);
+          const isContextual = isCodeContextual(effectiveMatch, normalisedText, matchIndex);
           let contextElevation = false;
           if (isContextual && escalatedRisk === "low") {
             escalatedRisk = "moderate";
@@ -2672,8 +3550,8 @@ const TrustScanner = (() => {
             patternId: pattern.id,
             label: pattern.label,
             risk: escalatedRisk,
-            rawMatch: raw,
-            safeVersion: pattern.sanitize ? pattern.sanitize(raw) : "[CODE BLOCK REMOVED]",
+            rawMatch: effectiveMatch,
+            safeVersion: pattern.sanitize ? pattern.sanitize(effectiveMatch) : "[CODE BLOCK REMOVED]",
             validated: true,
             source: "A_regex",
             elevated: escalationResult.escalated || contextElevation,
@@ -2692,8 +3570,8 @@ const TrustScanner = (() => {
         }
 
         // CONTEXT-AWARE FILTERING FOR AGE: Distinguish age from duration/time-ago
-        if (pattern.id === "age_value" && raw.match(/\d+/)) {
-          const numberMatch = raw.match(/(\d+)/);
+        if (pattern.id === "age_value" && effectiveMatch.match(/\d+/)) {
+          const numberMatch = effectiveMatch.match(/(\d+)/);
           if (numberMatch) {
             const numberStr = numberMatch[0];
             const numberIndexInText = normalisedText.indexOf(numberStr, matchIndex);
@@ -2723,6 +3601,15 @@ const TrustScanner = (() => {
               // NON-PII CONTEXTS - calendar dates, holidays, scenarios, historical events, deadlines, etc
               // If these match, treat as non-age context
               const nonPIIContextPatterns = [
+                // ── GENERAL/EDUCATIONAL QUESTIONS (NEW) ──────────────────────────────
+                // Questions asking for general information, demographics, averages, etc.
+                // STRICT: Must pair general keywords with age/demographic questions
+                /\b(what\s+is|what\s+are|what's|define|definition\s+of|explain|explained).*\b(age|year\s+old)\b/,
+                /\b(average|typical|demographic|statistics?).*?\b(age|year\s+old)\b/,
+                /\b(refers?\s+to|is\s+defined\s+as|are\s+defined\s+as)\s+.*?\b(age|year\s+old)\b/,
+                /\b(for educational|for informational|for reference|as\s+a\s+guide).*\b(age|year\s+old)\b/,
+                /\b(age group|age range|age bracket|age category)\b/,
+                
                 // Calendar/Current Date References
                 /\b(today is|it is|the date is|as of today|right now it's|current date)\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
                 /^on\s+\w+\s+\d{1,2},?\s*\d{4}\b/,
@@ -2785,8 +3672,9 @@ const TrustScanner = (() => {
               
               // EXPANDED DURATION MARKERS
               const durationMarkers = [
-                // Work experience
-                /\b(worked|work|employed|employment|tenure|experience|career)\s+(for|of|spanning)\b/,
+                // Work experience - match verb with optional preposition
+                // "worked", "work", "employment", or "worked for", "work for"
+                /\b(worked|work|employed|employment|tenure|experience|career)(?:\s+(for|of|spanning))?\b/,
                 /\b(years (of|in|at|with)|years experience|worked for|work for|been at|been with)\b/,
                 /\b(more than|over|less than|at least)\s+\d{1,3}\s+years\b/,
                 // Education
@@ -2795,6 +3683,8 @@ const TrustScanner = (() => {
                 // Residence/General duration
                 /\b(lived|lived for|lived in|stayed|residing|residence|been here|based in)\b/,
                 /\b(for|during|throughout|spanning|lasting|period|duration)\b/,
+                // ADDED: Work domains after years (logistics, IT, finance, etc.)
+                /\b(years\s+(in|of)\s+(logistics|it|technology|finance|banking|healthcare|education|sales|marketing|hr|administration|supply.?chain|engineering|consulting|retail))\b/,
               ];
               
               // EXPANDED TIME-AGO MARKERS
@@ -2832,20 +3722,35 @@ const TrustScanner = (() => {
                 }
               }
               
+              // ★ PERSONAL AGE MARKERS: When "I am" directly precedes the number, it's always age disclosure
+              // This overrides duration classification even if "for"/"during" appears elsewhere in the context
+              const personalAgeMarkers = [
+                /\b(i\s+am|i'm|im|my age is|age:)\s+\d{1,3}\s+(years?\s*old|yrs?\s*old|y\/o)/,
+              ];
+              const hasDirectAgeStatement = personalAgeMarkers.some(m => m.test(text.toLowerCase()));
+              
               // Check for time-ago first (most specific, highest priority)
               if (timeAgoMarkers.some(m => m.test(afterText)) || timeAgoMarkers.some(m => m.test(beforeText))) {
                 return "time_ago";
               }
               
-              // Check for duration second (specific work/education/residence keywords)
-              if (durationMarkers.some(m => m.test(beforeText))) {
-                return "duration";
+              // ★ NEW: Check for NON-PII contexts BEFORE checking age markers ★
+              // This ensures general questions like "average age" are caught first
+              // If these match, treat as NOT age-related (educational, demographic, statistical)
+              const hasNonPIIContext = nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText));
+              
+              if (hasNonPIIContext) {
+                console.log(`[TrustPrompt/age-debug] General context DETECTED - returning non_pii_context. beforeText="${beforeText.slice(-50)}", afterText="${afterText.slice(0, 50)}"`);
+                return "non_pii_context";  // Not a personal age disclosure
+              } else {
+                console.log(`[TrustPrompt/age-debug] NO general context - continuing. beforeText="${beforeText.slice(-50)}", afterText="${afterText.slice(0, 50)}"`);
               }
               
-              // NEW: Check for non-PII contexts (calendar dates, holidays, scenarios, etc.)
-              // If these match, treat as NOT age-related
-              if (nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText))) {
-                return "non_pii_context";  // Not a personal age disclosure
+              // Check for duration second (specific work/education/residence keywords)
+              // BUT: Skip duration check if there's a direct "I am X years old" statement (personal age disclosure)
+              if (!hasDirectAgeStatement && durationMarkers.some(m => m.test(beforeText))) {
+                const matchedPattern = durationMarkers.find(m => m.test(beforeText));
+                return "duration";
               }
               
               // Check for age context (default to age if other markers not found)
@@ -2860,20 +3765,25 @@ const TrustScanner = (() => {
             
             if (context === "duration" || context === "time_ago" || context === "non_pii_context") {
               // Not age-related PII, skip this finding
-              console.log(`[TrustPrompt/age-context] filtered age pattern as ${context}: ${raw.slice(0, 30)}`);
+              console.log(`[TrustPrompt/age-context] filtered age pattern as ${context}: ${effectiveMatch.slice(0, 30)}`);
               continue;
             }
           }
         }
 
+        // ★ HARD BLOCK: Prevent age_value from being flagged in general/educational contexts
+        // Hard-block failsafe removed - it was too broad and matching "generally" in
+        // "generally healthy", causing false negatives. Using contextFilter only.
+
         findings.push({
           patternId:   pattern.id,
           label:       pattern.label,
           risk:        pattern.risk,
-          rawMatch:    raw,
-          safeVersion: pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]",
+          rawMatch:    effectiveMatch,
+          safeVersion: pattern.sanitize ? pattern.sanitize(effectiveMatch) : "[REDACTED]",
           validated:   isValidated,  // TASK-7.2: Set validated:true if structuralValidate passed
-          source:      "A_regex"
+          source:      "A_regex",
+          isTriggerOnly: pattern.isTriggerOnly || false  // TASK-4.8: Mark trigger-only patterns
         });
       }
     }
@@ -3096,7 +4006,7 @@ const TrustScanner = (() => {
   // Source code detection runs independently on normalisedText, parallel with all paths.
   // Returns findings array with source_code pattern and proper risk escalation.
 
-  function runSourceCodeDetection(normalisedText) {
+  function runSourceCodeDetection(normalisedText, rawText = null) {
     // Safety check: CODE_DETECTION_CONFIG might not be defined in worker context
     try {
       if (typeof CODE_DETECTION_CONFIG === 'undefined' || CODE_DETECTION_CONFIG.enableSourceCodeDetection === false) {
@@ -3108,12 +4018,22 @@ const TrustScanner = (() => {
     }
 
     let findings = [];
-    const unformattedBlocks = extractUnformattedCodeBlocks(normalisedText);
+    // CRITICAL: Pass rawText to extractUnformattedCodeBlocks so markdown fences can be detected
+    // The normalisedText has backticks replaced with placeholders, so formatted blocks won't be found
+    const textForDetection = rawText || normalisedText;
+    const unformattedBlocks = extractUnformattedCodeBlocks(textForDetection);
     console.log(`[TrustPrompt/scanner] runSourceCodeDetection: extracted ${unformattedBlocks.length} blocks`);
     
     for (const block of unformattedBlocks) {
       console.log(`[TrustPrompt/scanner] Processing block: "${block.rawMatch.substring(0, 30)}..." classification=${block.scoreObj.classification}`);
       const escalationResult = evaluateCodeRiskEscalation(block.scoreObj, "low");
+      
+      // ★ ALWAYS extract credentials from code, regardless of escalationResult
+      // Don't wait for credentialsDetected - just extract directly
+      console.log(`[TrustPrompt/scanner] ★★★ EXTRACTING credentials from block START`);
+      const credentialFindings = extractCredentialsFromCode(block.rawMatch, "source_code");
+      console.log(`[TrustPrompt/scanner] ★★★ EXTRACTING credentials from block: found ${credentialFindings.length} credentials`);
+      
       let escalatedRisk = escalationResult.escalatedRisk;
       const isContextual = isCodeContextual(block.rawMatch, normalisedText, block.startIndex);
       let contextElevation = false;
@@ -3149,8 +4069,12 @@ const TrustScanner = (() => {
         }
       };
       
-      console.log(`[TrustPrompt/scanner] Pushing finding: patternId=${finding.patternId}, risk=${finding.risk}`);
+      console.log(`[TrustPrompt/scanner] Pushing source_code finding`);
       findings.push(finding);
+      
+      // ★ Add extracted credential findings
+      console.log(`[TrustPrompt/scanner] Adding ${credentialFindings.length} credential findings`);
+      findings.push(...credentialFindings);
     }
     
     console.log(`[TrustPrompt/scanner] runSourceCodeDetection returning ${findings.length} findings`);
@@ -3189,8 +4113,9 @@ const TrustScanner = (() => {
       
       // ★ RUN SOURCE CODE DETECTION FIRST (before PATH C)
       // This prevents PATH C from misclassifying code tokens as names/orgs
+      // CRITICAL: Pass rawText so markdown fences can be detected (normalized text has backticks replaced)
       console.log("[TrustPrompt/scanner] Running SOURCE CODE DETECTION (FIRST - before linguistic analysis)...");
-      const sourceCodeFindings = runSourceCodeDetection(textRegex);
+      const sourceCodeFindings = runSourceCodeDetection(textRegex, rawText);
       console.log(`[TrustPrompt/scanner] ★★★ sourceCodeFindings CREATED: length=${sourceCodeFindings.length}`);
       if (sourceCodeFindings.length > 0) {
         console.log(`[TrustPrompt/scanner] ★★★ sourceCodeFindings CONTENT:`, sourceCodeFindings.map(f => ({
@@ -3226,8 +4151,23 @@ const TrustScanner = (() => {
       
       console.log(`[TrustPrompt/scanner] PATH A findings: ${pathAFindings.length}${pathAFindings.length > 0 ? ' → ' + pathAFindings.map(f => f.patternId).join(', ') : ''}`);
       
+      // Mark all PATH A findings with origin
+      pathAFindings.forEach(f => { f.origin = 'pathA'; });
+      
       console.log("[TrustPrompt/scanner] Running PATH B (gazetteer)...");
-      let pathBFindings = await TrustGazetteer.scan(textGazetteer);
+      let pathBFindings = [];
+      
+      // Safety check: TrustGazetteer may not be available (e.g., in testing or worker contexts)
+      if (typeof TrustGazetteer !== 'undefined' && TrustGazetteer && TrustGazetteer.scan) {
+        try {
+          pathBFindings = await TrustGazetteer.scan(textGazetteer);
+        } catch (pathBError) {
+          console.error("[TrustPrompt/scanner] PATH B (gazetteer) error:", pathBError.message);
+          pathBFindings = [];
+        }
+      } else {
+        console.warn("[TrustPrompt/scanner] Gazetteer not available - PATH B skipped");
+      }
       
       // ★ FILTER PATH B: Remove name and organization detections
       // Path B should detect medical, financial, nationality, sex, eye_color
@@ -3259,6 +4199,9 @@ const TrustScanner = (() => {
         return false;
       });
       
+      // Mark all PATH B findings with origin
+      pathBFindings.forEach(f => { f.origin = 'pathB'; });
+      
       console.log(`[TrustPrompt/scanner] PATH B findings: ${pathBFindings.length}${pathBFindings.length > 0 ? ' → ' + pathBFindings.map(f => f.patternId).join(', ') : ''}`);
       console.log("[TrustPrompt/scanner] Running PATH C (compromise.js linguistic NLP)...");
       let pathCFindings = [];
@@ -3285,6 +4228,9 @@ const TrustScanner = (() => {
           console.log(`[TrustPrompt/scanner] DEBUG: TrustLinguisticDetector.scan is available, calling it...`);
           pathCFindings = TrustLinguisticDetector.scan(textNLP);
           
+          // Mark all PATH C findings with origin
+          pathCFindings.forEach(f => { f.origin = 'pathC'; });
+          
           console.log(`[TrustPrompt/scanner] PATH C (linguistic) findings: ${pathCFindings.length}${pathCFindings.length > 0 ? ' → ' + pathCFindings.map(f => f.rawMatch).join(', ') : ''}`);
         } catch (pathCError) {
           console.error("[TrustPrompt/scanner] PATH C (linguistic) error:", pathCError.message);
@@ -3308,8 +4254,11 @@ const TrustScanner = (() => {
         console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch}`));
       }
       
-      const findings      = suppressPlaceholders(merged);  // TASK-4.4
-      console.log("[TrustPrompt/scanner] After suppressPlaceholders:", findings.length, "findings - source_code count:", findings.filter(f => f.patternId === 'source_code').length);
+      const afterPlaceholders = suppressPlaceholders(merged);  // TASK-4.4
+      console.log("[TrustPrompt/scanner] After suppressPlaceholders:", afterPlaceholders.length, "findings - source_code count:", afterPlaceholders.filter(f => f.patternId === 'source_code').length);
+      
+      const findings      = filterTriggerOnlyFindings(afterPlaceholders);  // TASK-4.8: Exclude trigger-only patterns like personal_label
+      console.log("[TrustPrompt/scanner] After filterTriggerOnlyFindings:", findings.length, "findings");
       if (findings.length > 0) {
         console.log("[TrustPrompt/scanner] Final findings detail before risk scoring:", findings.map(f => `${f.patternId}:${f.rawMatch}`));
       }
@@ -3600,6 +4549,140 @@ const TrustScanner = (() => {
     }
   }
 
+  // ── TASK 12.1: CREDENTIAL EXTRACTION FROM CODE BLOCKS ─────────────────────────
+  // Purpose: Extract specific credentials detected within code blocks.
+  // When credentials are found in code, this function creates individual findings for each.
+  //
+  // Returns: Array of finding objects for each credential detected
+  
+  function extractCredentialsFromCode(codeBlock, sourceContext = "source_code") {
+    if (!codeBlock || !CREDENTIAL_PATTERNS) {
+      return [];
+    }
+
+    const findings = [];
+    const processedMatches = new Set(); // Track to avoid duplicates
+
+    // ── Iterate through credential pattern categories ────────────────────────
+    for (const [category, patterns] of Object.entries(CREDENTIAL_PATTERNS)) {
+      // Skip non-regex arrays (credential_variable_names, sensitive_keywords)
+      if (Array.isArray(patterns) && patterns.length > 0 && typeof patterns[0] === 'string') {
+        continue;
+      }
+
+      // For regex pattern arrays
+      if (Array.isArray(patterns)) {
+        for (const pattern of patterns) {
+          if (!(pattern instanceof RegExp)) continue;
+
+          let match;
+          const regex = new RegExp(pattern.source, pattern.flags);
+          while ((match = regex.exec(codeBlock)) !== null) {
+            const matchText = match[0];
+            const matchKey = `${category}::${matchText}`;
+
+            // Skip if already processed (avoid duplicates)
+            if (processedMatches.has(matchKey)) {
+              continue;
+            }
+            processedMatches.add(matchKey);
+
+            // Map category to pattern ID and determine label + sanitize function
+            let patternId = category;
+            let label = category;
+            let sanitizeFunc = null;
+
+            if (category === 'ph_ids') {
+              // Determine which Philippine ID type it is
+              if (/\d{2}-\d{7}-\d/.test(matchText)) {
+                patternId = 'ph_id_sss';
+                label = 'SSS (Social Security System)';
+                sanitizeFunc = (m) => {
+                  const digits = m.replace(/[^\d]/g, "");
+                  if (digits.length === 10) {
+                    return digits.slice(0, 2) + "-" + "*".repeat(7) + "-" + digits.slice(-1);
+                  }
+                  return "[REDACTED-SSS]";
+                };
+              } else if (/\d{4}\s\d{7}\s\d/.test(matchText)) {
+                patternId = 'ph_id_umid';
+                label = 'UMID (Unified Multi-Purpose ID)';
+                sanitizeFunc = (m) => {
+                  const digits = m.replace(/[^\d\s]/g, "");
+                  if (digits.length === 12) {
+                    return digits.slice(0, 4) + " " + "*".repeat(7) + " " + digits.slice(-1);
+                  }
+                  return "[REDACTED-UMID]";
+                };
+              } else if (/\d{4}-\d{4}-\d{4}-\d{4}/.test(matchText)) {
+                patternId = 'ph_id_philid';
+                label = 'PhilID (National ID)';
+                sanitizeFunc = (m) => `XXXX-XXXX-XXXX-${m.slice(-4)}`;
+              } else if (/\d{3}-\d{3}-\d{3}/.test(matchText)) {
+                patternId = 'ph_id_tin';
+                label = 'TIN (Tax ID)';
+                sanitizeFunc = (m) => `***-***-${m.slice(-3)}`;
+              } else if (/\d{1,3}-\d{2}-\d{6,7}/.test(matchText)) {
+                patternId = 'ph_id_drivers_license';
+                label = "Driver's License";
+                sanitizeFunc = (m) => `[REDACTED-DL]`;
+              }
+            } else if (category === 'api_keys') {
+              patternId = 'api_key';
+              label = 'API Key';
+              sanitizeFunc = (m) => `[REDACTED-API-KEY]`;
+            } else if (category === 'jwt_tokens') {
+              patternId = 'jwt';
+              label = 'JWT Token';
+              sanitizeFunc = (m) => `[REDACTED-JWT]`;
+            } else if (category === 'aws_keys') {
+              patternId = 'aws_key';
+              label = 'AWS Credential';
+              sanitizeFunc = (m) => `[REDACTED-AWS]`;
+            } else if (category === 'github_tokens') {
+              patternId = 'github_token';
+              label = 'GitHub Token';
+              sanitizeFunc = (m) => `[REDACTED-GITHUB]`;
+            } else if (category === 'connection_strings') {
+              patternId = 'connection_string';
+              label = 'Connection String';
+              sanitizeFunc = (m) => `[REDACTED-CONNECTION]`;
+            } else if (category === 'private_keys') {
+              patternId = 'private_key';
+              label = 'Private Key';
+              sanitizeFunc = (m) => `[REDACTED-KEY]`;
+            }
+
+            // Apply sanitize function if available
+            const safeVersion = sanitizeFunc ? sanitizeFunc(matchText) : '[CREDENTIAL REMOVED]';
+
+            // Create finding for this credential
+            const finding = {
+              patternId,
+              label,
+              risk: 'high', // Credentials in code are high risk
+              rawMatch: matchText,
+              safeVersion,
+              validated: true,
+              source: 'credential_extraction_from_code',
+              elevated: true,
+              elevation_reason: 'credential_in_code',
+              credentialCategory: category,
+              sourceContext
+            };
+
+            console.log(
+              `[TrustPrompt/scanner] Extracted credential: patternId=${finding.patternId}, match="${matchText.substring(0, 20)}", sanitized="${safeVersion}"`
+            );
+            findings.push(finding);
+          }
+        }
+      }
+    }
+
+    return findings;
+  }
+
   // ── TASK 12.1: CODE RISK ESCALATION EVALUATION ──────────────────────────────
   // Requirement 12: Risk Escalation When Credentials Are Embedded in Code
   //
@@ -3724,6 +4807,7 @@ const TrustScanner = (() => {
     formatDiagnosticOutput,
     computeSourceCodeScore,
     runSourceCodeDetection,
+    extractCredentialsFromCode,
     evaluateCodeRiskEscalation,
     isCodeContextual,
     detectCodeKeywords,
@@ -3980,9 +5064,11 @@ function countPatternMatches(text, patterns) {
     compiled.lastIndex = 0;
     const matches = text.match(compiled);
     if (matches) {
+      console.log(`[TrustPrompt/credentials] Pattern /${pattern.source.substring(0, 20)}/: ${matches.length} matches`);
       totalMatches += matches.length;
     }
   }
+  console.log(`[TrustPrompt/credentials] Total matches for all patterns in category: ${totalMatches}`);
   return totalMatches;
 }
 
@@ -4140,12 +5226,14 @@ function countCredentialMatches(text, credentialPatterns) {
   for (const [category, patterns] of Object.entries(credentialPatterns)) {
     // Skip non-regex arrays (credential_variable_names, sensitive_keywords)
     if (Array.isArray(patterns) && patterns.length > 0 && typeof patterns[0] === 'string') {
+      console.log(`[TrustPrompt/credentials] Skipping string array: ${category}`);
       continue;  // Skip string arrays
     }
     
     // For regex pattern arrays
     if (Array.isArray(patterns)) {
       const count = countPatternMatches(text, patterns);
+      console.log(`[TrustPrompt/credentials] Category ${category}: ${count} matches`);
       byCategory[category] = count;
       totalCount += count;
     }
@@ -4597,6 +5685,8 @@ function computeCredentialIndicators(text) {
   const matches = countCredentialMatches(text, CREDENTIAL_PATTERNS);
   const credentialCount = matches.totalCount;
   const byCategory = matches.byCategory;
+  
+  console.log(`[TrustPrompt/credentials] Analyzed code: "${text.substring(0, 40)}..." | count: ${credentialCount} | categories: ${JSON.stringify(byCategory)}`);
   
   // ── Normalize to 0.0–1.0 signal value ─────────────────────────────────
   // Formula: min(1.0, credentialCount * 0.33)
@@ -5252,6 +6342,8 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof globalThis !== 'undefined') {
   globalThis.TrustScanner = TrustScanner;
   globalThis.computeSourceCodeScore = TrustScanner.computeSourceCodeScore;
+  globalThis.runSourceCodeDetection = TrustScanner.runSourceCodeDetection;
+  globalThis.extractCredentialsFromCode = TrustScanner.extractCredentialsFromCode;
   globalThis.evaluateCodeRiskEscalation = TrustScanner.evaluateCodeRiskEscalation;
   globalThis.isCodeContextual = TrustScanner.isCodeContextual;
   globalThis.detectCodeKeywords = TrustScanner.detectCodeKeywords;
@@ -5265,3 +6357,4 @@ if (typeof globalThis !== 'undefined') {
   globalThis.detectIndentationPattern = TrustScanner.detectIndentationPattern;
   globalThis.detectLineDensity = TrustScanner.detectLineDensity;
 }
+

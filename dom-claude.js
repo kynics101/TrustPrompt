@@ -61,6 +61,21 @@ const TP_CLAUDE = (() => {
   // ── 1. CASCADING SELECTOR ─────────────────────────────────────────────────
 
   function findPromptBox() {
+    // Priority 0 — Check the actively focused element first
+    // This ensures we pick the textbox the user is currently typing in,
+    // not an earlier message box that's scrolled up in the conversation.
+    const activeEl = document.activeElement;
+    if (activeEl && isVisible(activeEl)) {
+      if (
+        activeEl.tagName === "TEXTAREA" ||
+        activeEl.tagName === "INPUT" ||
+        (activeEl.tagName === "DIV" && activeEl.contentEditable === "true")
+      ) {
+        console.log("[TP/claude] Found via activeElement (focused)");
+        return activeEl;
+      }
+    }
+
     // Layer 1 — ARIA / Role (Claude's stable data-testid first)
     for (const sel of [
       '[data-testid="chat-input"]',

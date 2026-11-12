@@ -52,6 +52,8 @@ let lastScannedText = "";
 let scanState       = "IDLE"; // IDLE, PENDING, SCANNING, DONE
 let lastScanResult  = null;
 let pendingSubmitResolver = null;
+let submitBlocked   = false; // Block submit until user confirms after scan
+let scanLocked      = false; // Lock while scan is actively running
 let performanceMarkers = {}; // Track timing of scan pipeline
 
 // ── PERFORMANCE TRACKING HELPERS ──────────────────────────────────────────────
@@ -88,6 +90,21 @@ function reportScanTiming() {
 // ── 1. FIND PROMPT BOX ────────────────────────────────────────────────────────
 
 function findPromptBox() {
+  // Priority 0 — Check the actively focused element first
+  // This ensures we pick the textbox the user is currently typing in,
+  // not an earlier message box that's scrolled up in the conversation.
+  const activeEl = document.activeElement;
+  if (activeEl && isVisible(activeEl)) {
+    // Accept contenteditable divs, textareas, or inputs that are in editable mode
+    if (
+      activeEl.tagName === "TEXTAREA" ||
+      activeEl.tagName === "INPUT" ||
+      (activeEl.tagName === "DIV" && activeEl.contentEditable === "true")
+    ) {
+      console.log("[TrustPrompt/ChatGPT] found via activeElement (focused)");
+      return activeEl;
+    }
+  }
 
   // Layer 1 — Claude's stable data-testid
   const testIds = [
@@ -195,6 +212,35 @@ function normaliseText(raw) {
 
 // ── 3. PATTERN MATCHING + VALIDATION ─────────────────────────────────────────
 
+function shouldFilterByContext(patternId, rawMatch, fullText, matchIndex) {
+  // Color palette/design system contexts (for mac_address)
+  // Filters MAC address patterns that appear in design/color contexts
+  // Examples: "AA-BB-CC-DD-EE-FF" in "color palette", "hex code", "design token"
+  if (patternId === 'mac_address') {
+    // Extract context: before and after the match (±150 chars)
+    const beforeStart = Math.max(0, matchIndex - 150);
+    const beforeText = fullText.slice(beforeStart, matchIndex).toLowerCase();
+    
+    const afterStart = matchIndex + rawMatch.length;
+    const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
+    
+    const fullContext = beforeText + " [MATCH] " + afterText;
+
+    const colorPaletteMarkers = [
+      /\b(color|palette|swatch|hex|design|token|brand|theme|ui|ux|interface)\b/,
+      /\b(rgb|hsv|hsl|color code|hex code|color value)\b/,
+      /\b(design system|color scheme|color reference|palette name)\b/,
+    ];
+
+    if (colorPaletteMarkers.some(m => m.test(fullContext))) {
+      console.log(`[TrustPrompt/content-script-chatgpt] filtered ${patternId}: color palette context`);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function scanText(text) {
   const normalised = normaliseText(text);
   const findings   = [];
@@ -204,6 +250,12 @@ function scanText(text) {
     let match;
     while ((match = re.exec(normalised)) !== null) {
       const raw = match[0];
+      
+      // Apply context-aware filtering
+      if (shouldFilterByContext(pattern.id, raw, text, text.indexOf(raw))) {
+        continue;  // Skip this match due to context
+      }
+      
       if (!TrustValidator.validate(pattern.validate, raw)) continue;
       const safeVersion = pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]";
       findings.push({
@@ -662,12 +714,16 @@ function handleSubmitAttempt(e) {
   console.log("[TrustPrompt] awaiting scan...");
   awaitScan().then(result => {
     console.log("[TrustPrompt] scan result received:", result);
-    if (result && result.riskLevel === "none") {
-      console.log("[TrustPrompt] scan clear — releasing submit");
-      releaseSubmit();
-    } else {
-      console.log("[TrustPrompt] submit blocked — risk level:", result?.riskLevel);
-    }
+    // CHANGED: No longer auto-release on "none" risk
+    // Instead, always block and wait for user to press Enter again
+    console.log("[TrustPrompt] submit blocked — waiting for user confirmation. Risk level:", result?.riskLevel);
+    
+    // Block submission and wait for user's second Enter
+    submitBlocked = true;
+    console.log("[TrustPrompt] submitBlocked set to TRUE");
+    
+    // Show toast telling user to press Enter again
+    showToast("✓ Scan complete! Press Enter again to send, or edit your message.", 5000);
   });
 }
 

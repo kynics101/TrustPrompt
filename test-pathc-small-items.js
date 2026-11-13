@@ -26,14 +26,17 @@ const ID = { person: 'nlp_person_name', job: 'nlp_job_title', org: 'nlp_organiza
 const lines = fs.readFileSync(path.resolve(process.argv[2]), 'utf8').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
 const res = {}; const fails = [];
 for (const l of lines) {
-  const [kind, type, text, expect = '', forbid = ''] = l.split('|');
+  // the sentence itself may contain "|" (a resume / signature separator): kind and type are the first two fields, expect and forbid the last two of a pos line
+  const f = l.split('|'), kind = f[0], type = f[1];
+  const isPos = kind.startsWith('pos');
+  const text = isPos ? f.slice(2, f.length - 2).join('|') : f.slice(2).join('|'), expect = isPos ? f[f.length - 2] : '', forbid = isPos ? f[f.length - 1] : '';
   const fs_ = Det.scan(N.normalizePath_C(text)).filter(x => type === '*' ? /^nlp_/.test(x.patternId) : x.patternId === ID[type]).map(x => x.rawMatch);
   const words = s => s.toLowerCase().split(/[\s]+/).map(w => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
   let ok;
   if (kind === 'neg') ok = fs_.length === 0;  // kinds pos* (pos, posu, ...) all use the else branch
   else {
     const ex = expect.split(';').filter(Boolean).map(s => s.toLowerCase()), fb = new Set(forbid.split(';').filter(Boolean).map(s => s.toLowerCase()));
-    ok = fs_.some(m => { const w = words(m); return ex.every(e => e.split(/\s+/).every(t => w.includes(t))); }) && !fs_.some(m => words(m).some(w => fb.has(w)));
+    ok = fs_.some(m => { const w = words(m); return ex.every(e => e.split(/\s+/).every(t => w.includes(t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')))); }) && !fs_.some(m => words(m).some(w => fb.has(w)));
   }
   const key = kind + '/' + type; const r = res[key] || (res[key] = { n: 0, ok: 0 }); r.n++; if (ok) r.ok++; else fails.push(`${kind}/${type}: ${text}  => ${fs_.join(' | ') || '-'}`);
 }

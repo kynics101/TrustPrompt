@@ -879,14 +879,22 @@ const TrustLinguisticDetector = (() => {
   // verb, a relationship word (friend, cousin, colleague...), a dictionary job title, "named", "my" / "our" before X, or a trailing verb of speech /
   // work / presence ("said", "works", "are both"). Y is reported when it passes the name tests. A pair glued to another Title-Case
   // word ("Bread and Butter Pudding", "Maria and Ben Santos") is left to the other passes. Pairs of ordinary nouns ("Salt and Pepper") fail on X.
-  const G_AND_VERB_RE = /\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\b/i;
+  // Languages and nationalities (a small data list kept inside Path C; Path B's list in gazetteer.js is private and is not touched). A bare language
+  // or nationality word is not a person in the directive pass ("translate to Tagalog", "for Spanish learners") or the pair pass ("English and Spanish").
+  const G_LANG_NAT = new Set(('english french spanish german italian portuguese dutch russian polish czech hungarian romanian greek turkish arabic hebrew persian farsi ' +
+    'hindi urdu bengali tamil telugu punjabi nepali sinhala thai lao khmer vietnamese burmese malay indonesian filipino tagalog pilipino cebuano bisaya ilocano ilokano ' +
+    'hiligaynon waray kapampangan pangasinan bicolano chavacano tausug maranao maguindanao mandarin cantonese hokkien chinese japanese korean mongolian swahili zulu xhosa ' +
+    'yoruba igbo hausa amharic somali afrikaans latin swedish norwegian danish finnish icelandic ukrainian serbian croatian bulgarian ' +
+    'american british canadian australian mexican brazilian argentine chilean colombian peruvian venezuelan cuban indian pakistani bangladeshi egyptian nigerian kenyan ghanaian ' +
+    'ethiopian moroccan iranian iraqi israeli saudi emirati qatari irish scottish welsh swiss austrian belgian singaporean taiwanese').split(' '));
+  const G_AND_VERB_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\b/i;
   const G_AND_REL_RE = /\b(?:friends?|classmates?|schoolmates?|colleagues?|co-?workers?|teammates?|cousins?|sisters?|brothers?|siblings?|twins?|aunt|uncle|nephew|niece|mother|father|mom|dad|parents?|son|daughter|children|kids?|wife|husband|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|neighbou?rs?|roommates?|housemates?|grandparents?|grandmother|grandfather|godparents?|in-laws?|relatives?|family)\b/i;
   const G_AND_TRAIL_RE = /^\s*(?:(?:are|were)\s+both\b|both\b|(?:said|says|told|asked|replied|wrote|works?|worked|lives?|lived|went|came|arrived|joined|presented|attended|left|called|live|work)\b)/i;
   function extractNamePairsWithAnd(text, findings) {
     const re = new RegExp(`${NAME_LB}(${NAME_WORD})\\s+(?:and|&)\\s+(${NAME_WORD})${NAME_RB}`, 'gu');
     const okName = (w, givenOnly) => {
       const tg = isolatedNameTags(w), lw = w.toLowerCase();
-      if (NON_NAME_WORDS.has(lw) || isPlaceOrOrgWord(w) || EXTENSIVE_JOB_TITLES.has(lw) || G_INTRO_NOT_NAMES.has(lw) || tg.some(t => COMMON_WORD_TAGS.includes(t) && !nameHasPersonTag(tg))) return false;
+      if (G_LANG_NAT.has(lw) || NON_NAME_WORDS.has(lw) || isPlaceOrOrgWord(w) || EXTENSIVE_JOB_TITLES.has(lw) || G_INTRO_NOT_NAMES.has(lw) || tg.some(t => COMMON_WORD_TAGS.includes(t) && !nameHasPersonTag(tg))) return false;
       return givenOnly ? isKnownGivenName(w) : (isKnownNameWord(w) || (nameHasPersonTag(tg) && !tg.includes('NameDictionary')));
     };
     let m;
@@ -2547,11 +2555,23 @@ const TrustLinguisticDetector = (() => {
     })();
     // Group 17b: for a title added by category, a Title Case heading context also disables the capitalisation cues (4, 5, 5b, 6) -
     // "<Title> Meeting Notes" is not "<Title> <First> <Last>".
-    const capsUseless = capsUselessBase || (JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && jobHeadingLikeAt(text, s, e));
+    // (the heading guard now covers EVERY multi-word title, not only those added by category; the generic-sentence guard stays category-only)
+    // A title right after a comma / bar / bullet / colon ("Name, Chief Executive Officer, Org", "Name | Title") is a signature or appositive, not a
+    // heading: the guard is not applied there to a title of the main dictionary (titles added by category keep their earlier behaviour).
+    // For a main-dictionary title the guard also needs a HEADING LINE: no lowercase content word in the sentence ("She works as a Bus Door Repairer at the
+    // main office." is prose that happens to use Title Case; normalizePath_C puts a period before the Title Case run there, which hides the "works as a" cue).
+    const jobSentenceIsHeading = () => {
+      const ss = Math.max(text.lastIndexOf('. ', s - 1), text.lastIndexOf('? ', s - 1), text.lastIndexOf('! ', s - 1), text.lastIndexOf('\n', s - 1)) + 1;
+      let se = text.length; for (const ch of ['. ', '? ', '! ', '\n']) { const k = text.indexOf(ch, e); if (k !== -1 && k < se) se = k; }
+      return !(text.slice(ss, se).match(/[A-Za-z][A-Za-z'’-]*/g) || []).some(w => /^[a-z]/.test(w) && !RUN_FUNCTION_WORDS.has(w));
+    };
+    const headGuard = /\s/.test(span.trim()) && jobHeadingLikeAt(text, s, e) &&
+      (JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) || (!/[,|•:]\s*$/.test(before) && jobSentenceIsHeading()));
+    const capsUseless = capsUselessBase || headGuard;
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
     // (Group 17: not for a plural, and not for a title added by category when the sentence is generic)
     if (!leadOnly && !noMulti && /\s/.test(span.trim()) && !definiteBefore &&
-        !(JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless || jobHeadingLikeAt(text, s, e)))) return true;            // 1 (multi-word, not a bare definite description)
+        !((JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless)) || headGuard)) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
     // Group 15 (a): a bare "as a" right after a verb of use / purpose / treatment ("use it as a", "designed as a", "treated as a") names the
     // role of a THING; it is not evidence of a person's job. "works as", "serves as", "employed as", "hired as" are not in that class.
@@ -3969,7 +3989,9 @@ const TrustLinguisticDetector = (() => {
     // ── (d) GROUP 7 stage 1 ──────────────────────────────────────────────────
     const pushG7 = (span, tag) => {
       const lowerSpan = span.toLowerCase();
-      if (alreadyFoundLower.has(lowerSpan)) return;
+      // dedupe against this pass only: a dictionary (CSV) hit with the same text can still be dropped later by its context check, and the
+      // D3 loop below removes the structural twin when the CSV finding survives
+      if (found.some(x => x.name.toLowerCase() === lowerSpan)) return;
       // a longer span replaces a shorter structural finding it contains ("Reyes & Associates" inside "Reyes & Associates Law Offices")
       for (let i = found.length - 1; i >= 0; i--) { const fl = found[i].name.toLowerCase(); if (fl !== lowerSpan && lowerSpan.includes(fl)) found.splice(i, 1); }
       alreadyFoundLower.add(lowerSpan);
@@ -4029,13 +4051,16 @@ const TrustLinguisticDetector = (() => {
     health2: 'medical medicine medicines pharma drugs hospitals polyclinic polyclinics infirmary dentists optometry orthodontics orthopedics dermatology cardiology pediatrics physiotherapy therapeutics imaging radiology dialysis maternity nursing homecare eldercare ambulance ambulances rehab caregivers physicians technicians electricians mechanics therapists pharmacists chemists specialists practitioners',
     arts: 'theater theatre theaters theatres museum museums gallery galleries arts crafts music recordings orchestra circus amusement amusements arcade arcades casino casinos lottery bowling billiards sports athletics gymnasium yoga pilates dojo dance zoo gardens aquarium stadium arena recreation adventures adventure expeditions golf racing speedway karaoke videoke',
     otherservices: 'laundry laundries laundromat upholstery funeral funerals mortuary crematorium parlor parlour beauty nails tattoo tattoos massage cosmetology aesthetics skincare haircare grooming kennels locksmith locksmiths ministries fellowship parish congregation federation federations foundation foundations charities orphanage shelters',
-    agents: 'agents professionals artisans craftsmen fishermen tradesmen handymen seamen'
+    agents: 'agents professionals artisans craftsmen fishermen tradesmen handymen seamen',
+    // small additions after the head-list audit (a diagnosed gap: these were absent). Kitchen / Company / Union are also in CA_WEAK_HEADS.
+    additions: 'center centre church mill lines kitchen company union'
   };
   const CA_STRONG_HEADS = new Set(Object.values(CA_HEADS_BY_CATEGORY).join(' ').split(' '));
   // heads that are also surnames or ordinary words: a person finding is dropped only if no word carries name evidence
   const CA_WEAK_HEADS = new Set(['lodge', 'press', 'inn', 'spa', 'market', 'express', 'mart', 'studio', 'travel', 'store', 'outlet', 'pictures', 'films',
     // expansion: heads that are also surnames, first names or very common words
-    'law', 'herald', 'estates', 'gas', 'oil', 'mines', 'coal', 'casino', 'arena', 'books', 'cottages', 'cabins', 'seeds', 'lumber', 'parish', 'cruises', 'cruise', 'ports', 'beauty', 'gardens', 'ranch', 'farms', 'bars', 'music', 'arts', 'times', 'gallery', 'depot', 'wealth', 'mutual', 'savings', 'credit', 'equity', 'parts', 'nails', 'dance', 'golf', 'racing']);
+    'law', 'herald', 'estates', 'gas', 'oil', 'mines', 'coal', 'casino', 'arena', 'books', 'cottages', 'cabins', 'seeds', 'lumber', 'parish', 'cruises', 'cruise', 'ports', 'beauty', 'gardens', 'ranch', 'farms', 'bars', 'music', 'arts', 'times', 'gallery', 'depot', 'wealth', 'mutual', 'savings', 'credit', 'equity', 'parts', 'nails', 'dance', 'golf', 'racing',
+    'kitchen', 'company', 'union']);
   function caHeadKind(word) {
     const w = word.toLowerCase().replace(/[.,;:!?)]+$/, '');
     if (CA_STRONG_HEADS.has(w)) return CA_WEAK_HEADS.has(w) ? 'weak' : 'strong';
@@ -4061,6 +4086,18 @@ const TrustLinguisticDetector = (() => {
     return true;
   }
   const CA_NOT_NAME_LEX_TAGS = ['Verb', 'Gerund', 'Infinitive', 'PresentTense', 'PastTense', 'Modal', 'Auxiliary', 'Determiner', 'Pronoun', 'Preposition', 'Conjunction', 'QuestionWord', 'Adverb', 'Expression'];
+  // true when Compromise's own lexicon lists the word ONLY as a gerund / past tense / participle (Running, Roasted, Hidden), not as a base verb
+  function caParticipleStart(tok) {
+    try {
+      let lt = window.nlp.world().model.one.lexicon[tok.toLowerCase()];
+      if (!lt) return false;
+      lt = Array.isArray(lt) ? lt : [lt];
+      return lt.length > 0 && lt.every(t => ['Gerund', 'PastTense', 'Participle'].includes(t));
+    } catch (_) { return false; }
+  }
+  // words directly in front of a name part that belong to the organization's name (case-insensitive, so ALL-CAPS text works too)
+  const CA_NAME_PREFIX_RE = /(?:(?:our\s+lady\s+of(?:\s+the)?|our\s+lord\s+of|mother\s+of|queen\s+of|holy\s+\p{L}+\s+of|saint|st\.?|san|santa|santo|sta\.?|sto\.?)\s+)$/iu;
+  const CA_KIN_HOME_RE =/^(?:mom|mother|mommy|dad|daddy|father|grandma|grandpa|grandmother|grandfather|nana|nanay|tatay|lola|lolo|mama|papa|auntie|aunt|uncle|home|my|our|your|his|her|their)(?:['’]s)?$/i;
   function caIsGenericToken(tok) {
     const l = tok.toLowerCase();
     return G7_SECTOR_WORDS.has(l) || G7_GENERIC_MODS.has(l) || CA_COMMON_MODS.has(l) || CA_STRONG_HEADS.has(l);
@@ -4097,12 +4134,24 @@ const TrustLinguisticDetector = (() => {
       const base = hs - lm[1].length, toks = []; const TR = /[A-Z][A-Za-zÀ-ÿ'’-]*/g; let t;
       while ((t = TR.exec(lm[1])) !== null) toks.push({ w: t[0], i: base + t.index });
       const keep = [];
-      for (let k = toks.length - 1; k >= 0; k--) { if (!caEligibleToken(toks[k].w)) break; keep.unshift(toks[k]); }
+      for (let k = toks.length - 1; k >= 0; k--) {
+        if (!caEligibleToken(toks[k].w)) {
+          // a gerund / past participle ("Roasted", "Running", "Flying") may START the name part, but only directly after at / for / from / with
+          // (the frame itself is the evidence; an imperative such as "Call Dental Clinic" has no such frame). The head is already in the list here.
+          if (!(k === 0 && caParticipleStart(toks[k].w) && /(?:^|[\s,;:(])(?:at|for|from|with)\s+(?:the\s+)?$/i.test(text.slice(Math.max(0, toks[k].i - 14), toks[k].i)))) break;
+        }
+        keep.unshift(toks[k]);
+      }
       if (!keep.length) continue;
+      // "Mom's Kitchen", "Grandma's Kitchen", "Home Kitchen": a kin / home word alone in front of the head is a recipe or a room, not a business
+      if (keep.length === 1 && CA_KIN_HOME_RE.test(keep[0].w)) continue;
       if (keep.every(x => caIsGenericToken(x.w))) continue;                       // "Customer Services", "Storage Solutions"
       // "<Phrase> for Small Homes" is a heading / title (a capitalised word follows "for"); "notice from <Phrase> for the group" is running prose
       if (/^\s+for\s+(?:(?:the|a|an|our|your|my)\s+)?[A-Z]/.test(text.slice(he, he + 30)) || g7BadFollower(text, he)) continue;
-      const start = keep[0].i;
+      // leading words that belong to the name ("Our Lady of Fatima ...", "Saint Luke ...", "St. Anne ..."): the span starts at them, and the evidence
+      // frame ("signed by", "works at") is looked for in front of them
+      let start = keep[0].i;
+      { const pm = text.slice(Math.max(0, start - 30), start).match(CA_NAME_PREFIX_RE); if (pm) start -= pm[0].length; }
       const cue = caHasEvidence(text, start, he);
       if (!cue) continue;
       if (g7InHeadingLine(text, start, he) && !hasOrgAffiliationCue(text, start)) continue;
@@ -4594,6 +4643,29 @@ const TrustLinguisticDetector = (() => {
   // The frame itself is the evidence, so an organization that no dictionary or head-word rule knows is still reported. Not reported: a place,
   // a weekday / month / holiday, a run that reads as a person's name (no organization head word), a single word after "of" (the mayor of <Place>,
   // the head of <Department word> are too often places or functions), anything inside a Title Case heading.
+  // A leading imperative verb is not part of an organization name ("Call Dental Clinic tomorrow", "Visit Eye Clinic"). The verb is cut off; if what is
+  // left is only ordinary words before the head ("Dental Clinic", "Pet Clinic") the finding is dropped, otherwise it is kept without the verb. Untouched:
+  // a name that is itself a dictionary organization, a remainder with a corporate suffix ("Call Center Solutions Inc"), a remainder of one word.
+  const G_IMPERATIVE_VERBS = new Set(['call', 'visit', 'book', 'contact', 'ask', 'see', 'email', 'e-mail']);
+  const G_CORP_SUFFIX_RE = /^(?:inc|inc\.|corp|corp\.|corporation|co|co\.|company|ltd|ltd\.|llc|plc|gmbh|opc|incorporated|limited|holdings|enterprises|industries|group)$/i;
+  function stripLeadingImperativeFromOrganizations(findings, text) {
+    const drop = new Set();
+    findings.forEach((f, idx) => {
+      if (f.patternId !== 'nlp_organization' || !f.rawMatch) return;
+      const m = f.rawMatch.trim().match(/^(\S+)\s+(.+)$/);
+      if (!m || !/^\p{Lu}/u.test(m[1]) || !G_IMPERATIVE_VERBS.has(m[1].toLowerCase())) return;
+      if (EXTENSIVE_ORGANIZATIONS.has(f.rawMatch.trim().toLowerCase())) return;
+      // the phrase is the SUBJECT of "announced / is hiring / opened ...": a real organization, not an imperative
+      if (jobOccurrences(text, f.rawMatch.trim()).some(([, e]) => CA_SUBJECT_AFTER_RE.test(text.slice(e, e + 60)))) return;
+      const rest = m[2].trim(), toks = rest.split(/\s+/);
+      if (toks.length < 2 || G_CORP_SUFFIX_RE.test(toks[toks.length - 1].replace(/[.,]+$/, ''))) return;
+      const ordinary = t => { try { return window.nlp.world().model.one.lexicon[t.toLowerCase()] !== undefined; } catch (_) { return false; } };
+      const generic = toks.slice(0, -1).every(t => caIsGenericToken(t) || G7_SECTOR_WORDS.has(t.toLowerCase()) || (ordinary(t) && !nameHasPersonTag(isolatedNameTags(t))));
+      if (generic) drop.add(idx); else f.rawMatch = rest;
+    });
+    return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller clears and refills `findings`)
+  }
+
   function addAppositiveOrganizations(findings, text) {
     const W = String.raw`\p{Lu}[\p{L}\p{M}'’&-]*`;
     const reAfter = new RegExp(String.raw`^\s*(?:,\s*)?(from|at|of)\s+(?:the\s+)?(${W}(?:\s+(?:(?:of|and|&|for)\s+)?${W}){0,3})(?![\p{L}\p{M}\d_])`, 'u');
@@ -5483,9 +5555,16 @@ const TrustLinguisticDetector = (() => {
           continue;
         }
         // Skip if already present as any finding (name or org) with the same rawMatch
-        if (findings.some(f => f.rawMatch.toLowerCase() === orgRaw.toLowerCase() && (!org.g7 || f.patternId === 'nlp_organization'))) {
-          console.debug(`[TrustPrompt/PATH_C] Skipped structural org (duplicate in findings): "${orgRaw}"`);
-          continue;
+        const dupIdx = findings.findIndex(f => f.rawMatch.toLowerCase() === orgRaw.toLowerCase() && (!org.g7 || f.patternId === 'nlp_organization'));
+        if (dupIdx >= 0) {
+          // the same organization already found by the dictionary pass in a different letter case (its canonical lower-case form, which the later
+          // lower-case rules may drop when no cue stands in front of it): the structural span is the text as written, so it replaces that finding
+          if (org.g7 && findings[dupIdx].rawMatch !== orgRaw && findings[dupIdx].patternId === 'nlp_organization' && findings[dupIdx].rawMatch === findings[dupIdx].rawMatch.toLowerCase()) {
+            findings.splice(dupIdx, 1);
+          } else {
+            console.debug(`[TrustPrompt/PATH_C] Skipped structural org (duplicate in findings): "${orgRaw}"`);
+            continue;
+          }
         }
         findings.push({
           patternId: 'nlp_organization',
@@ -5581,6 +5660,8 @@ const TrustLinguisticDetector = (() => {
 
           // Filter: Name must be 2+ characters
           if (name.length < 2) continue;
+          // a bare language / nationality word is not a person (the directive pass takes a single word, so no other name word can be present)
+          if (G_LANG_NAT.has(name.toLowerCase()) && patternObj.name !== 'action_verb') continue;
           // Small item 3: "this is <Name> from <Org>": the word after "from" is the organization, not a second person
           if (patternObj.name === 'from_context' && G_INTRO_BEFORE_FROM_RE.test(textNLP.slice(Math.max(0, match.index - 80), match.index))) continue;
 
@@ -5635,6 +5716,7 @@ const TrustLinguisticDetector = (() => {
       // Cause A: a "<name> <business noun>" run is not a person (the organization, if there is evidence, comes from the structural pass).
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
       addAppositiveOrganizations(findings, textNLP);
+      { const kept = stripLeadingImperativeFromOrganizations(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
       

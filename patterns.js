@@ -1538,66 +1538,75 @@ function structuralValidatePHID_PhilID(raw) {
   // Normalize by removing separators (hyphens, spaces, dots)
   const normalized = normalizePHID(raw);
 
-  // Validate digit count: must be exactly 12 digits
-  if (normalized.length !== 12) {
+  // PhilID can be 12 digits (YYMMDDXXXXXX) or 16 digits (formatted as XXXX-XXXX-XXXX-XXXX)
+  // Accept both formats since the regex matches 4-4-4-4 format (16 digits)
+  if (normalized.length !== 12 && normalized.length !== 16) {
     return false;
   }
 
   // Validate all characters are digits
-  if (!/^\d{12}$/.test(normalized)) {
+  if (!/^\d{12}$/.test(normalized) && !/^\d{16}$/.test(normalized)) {
     return false;
   }
 
-  // Extract structural components
-  const yearStr = normalized.slice(0, 2);                       // digits 1-2 (YY)
-  const monthStr = normalized.slice(2, 4);                      // digits 3-4 (MM)
-  const dayStr = normalized.slice(4, 6);                        // digits 5-6 (DD)
-  const cityCodeStr = normalized.slice(6, 9);                   // digits 7-9 (city/municipality code)
-  const registrationOrderStr = normalized.slice(9, 11);         // digits 10-11 (registration order)
-  const sexDigitStr = normalized.slice(11, 12);                 // digit 12 (sex)
+  // For 12-digit format: YYMMDDXXXXXX
+  if (normalized.length === 12) {
+    // Extract structural components
+    const yearStr = normalized.slice(0, 2);                       // digits 1-2 (YY)
+    const monthStr = normalized.slice(2, 4);                      // digits 3-4 (MM)
+    const dayStr = normalized.slice(4, 6);                        // digits 5-6 (DD)
+    const cityCodeStr = normalized.slice(6, 9);                   // digits 7-9 (city/municipality code)
+    const registrationOrderStr = normalized.slice(9, 11);         // digits 10-11 (registration order)
+    const sexDigitStr = normalized.slice(11, 12);                 // digit 12 (sex)
 
-  // Validate birth date format (YYMMDD)
-  const year = parseInt(yearStr, 10);      // 00-99 (represents 1900-2099)
-  const month = parseInt(monthStr, 10);    // 01-12
-  const day = parseInt(dayStr, 10);        // 01-31 (basic range, not month-specific)
+    // Validate birth date format (YYMMDD)
+    const year = parseInt(yearStr, 10);      // 00-99 (represents 1900-2099)
+    const month = parseInt(monthStr, 10);    // 01-12
+    const day = parseInt(dayStr, 10);        // 01-31 (basic range, not month-specific)
 
-  // Year validation: 00-99 (always valid in YY format)
-  if (year < 0 || year > 99) {
-    return false;
+    // Year validation: 00-99 (always valid in YY format)
+    if (year < 0 || year > 99) {
+      return false;
+    }
+
+    // Month validation: 01-12
+    if (month < 1 || month > 12) {
+      return false;
+    }
+
+    // Day validation: 01-31 (basic range; stricter validation would check month-specific days)
+    if (day < 1 || day > 31) {
+      return false;
+    }
+
+    // Validate city/municipality code: 000-999 (any 3-digit value is valid)
+    const cityCode = parseInt(cityCodeStr, 10);
+    if (cityCode < 0 || cityCode > 999) {
+      return false;
+    }
+
+    // Validate registration order: 00-99 (any 2-digit value is valid)
+    const registrationOrder = parseInt(registrationOrderStr, 10);
+    if (registrationOrder < 0 || registrationOrder > 99) {
+      return false;
+    }
+
+    // Validate sex digit: must be 1 (male) or 2 (female)
+    const sexDigit = parseInt(sexDigitStr, 10);
+    if (sexDigit !== 1 && sexDigit !== 2) {
+      return false;
+    }
+
+    // All structural validations passed for 12-digit format
+    return true;
   }
 
-  // Month validation: 01-12
-  if (month < 1 || month > 12) {
-    return false;
-  }
-
-  // Day validation: 01-31 (basic range; stricter validation would check month-specific days)
-  if (day < 1 || day > 31) {
-    return false;
-  }
-
-  // Validate city/municipality code: 000-999 (any 3-digit value is valid)
-  const cityCode = parseInt(cityCodeStr, 10);
-  if (cityCode < 0 || cityCode > 999) {
-    return false;
-  }
-
-  // Validate registration order: 00-99 (any 2-digit value is valid)
-  const registrationOrder = parseInt(registrationOrderStr, 10);
-  if (registrationOrder < 0 || registrationOrder > 99) {
-    return false;
-  }
-
-  // Validate sex digit: must be 1 (male) or 2 (female)
-  const sexDigit = parseInt(sexDigitStr, 10);
-  if (sexDigit !== 1 && sexDigit !== 2) {
-    return false;
-  }
-
-  // All structural validations passed
+  // For 16-digit format (credit card-like pattern XXXX-XXXX-XXXX-XXXX):
+  // Cannot validate with birth date, so use simpler checks
+  // Just verify it's all digits (already checked above)
+  // This format is less reliable, so we'll accept it but rely on context filtering
   return true;
 }
-
 
 // ── Street-level Philippine address detection ───────────────────────────────
 // A city/municipality name alone ("Antipolo", "Manila") names a PLACE, not a
@@ -1638,8 +1647,17 @@ const PH_AREA_FOLLOW_STOPWORDS = [
   "assembly", "meeting", "fiesta", "event", "election", "elections",
   // connectors / function words
   "in", "of", "and", "or", "but", "the", "a", "an", "with", "for", "to", "near",
-  "is", "was", "where", "here", "there", "that", "this", "my", "our", "their"
+  "is", "was", "where", "here", "there", "that", "this", "my", "our", "their",
+  // action verbs - barangay + verb is NOT an address
+  "needs", "need", "needed", "wanting", "wanted", "want", "asked", "ask", "required", "require",
+  "help", "helps", "helping", "helped", "supports", "support", "serve", "serves",
+  "provide", "provides", "give", "gives", "organize", "organizes", "run", "runs",
+  "manage", "manages", "confirm", "confirming", "confirmed", "confirms",
+  // document words
+  "permit", "permits", "clearance", "certificate", "license", "document", "documents",
+  "form", "forms"
 ];
+
 
 const _streetTypeAlt = PH_STREET_TYPES.join("|");
 const _areaMarkerAlt = PH_AREA_MARKERS.join("|");
@@ -1707,7 +1725,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "credit_card",
     label: "Credit / Debit Card Number",
     reason: "Card numbers give direct access to your financial accounts. Sharing one with an AI model means it is transmitted to and stored by a third-party server.",
-    regex: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+    regex: /\b(?:\d{4}[\s-]?){3}\d{4}\b|\b\d{15}\b/g,
     risk: "high",
     validate: "isCreditCard",
     // Replace the entire card number with a placeholder. (The earlier
@@ -1813,14 +1831,19 @@ const TRUSTPROMPT_PATTERNS = [
   {
     id: "email",
     label: "Email Address",
-    reason: "Email addresses are personally identifiable information (PII) under the Philippine Data Privacy Act (RA 10173). Sharing someone else's email without consent may violate data privacy law. Even your own email can be used for targeted phishing, spam, or account enumeration attacks if exposed.",
+    reason: "Email addresses are personally identifiable information (PII) under the Philippine Data Privacy Act (RA 10173). Sharing someone else's email without consent may violate data privacy law. Even your own email can be used for targeted phishing, spam, or account enumeration attacks if exposed. This pattern detects emails from all providers: Gmail, Outlook, Yahoo, ProtonMail, and others.",
     regex: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
     risk: "moderate",
     validate: "isEmail",
     sanitize: (m) => {
       const [local, domain] = m.split("@");
       return local[0] + "***@" + domain;
-    }
+    },
+    // NOTE: Email is in the criticalPatterns list in scanner.js, which means it will NEVER be
+    // filtered by shouldFilterByContext() regardless of domain name (e.g., "example.com").
+    // This ensures all emails are detected regardless of case (all-caps, lowercase, mixed-case)
+    // and regardless of whether the domain contains words like "example", "test", "demo", etc.
+    // Therefore, no contextFilter is needed here.
   },
 
   {
@@ -1830,6 +1853,72 @@ const TRUSTPROMPT_PATTERNS = [
     regex: /(\+639|09)[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d[\s\-]?\d/gi,
     risk: "moderate",
     validate: "isMobilePhone_PH",
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // Extract surrounding context (±100 chars) to determine if this is a phone number or serial
+      const contextStart = Math.max(0, matchIndex - 100);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 100);
+      const beforeText = fullText.substring(contextStart, matchIndex).toLowerCase();
+      const afterText = fullText.substring(matchIndex + rawMatch.length, contextEnd).toLowerCase();
+      const fullContext = beforeText + " [MATCH] " + afterText;
+
+      // MEASUREMENT CONTEXT: Check if this number is followed by measurement units (grams, kg, etc.)
+      const measurementAfter = fullText.substring(matchIndex + rawMatch.length, Math.min(fullText.length, matchIndex + rawMatch.length + 30)).toLowerCase();
+      const measurementUnits = /^\s*(?:grams?|g|kilograms?|kg|pounds?|lbs?|ounces?|oz|milligrams?|mg|milliliters?|ml|liters?|l)\b/i;
+      if (measurementUnits.test(measurementAfter)) {
+        console.log(`[TrustPrompt/contextFilter] ph_mobile suppressed: "${rawMatch}" (measurement units detected)`);
+        return false; // SUPPRESS: This is a measurement, not a mobile number
+      }
+
+      // PHILHEALTH NUMBER DETECTION: Check if this is a PhilHealth number (09-XXXXXXXXX-X format)
+      // PhilHealth numbers have the format: 09-XXXXXXXXX-X (11 digits with specific dashes)
+      const cleanedMatch = rawMatch.replace(/[\s\-]/g, '');
+      
+      // If the match is exactly 10 digits and followed by -X pattern in fullText, it's PhilHealth
+      if (cleanedMatch.length === 10) {
+        const afterMatchStart = matchIndex + rawMatch.length;
+        const afterMatchContext = fullText.slice(afterMatchStart, Math.min(fullText.length, afterMatchStart + 5));
+        // Check if there's a trailing digit after the 10-digit core (PhilHealth check digit)
+        if (/^\s*-\s*\d|\s*-\s*\d/.test(afterMatchContext)) {
+          console.log(`[TrustPrompt/contextFilter] ph_mobile suppressed: "${rawMatch}" (appears to be PhilHealth number)`);
+          return false; // SUPPRESS: This is a PhilHealth number, not a mobile
+        }
+      }
+
+      // Also check context keywords for PhilHealth
+      if (/\b(philhealth|phil\s*health|phealth)\b/i.test(fullContext)) {
+        console.log(`[TrustPrompt/contextFilter] ph_mobile suppressed: "${rawMatch}" (PhilHealth context detected)`);
+        return false; // SUPPRESS: PhilHealth context
+      }
+
+      // SERIAL NUMBER MARKERS: If context contains these terms, likely a serial/product ID
+      const serialMarkers = [
+        /\b(serial|barcode|product code|model|sku|part number|item number|reference code)\b/i,
+        /\b(warranty|invoice|receipt|purchase|order|batch|lot)\b/,
+        /\b(printed under|under the|found on|on the box|on packaging|on label)\b/i,
+      ];
+
+      if (serialMarkers.some(m => m.test(fullContext))) {
+        // This appears to be a product serial, not a phone number
+        return false; // Filter it out
+      }
+
+      // PHONE NUMBER MARKERS: If context contains these, definitely a phone number
+      const phoneMarkers = [
+        /\b(call|contact|reach|dial|number|phone|mobile|cell|text|sms|whatsapp|telegram)\b/i,
+        /\b(my number|my phone|my mobile|my cell|my contact)\b/i,
+        /\b(phone number is|contact is|reach me at|call me at)\b/i,
+        /international dialing|country code|\+63/i,
+      ];
+
+      if (phoneMarkers.some(m => m.test(fullContext))) {
+        // This is clearly a phone number context
+        return true; // Keep it
+      }
+
+      // No strong indicators either way - allow it (validator will confirm format)
+      // This is conservative: better to flag and let user decide than miss real numbers
+      return true;
+    },
     sanitize: (m) => {
       // Remove spacing/dashes and show only first 3 and last 2 digits
       const cleaned = m.replace(/[\s\-]/g, '');
@@ -1846,6 +1935,30 @@ const TRUSTPROMPT_PATTERNS = [
     // BASE_SCORES/ENTITY_TIER classification ("limited" → Low), not "moderate".
     risk: "low",
     validate: "isIP",
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (±50 chars)
+      const contextStart = Math.max(0, matchIndex - 50);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 50);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // Version number markers - SUPPRESS these
+      // Examples: "version 10.2.3.4", "release 10.2.3.4", "v10.2.3.4", "10.2.3.4 release"
+      const versionMarkers = [
+        /\b(?:version|release|v|build|rev|revision|r)\s*[:\-]?\s*[\d\.]+/i,  // "version 10.2.3.4" or "v10.2.3.4"
+        /[\d\.]+\s+(?:version|release|build|revision|update)/i,  // "10.2.3.4 version" or "10.2.3.4 release"
+        /\b(?:semantic\s+)?version\b/i,  // "semantic versioning"
+        /\bsoftware\s+version/i,  // "software version"
+        /\bapp\s+version/i,  // "app version"
+      ];
+      
+      if (versionMarkers.some(m => m.test(context))) {
+        return false; // Suppress - this is a version number, not an IP address
+      }
+      
+      return true; // Allow - likely an actual IP address
+    },
     sanitize: (m) => {
       const parts = m.split(".");
       parts[2] = "xxx";
@@ -1915,6 +2028,44 @@ const TRUSTPROMPT_PATTERNS = [
     sanitize: (m) => {
       const colonIdx = m.indexOf(":");
       return m.slice(0, colonIdx + 1) + " [REDACTED]";
+    },
+    isTriggerOnly: true,  // ← NEW: Mark as trigger-only, not reported as a finding
+    contextFilter: (match, text) => {
+      // ── CONTEXT-AWARE FILTERING FOR GENERIC METADATA LABELS ─────────────────
+      // Distinguish between personal employer info ("Employer: ABC Corp") and
+      // generic job posting metadata ("Company: Pacific Harvest Foods Inc.")
+      // 
+      // Suppress if:
+      // 1. The label is generic metadata (Company:, Location:, Position:, Shift:)
+      // 2. The surrounding context indicates a job posting/workplace document
+      
+      const context = text.substring(
+        Math.max(0, match.index - 200),
+        match.index + match[0].length + 200
+      ).toLowerCase();
+      
+      // Extract the label from the match (the word before the colon)
+      const labelMatch = match.match(/^(\w+)/);
+      if (!labelMatch) return true; // Keep if can't parse
+      
+      const label = labelMatch[1].toLowerCase();
+      
+      // Generic metadata labels that are NOT personal in job posting context
+      const genericMetadataLabels = ['company', 'location', 'position', 'shift', 'department', 'role', 'title', 'office'];
+      
+      if (!genericMetadataLabels.includes(label)) {
+        // Not a generic label (e.g., "name", "age", "employer", "emergency contact")
+        // These should always be kept
+        return true;
+      }
+      
+      // If it IS a generic label, check if context is a job posting
+      const jobPostingIndicators = /(?:newsletter|posting|job|position|role|supervisor|warehouse|rewrite|summary|one-?paragraph|internal|company profile)/i;
+      
+      const isJobPostingContext = jobPostingIndicators.test(context);
+      
+      // Suppress (return false) if it's a generic label in a job posting context
+      return !isJobPostingContext;
     }
   },
 
@@ -1979,7 +2130,19 @@ const TRUSTPROMPT_PATTERNS = [
           "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+[A-Za-z]?(?:[,\\s]+[A-Za-z0-9][\\w.-]*){0,3}" +
           "|" +
           // D. labeled address field
-          "\\baddress\\s*[:=]\\s*[A-Za-z0-9][^.!?\\n]{2,80}" +
+          // Only match if followed by typical address components:
+          // - Street names (Rizal, Mabini, etc.)
+          // - Unit/building prefixes (Unit, Blk, Floor, etc.)
+          // - Area markers (Brgy, Subdivision, etc.)
+          // - City/town names (Manila, Quezon, etc.)
+          // NOT just any hex string like MAC addresses (20-0B-74-46-74-46)
+          "\\baddress\\s*[:=]\\s*(?=" +
+            "(?:[A-Za-z0-9]+\\s+)+(?:" + STREET + "|" + AREA + "|Street|Avenue|Road|Boulevard|Unit|Block|Building|Brgy|Subdivision|Purok|Sitio|" +
+            // Common city/municipality names in PH
+            "Manila|Quezon|Makati|Caloocan|Las Piñas|Pasig|Cainta|Antipolo|Bacoor|Cavite|Laguna|Bulacan|Pampanga|" +
+            "San Juan|Valenzuela|Parañaque|Muntinlupa|Marikina|Pasay|Taguig|Pateros|Navotas|Malabon" +
+          ")\\b)" +
+          "[A-Za-z0-9][^.!?\\n]{2,80}" +
           "|" +
           // E. residence cue + street name + street-type (no number) (+ continuation)
           "\\b(?:I\\s+live\\s+(?:at|in)|I\\s+reside\\s+(?:at|in)|my\\s+(?:home\\s+)?address\\s+is|located\\s+at|residing\\s+at)\\s+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
@@ -1992,16 +2155,121 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "moderate",
     validate: null,
     structuralValidate: structuralValidatePHStreetAddress,
+     // CONTEXT FILTER: Suppress "barangay" matches that aren't actual place references
+    // Only suppress if "barangay" is followed by non-place words (like "confirming", "official", "permit")
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true;
+      
+      const matchLower = rawMatch.toLowerCase().trim();
+      
+      // CASE 1: If the match is JUST "barangay" or "brgy" with NO place name after it,
+      // it's definitely NOT an address - suppress it immediately
+      if (/^(?:barangay|brgy)\.?$/.test(matchLower)) {
+        console.log(`[TrustPrompt/contextFilter] ph_address suppressed: bare "${rawMatch}" (no place name)`);
+        return false; // SUPPRESS: Just the word "barangay" alone is not an address
+      }
+      
+      // CASE 2: If match contains "barangay/brgy" but next word is non-place action/doc word
+      if (/\b(?:barangay|brgy)\b/i.test(matchLower)) {
+        // Extract the word after "barangay/brgy" from the rawMatch AND from fullText context
+        const wordAfterBrgy = matchLower.match(/\b(?:barangay|brgy)\b\.?\s+(\w+)/i);
+        
+        // Also check context in fullText (word after the match in original text)
+        const afterMatchStart = matchIndex + rawMatch.length;
+        const afterMatchText = fullText.slice(afterMatchStart, Math.min(fullText.length, afterMatchStart + 50)).toLowerCase();
+        const nextWordInText = afterMatchText.match(/^\s+(\w+)/);
+        
+        // Collect all potential next words to check
+        const wordsToCheck = new Set();
+        if (wordAfterBrgy && wordAfterBrgy[1]) {
+          wordsToCheck.add(wordAfterBrgy[1]);
+        }
+        if (nextWordInText && nextWordInText[1]) {
+          wordsToCheck.add(nextWordInText[1]);
+        }
+        
+        // Common non-place words that follow "barangay" in prose
+        const nonPlaceWords = new Set([
+          // Documents/permits
+          "permit", "permits", "permission", "clearance",
+          "certificate", "license", "id", "document",
+          // Officials/roles
+          "captain", "official", "officials", "hall", "office",
+          "council", "assembly", "meeting", "health", "clinic",
+          "school", "level", "system", "program", "project",
+          "secretary", "treasurer", "staff", "representative",
+          "worker", "residents", "people", "folk", "tanod",
+          "confirming", "confirm", "confirmed",
+          // Verbs/prepositions/articles
+          "in", "of", "and", "or", "but", "the", "is", "was", "are",
+          "where", "here", "there", "my", "our", "their", "your",
+          "she", "he", "they", "i", "you", "we", "a", "an",
+          "that", "this", "these", "those", "for", "with", "has",
+          "have", "do", "does", "did", "should", "would", "could"
+        ]);
+        
+        // Check if any of the next words indicate this is NOT a place name
+        for (const word of wordsToCheck) {
+          if (nonPlaceWords.has(word)) {
+            console.log(`[TrustPrompt/contextFilter] ph_address suppressed: "${rawMatch}" (non-place word: "${word}")`);
+            return false; // SUPPRESS: Not a place name
+          }
+        }
+      }
+      
+      return true; // ALLOW: Likely a real address
+    },
     sanitize: (_m) => "[PHILIPPINE ADDRESS REMOVED]"
   },
 
   {
     id: "birthday_date",
     label: "Birthday (Date Format)",
-    reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrological predictions or other personal inferences.",
+    reason: "Birth dates are direct personal identifiers under RA 10173 and are sensitive demographic information. When combined with other information like name or location, they enable identity theft, age discrimination, and targeted fraud. Birth dates can be used to derive astrolithic predictions or other personal inferences.",
     regex: /(?:0?[1-9]|1[0-2])[-\/\.](0?[1-9]|[12]\d|3[01])[-\/\.](19|20)?\d{2}|(?:0?[1-9]|[12]\d|3[01])[-\/\.](0?[1-9]|1[0-2])[-\/\.](19|20)?\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(0?[1-9]|[12]\d|3[01]),?\s+(19|20)\d{2}|(0?[1-9]|[12]\d|3[01])\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(19|20)\d{2}/gi,
     risk: "moderate",
     validate: null,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // TASK: Suppress false positives when the date is NOT a birthdate
+      
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (±150 chars before and after)
+      const contextStart = Math.max(0, matchIndex - 150);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 150);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // Check if this date is part of an IPv4 address (digits.digits.digits.digits pattern)
+      const ipv4Pattern = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
+      if (ipv4Pattern.test(context)) {
+        return false; // Suppress - this is part of an IP address
+      }
+      
+      // Check if this date is an EXPIRY DATE (highest priority non-birthdate)
+      // Must check BEFORE other patterns to catch "expiry date is on nov 23, 2026"
+      const expiryPatterns = [
+        /\b(expir[a-z]*|exp(?:ires?|iration|iry)|valid\s+(?:until|thru)|good\s+until|use\s+by|best\s+by|sell\s+by)\b/i,
+        /\b(exp|expiry|expn)\s*[:=]?\s*\d/i,
+        /\b(card|subscription|membership|license|permit|visa|passport)\s+(?:expir|expire|exp|valid)\b/i,
+      ];
+      
+      if (expiryPatterns.some(p => p.test(context))) {
+        return false; // Suppress - this is an expiry date, not a birthdate
+      }
+      
+      // Check if this date is part of a shipping/order/document reference
+      const shippingPatterns = [
+        /\b(order|ship|shipped|delivery|invoice|receipt|reference|sent|mailed|posted)\s+(?:on|from|date)?\s*[:\-\s]?\d{1,2}[-\/\.]\d{1,2}[-\/\.]/i,
+        /\b(shipping|order|delivery)\s+(?:date|reference|id|number)?\s*[:=]?\s*\d{1,2}[-\/\.]\d{1,2}[-\/\.]/i,
+        /\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4}\s+(?:to\s+)?(?:warehouse|address|destination|recipient)/i,
+      ];
+      
+      if (shippingPatterns.some(p => p.test(context))) {
+        return false; // Suppress - this is a shipping/order date, not a birth date
+      }
+      
+      return true; // Allow the match (likely a genuine birth date)
+    },
     sanitize: (_m) => "[DATE REDACTED]"
   },
 
@@ -2009,17 +2277,72 @@ const TRUSTPROMPT_PATTERNS = [
     id: "age_value",
     label: "Age (Numeric or Text Format)",
     reason: "Age is classified as personal demographic information under RA 10173. When combined with other identifiers like name, location, or birth date, age enables targeted fraud, discrimination, and identity-based attacks. Age can be inferred from birth dates or stated directly in text.",
-    // RESTORED: Pattern includes natural language age detection
-    // "20 years old", "i am 25 years", "aged 30 years" will all match
-    // Context filtering is handled at the scanner level to distinguish:
-    //   - Age contexts: flagged as PII (MODERATE risk)
-    //   - Duration contexts: NOT flagged (e.g., "worked 20 years")
-    //   - Time-ago contexts: NOT flagged (e.g., "20 years ago")
-    regex: /(?:age|edad)\s*[:=]\s*(\d{1,3})\s*(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)?|\d{1,3}\s+(?:years?|yrs?|y\.o\.?|y|taong gulang|tg)(?:\s+old)?/gi,
+    // REQUIREMENT: Suffix MANDATORY to prevent false positives on work duration
+    // Only match when age is explicitly stated with "old", "y/o", "yrs old", etc.
+    // Will NOT match: "20 years", "25 years" (these are work/education durations)
+    // WILL match: "20 years old", "25 y/o", "34 yrs old", "age: 30"
+    // Regex breakdown:
+    // Alt 1: age|edad with optional suffix (e.g., "age: 30" or "edad = 25 years old")
+    // Alt 2: number + years/yrs + REQUIRED "old" suffix (e.g., "30 years old", "25 yrs old")
+    // Alt 3: number + y/o or y.o. (e.g., "30 y/o")
+    // Alt 4: tagalog "taong gulang" or "tg"
+    regex: /(?:age|edad)\s*[:=]\s*(\d{1,3})(?:\s+(?:years?|yrs?)\s+old)?|(\d{1,3}\s+(?:years?|yrs?)\s+old)|(\d{1,3}\s+(?:y\/o|y\.o\.))|(?:taong\s+gulang|tg)/gi,
     risk: "low",
     validate: null,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // ── CONTEXT-AWARE FILTERING FOR AGE ────────────────────────────────────
+      // Suppress age mentions ONLY in explicit general/informational/educational contexts
+      // These are NOT personal data disclosures:
+      // - "What is the average age of a 25 year old?"
+      // - "The typical age for this demographic is 25"
+      // - "In studies, subjects aged 25 were found to..."
+      //
+      // These ARE personal data and should be flagged:
+      // - "I am 34 years old"
+      // - "My age is 25"
+      // - "I am 34 years old and generally healthy"
+      
+      if (!fullText || typeof fullText !== "string") return true;  // No context, allow it
+      
+      const contextStart = Math.max(0, matchIndex - 150);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 150);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // STRICT: Only suppress if there are EXPLICIT general/educational indicators
+      // Pattern notes: Allow for typos like "avrage" by checking for letter patterns
+      const generalQuestionPatterns = [
+        // Definitions and explanations - must be asking about age as a concept
+        /\b(what\s+is|what\s+are|define|definition\s+of|explain|explained)\s+.*?\b(age|year\s+old)\b/,
+        
+        // Educational/informational inquiry - statistical/demographic context only
+        // Handles typos: "avrage" (average), "hieght" (height), etc.
+        /\b(average|avrage|typ(ical)?|demographics?|statistics?|standard)\s+.*?\b(age|year\s+old)\b/,
+        
+        // Research/academic context - ONLY when explicitly research-related
+        /\b(study|research|investigation|subjects?|participants?)\b.*?\b(age|year\s+old)\b/,
+        
+        // Age brackets/ranges (definitely not personal)
+        /\bages?\s+\d+\s*-\s*\d+\b/,  // "ages 25-30", "age 18-65"
+        /\b(age group|age range|age bracket|age category)\b/,
+        
+        // General demographic/anthropometric inquiry patterns
+        // "what is the height and weight of a X year old"
+        /\b(height|hieght|weight|wieght|measurements?|dimensions?|statistics?)\b.*?\b(of\s+a\s+)?\d{1,3}\s+(year\s+old|yo|y\.o\.|years?\s+old)\b/i,
+      ];
+      
+      // SUPPRESS ONLY if one of these EXPLICIT patterns matches
+      const isGeneralContext = generalQuestionPatterns.some(p => p.test(context));
+      
+      if (isGeneralContext) {
+        console.log(`[TrustPrompt/contextFilter] age_value suppressed: "${rawMatch}" (general/educational context)`);
+        return false;  // SUPPRESS: General information, not personal disclosure
+      }
+      
+      return true;  // ALLOW: Likely personal age disclosure (default to flagging)
+    },
     sanitize: (_m) => "[AGE REDACTED]"
   },
+  
 
   // ── PATH C: LINGUISTIC NLP-BASED PATTERNS ──────────────────────────────────
 
@@ -2063,7 +2386,73 @@ const TRUSTPROMPT_PATTERNS = [
     regex: /(?<!sk[_-])(?<!rk[_-])(?<!ghp_)(?<!gho_)(?<!ghu_)(?<!xoxb-)(?<!xoxp-)(?<!xoxz-)(?<!AKIA)(?<!ASIA)(?<!AIza)(?<!ya29\.)(?<!hf_)(?<!npm_)(?<!AC)(?<!SK)\b\d{4}-\d{4}-\d{4}-\d{4}\b(?!-[A-Za-z0-9])/g,
     risk: "high",
     validate: null,
-    structuralValidate: null,
+    structuralValidate: structuralValidatePHID_PhilID,
+    // CONTEXT-AWARE FILTERING: Suppress loyalty cards that match the 4-4-4-4 format
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (300 chars before and after the match)
+      const contextStart = Math.max(0, matchIndex - 300);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 300);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // LOYALTY CARD CONTEXT: Check FIRST (highest priority suppression)
+      // These patterns indicate the number is definitely NOT a government ID
+      const loyaltyPatterns = [
+        // Membership/loyalty card labels (direct labels)
+        /(?:loyalty|membership|member|rewards?|frequent\s+buyer|points\s+program|customer\s+program)\s+(?:code|number|card|id)/i,
+        /(?:membership|loyalty|account|customer)\s+(?:code|number|id|card|#)/i,
+        
+        // Giving context (company gave me, issued to me, etc.)
+        // Priority: "company gave me X" → definitely a business card, not personal ID
+        /(?:(?:loyalty[\s-])?card\s+)?(?:company|retailer|store|brand).*?(?:gave|issued|provided)\s+(?:me|to\s+me)\s+(?:a\s+)?(?:membership|loyalty|card|code|number)/i,
+        /(?:gave\s+me|issued\s+to|provided\s+to|sent\s+me|gave\s+(?:to\s+)?me)\s+(?:a\s+)?(?:membership|loyalty|card|code|number)/i,
+        
+        // CRITICAL: "looks like a National ID" = explicit negation that it's NOT a government ID
+        // When user says "it looks like a national ID", they're saying it resembles one but isn't one
+        /(?:looks?|resembles|similar|formatted|styled|matches?|exactly\s+like)\s+(?:a\s+)?(?:national\s+)?(?:government\s+)?id/i,
+        
+        // Format comparison to loyalty/membership specifically
+        /(?:looks?|formatted|styled|resembles|same\s+format|similar\s+format|matches?|exactly\s+like)\s+(?:a\s+)?(?:loyalty|membership|card|code|number)/i,
+        
+        // Explicit negation
+        /(?:not\s+a\s+(?:government|national|official|real)\s+id|just\s+(?:a\s+)?(?:loyalty|membership|card|number)|proprietary\s+format)/i,
+        
+        // Retailers/company copying style
+        /(?:retailer|company|store|brand).*?(?:copy|styled|formatted)\s+(?:like|after|from)\s+(?:the\s+)?(?:national\s+)?id/i,
+        /(?:copy\s+that|familiar\s+style|their\s+own\s+card|same\s+format\s+as)/i
+      ];
+      
+      // Check if ANY loyalty pattern matches - if so, SUPPRESS immediately
+      for (const pattern of loyaltyPatterns) {
+        if (pattern.test(context)) {
+          return false; // SUPPRESS: This is a loyalty card, not a PhilID
+        }
+      }
+      
+      // GOVERNMENT ID CONTEXT: Only check if NO loyalty context was detected
+      // These patterns indicate the number IS a government ID
+      const governmentIdPatterns = [
+        // Explicit government ID declarations with positive framing
+        // Must have keywords like "my", "i have", "issued", "official" in close proximity
+        /\b(?:my|i\s+(?:have|was\s+issued|received))\s+(?:.*?\s+)?(?:national\s+)?(?:government\s+)?id/i,
+        /\b(?:national|government|official)\s+(?:.*?\s+)?(?:identification|id)\s+(?:is|number|:)/i,
+        /\b(?:philid|philsys|psa\s+(?:id|card))\b/i,
+        /\bphilippine\s+(?:national\s+)?(?:id|identification)/i,
+        /\bgovernment[\s-]?(?:issued|id)/i,
+        /\bofficial\s+(?:id|identification|number)/i
+      ];
+      
+      for (const pattern of governmentIdPatterns) {
+        if (pattern.test(context)) {
+          return true; // ALLOW: This is a government ID
+        }
+      }
+      
+      // Default: If unclear, be conservative and suppress 4-4-4-4 pattern
+      // (Most legitimate PhilIDs have explicit government ID context anyway)
+      return false;
+    },
     sanitize: (m) => {
       const digits = m.replace(/[^\d]/g, "");
       if (digits.length === 16) {
@@ -2120,6 +2509,54 @@ const TRUSTPROMPT_PATTERNS = [
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_PRC,
+    // CONTEXT FILTER: Suppress if these 7 digits are part of a UMID pattern (4 digits - 7 digits - 1 digit)
+    // UMID with spaces: "4310 5002134 6", UMID with dashes: "4310-5002134-6"
+    // Also suppress if clearly a business metric (units, revenue, count, etc.)
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true;
+      
+      // Extract surrounding context (100 chars before and after to see business context)
+      const contextStart = Math.max(0, matchIndex - 100);
+      const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 100);
+      const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      
+      // SUPPRESS: If part of UMID pattern (4 digits - 7 digits - 1 digit)
+      const umidPatterns = [
+        /\d{4}\s+\d{7}\s+\d/, // "4310 5002134 6"
+        /\d{4}\-\d{7}\-\d/, // "4310-5002134-6"
+      ];
+      
+      for (const pattern of umidPatterns) {
+        if (pattern.test(context)) {
+          return false; // SUPPRESS: This is part of a UMID, not a PRC number
+        }
+      }
+      
+      // SUPPRESS: If clearly a business/financial metric
+      // These patterns indicate the number is a business quantity, not a professional license
+      const businessMetricPatterns = [
+        // Financial/reporting contexts - must have explicit business keywords
+        /(?:total|units?)\s+(?:sold|revenue|sales|count)\s+.*?(?:for|in|of|during)\s+(?:the\s+)?(?:period|quarter|month|year|q\d|fy\d+)/i,
+        /(?:one\s+)?line\s+item.*?(?:total|units?|sales?|revenue|count|figure)\s+(?:came|reached|hit|totaled?|is|equals?)\s+/i,
+        /(?:quarterly|monthly|annual|fiscal|fy\d+|q\d)\s+(?:report|result|earnings?|figure|metric|performance)/i,
+        
+        // Units/items sold context (specific business metrics)
+        /(?:units?|items?|products?|customers?|orders?)\s+(?:sold|counted|reported|reached|totaled?|came\s+to|is)\s+/i,
+        /(?:exactly|approximately|total)\s+(?:\d+\s+)?(?:units?|items?|products?|customers?|sales?)\b/i,
+        
+        // Report/data analysis language - must be specific (not just "number")
+        /(?:quarterly|monthly|annual|fiscal)\s+(?:report|analysis|data|results?|earnings?)/i,
+        /(?:chart|table|breakdown|overview)\s+.*?(?:figure|total|units?|metric|data|results?)/i,
+      ];
+      
+      for (const pattern of businessMetricPatterns) {
+        if (pattern.test(context)) {
+          return false; // SUPPRESS: This is a business metric, not a PRC number
+        }
+      }
+      
+      return true; // ALLOW: Likely a genuine PRC number
+    },
     sanitize: (m) => {
       const digits = m.replace(/[^\d]/g, "");
       if (digits.length === 7) {
@@ -2172,10 +2609,81 @@ const TRUSTPROMPT_PATTERNS = [
     // 2. When standalone with word/non-alphanumeric boundaries (but NOT embedded in API keys)
     // Matches: "senior citizen id: 2345678921", "OSCA: 1234567890", "ID 9876543210"
     // Does NOT match: "AKIAJ7K2QM9ZX4LVR8TN" (no context, embedded in alphanumeric string)
+    // CAPTURE GROUP: Only the 10-digit number, not the prefix (OSCA:, etc.)
     regex: /(?:(?:senior|citizen|osca|id|number|no\.?|sc|sc\.)\s*[:\-\s]?\s*)(\d{10})|\b(\d{10})\b(?![A-Za-z0-9_\-])/gi,
     risk: "high",
     validate: null,
     structuralValidate: null,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      // TASK: Suppress false positives when the context is clearly non-ID-related
+      // Example: "0.9123456789 milligrams" is a measurement, not a senior citizen ID
+      // Example: "pharmacy loyalty number is 2345678921" is a loyalty card, not a government ID
+      // BUT: "My OSCA card number is 1234567890 for my benefits" is a real ID and should NOT be suppressed
+      
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow it
+      
+      // Extract surrounding context (50 chars before and 30 chars after the match)
+      const beforeContext = fullText.substring(Math.max(0, matchIndex - 50), matchIndex).toLowerCase();
+      const afterContext = fullText.substring(matchIndex + rawMatch.length, Math.min(fullText.length, matchIndex + rawMatch.length + 30)).toLowerCase();
+      const nearContext = beforeContext + " " + afterContext;
+      
+      // FIRST: Check for explicit senior citizen ID context keywords (highest priority)
+      // This takes precedence over all other checks
+      const idContextPatterns = [
+        /\b(?:osca|senior|citizen|national\s+id|identification)\b/i,
+        /\b(?:issued|benefit|claim|registered|confirmation)\b.*\b(?:senior|citizen|osca)\b/i,
+      ];
+      
+      for (const pattern of idContextPatterns) {
+        if (pattern.test(nearContext)) {
+          return true; // ALLOW: This is clearly a senior citizen ID
+        }
+      }
+      
+      // SECOND: Check for loyalty/membership card contexts - SUPPRESS if found
+      // These patterns indicate the number is definitely NOT a government ID
+      const loyaltyPatterns = [
+        /\b(?:loyalty|membership|rewards?|frequent\s+buyer|points\s+program)\s+(?:card|#|number|code)/i,
+        /\b(?:pharmacy|store|retailer)\s+(?:loyalty|membership|card)/i,
+      ];
+      
+      for (const pattern of loyaltyPatterns) {
+        if (pattern.test(nearContext)) {
+          return false; // SUPPRESS: This is a loyalty card, not a senior citizen ID
+        }
+      }
+      
+      // THIRD: Suppress if it's preceded by a decimal point (decimal measurement)
+      // When a 10-digit number is directly preceded by "0." or similar, it's likely
+      // a measurement like "0.9123456789 milligrams", not a government ID
+      const beforeMatch = fullText.substring(Math.max(0, matchIndex - 5), matchIndex).toLowerCase();
+      if (/\d\.$/.test(beforeMatch) || /\.\s*$/.test(beforeMatch)) {
+        return false; // SUPPRESS: This is a decimal measurement, not an ID
+      }
+      
+      // FOURTH: Check for measurement units in context (within 50 chars after match)
+      const measurementAfter = fullText.substring(matchIndex + rawMatch.length, Math.min(fullText.length, matchIndex + rawMatch.length + 50)).toLowerCase();
+      const unitPatterns = [
+        /^\s*(?:milligram|mg|gram|g|liter|l|ml|milliliter|meter|m|cm|kilometer|km|inch|foot|pound|kg|ounce|oz|celsius|fahrenheit|°|%|percent|drops?|tsp|tbsp)\b/i,
+      ];
+      
+      for (const pattern of unitPatterns) {
+        if (pattern.test(measurementAfter)) {
+          return false; // SUPPRESS: This is a measurement, not an ID
+        }
+      }
+      
+      return true; // ALLOW: Default is to allow senior citizen IDs
+    },
+    // extractMatch: Extract only the 10-digit number from the matched string
+    extractMatch: function(rawMatch) {
+      // Remove any non-digit characters to get just the 10-digit number
+      const digitsOnly = rawMatch.replace(/[^\d]/g, "");
+      if (digitsOnly.length === 10) {
+        return digitsOnly; // Return only the 10 digits
+      }
+      return digitsOnly; // Fallback to digits-only version
+    },
     sanitize: (m) => {
       const digits = m.replace(/[^\d]/g, "");
       if (digits.length === 10) {
@@ -2189,7 +2697,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_gsis",
     label: "GSIS (Government Service Insurance System)",
     reason: "GSIS number identifies government employees and their benefits under RA 10173. Used for government employee payroll and benefit administration, it is a critical identifier for the public sector workforce.",
-    regex: /\b\d{4}[_\-\s]?\d{7}[_\-\s]?\d\b/g,
+    regex: /(?:^|\s|[-().\[\]{}<>])(\d{4})[_\-\s]?(\d{7})[_\-\s]?(\d)(?:$|[\s,;:.!?\-().\[\]{}<>])/g,
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_GSIS,
@@ -2275,32 +2783,281 @@ const TRUSTPROMPT_PATTERNS = [
     id: "blood_type_mention",
     label: "Blood Type Mention",
     reason: "Blood type is personal health information under RA 10173 and is considered sensitive medical data.",
-    regex: /\b(?:blood\s*type|type|rh)\s*[:=\s]?\s*(?:A|B|AB|O)(?:[+-])?|\b(?:A|B|AB|O)[+-]/gi,
+    regex: /\b(?:AB|[ABO])\s*[+-](?![A-Za-z0-9])|\b(?:AB|[ABO])\s+(?:positive|negative|pos|neg)\b/gi,
     risk: "low",
     validate: null,
-    sanitize: (_m) => "[BLOOD TYPE REDACTED]"
+    sanitize: (m) => {
+      return "[blood type]";
+    },
+    // CRITICAL: Only match blood type in PERSONAL disclosure contexts
+    // DO NOT match blood type in:
+    // 1. Educational/informational contexts (health posts, articles, guides)
+    // 2. Personality types, learning styles, classifications
+    // 3. General discussions about blood types (not personal data)
+    // 4. Product/Rice classifications (TYPE O RICE, TYPE A RICE)
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true;
+      
+      // Extract context: before and after the match
+      // Use ±200 chars for broader context matching (personal disclosure, medical, non-medical)
+      const beforeStart = Math.max(0, matchIndex - 200);
+      const beforeText = fullText.slice(beforeStart, matchIndex).toLowerCase();
+      
+      const afterStart = matchIndex + rawMatch.length;
+      const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 200)).toLowerCase();
+      
+      const fullContext = beforeText + " [MATCH] " + afterText;
+      
+      // Use ±50 chars for CLOSE context (only educational markers checked here)
+      // This prevents "explain" appearing elsewhere in document from suppressing legitimate blood type detections
+      const closeBeforeStart = Math.max(0, matchIndex - 50);
+      const closeBeforeText = fullText.slice(closeBeforeStart, matchIndex).toLowerCase();
+      
+      const closeAfterStart = matchIndex + rawMatch.length;
+      const closeAfterText = fullText.slice(closeAfterStart, Math.min(fullText.length, closeAfterStart + 50)).toLowerCase();
+      
+      const closeContext = closeBeforeText + " [MATCH] " + closeAfterText;
+      
+      // PERSONAL DISCLOSURE Context - ALLOW these (actual PII)
+      const personalDisclosureMarkers = [
+        /\b(?:my|my\s+(?:blood|donor|patient)|i\s+(?:am|have))\s+(?:blood\s*type|type|rh)?\s*[:=]?\s*[ABO]/i,
+        /\b(?:blood|donor|patient)\s+type\s+(?:is|:)?\s*[ABO]/i,
+        // Also match explicit "blood type X" format without personal context markers
+        /\bblood\s+type\s+[ABO][+-]?/i,
+        /\bblood\s+type\s+(?:positive|negative|pos|neg)/i,
+      ];
+      
+      // MEDICAL/HEALTHCARE Context (PERSONAL) - ALLOW these
+      // When used in medical records, doctor's notes, personal health discussions
+      const medicalPersonalContextMarkers = [
+        /\b(?:my|patient|donor|i)\s+.*?(?:blood\s*type|rh\s*factor|rh|blood\s*group|blood\s+type)\b/i,
+        /\b(?:blood\s*type|rh\s*factor|rh|blood\s*group)\b.*?\b(?:doctor|physician|clinic|hospital|medical|health|screening|confirmed|diagnosis|test|exam)\b/i,
+        /\b(?:doctor|physician|clinic|hospital|medical\s+(?:record|test|screening|exam)|health|screening|confirmed|diagnosis)\b.*?(?:blood\s*type|rh\s*factor|rh|blood\s*group)\b/i,
+        /\b(?:transfusion|compatible|recipient|donation|donate|screen|screening)\b.*?\b(?:blood|type|rh)\b/i,
+        /\bpatient\s+(?:blood\s*type|rh|blood\s*group)/i,  // Simple "patient blood type" pattern
+      ];
+      
+      // EDUCATIONAL Context - SUPPRESS these (general information, not PII)
+      // CRITICAL: Check ONLY in closeContext (±50 chars), not fullContext
+      // This prevents "explain" appearing elsewhere from suppressing legitimate blood type mentions in leaked records
+      const educationalContextMarkers = [
+        /\b(?:educational|educational\s+post|health\s+(?:post|article|drive|campaign|information)|health\s+(?:care\s+)?(?:post|article)|community\s+health|public\s+health|general\s+information|facts?|explain|why|valuable|universal\s+donor|donate|donor\s+compatibility)\b/i,
+        /\b(?:explain|explain\s+why|understand|learn|teach|guide|post|article|blog|information|facts?|reason)\b.*?\b(?:blood|type|rh)\b/i,
+        /\b(?:blood|type|rh)\b.*?\b(?:valuable|universal|compatible|important|why|reason|explain|post|article|information|facts?|general|important)\b/i,
+        /\b(?:without.*?(?:personal|anyone's|any\s+(?:one|individual)|specific|names?))\b/i,
+      ];
+      
+      // NON-MEDICAL Context - SUPPRESS these (personality, psychology, learning, PRODUCT CLASSIFICATIONS)
+      const nonMedicalContextMarkers = [
+        /\b(?:personality|framework|behavior|trait|characteristic|profile|assessment|psychological|psychology|psyche|temperament|disposition)\b/i,
+        /\b(?:learning|learning\s+style|communication|work\s+style|management|leadership|corporate|business|organization)\b/i,
+        /\b(?:model|theory|system|classification|category|typology|spectrum|continuum)\b/i,
+        /\b(?:vs|versus|compared\s+to|more\s+relaxed|relaxation|stress.*management)\b/i,
+      ];
+      
+      // NEW: Product/Food classification markers — SUPPRESS these (TYPE O RICE, TYPE A RICE, etc.)
+      // Check if match is "TYPE O/A/B" and followed by product keywords
+      const productClassificationMarkers = [
+        /type\s+[abo]\s+(?:rice|product|food|grain|item|variety|classification)/i,
+        /\b[abo]\s+(?:rice|product|food|grain|item)\b/i,  // Simple "O RICE" pattern
+      ];
+      
+      // For product markers, check if "TYPE O/A/B" (the match itself) and "RICE/product keywords" appear after
+      const isTypeProductMatch = /^type\s+[abo]$/i.test(rawMatch);
+      const hasProductKeywordAfter = /\b(?:rice|product|food|grain|item|variety|classification)\b/i.test(afterText);
+      const hasProductBeforeAfter = isTypeProductMatch && hasProductKeywordAfter;
+      
+      const hasProductClassification = productClassificationMarkers.some(m => m.test(fullContext)) || hasProductBeforeAfter;
+      
+      const hasPersonalDisclosure = personalDisclosureMarkers.some(m => m.test(fullContext));
+      const hasMedicalPersonal = medicalPersonalContextMarkers.some(m => m.test(fullContext));
+      // CRITICAL: Check educational markers only in closeContext (±50 chars), not fullContext
+      const hasEducational = educationalContextMarkers.some(m => m.test(closeContext));
+      const hasNonMedical = nonMedicalContextMarkers.some(m => m.test(fullContext));
+      // Note: hasProductClassification defined above in product markers section
+      
+      // PERSONAL PII contexts - DETECT these
+      const isPersonalPii = hasPersonalDisclosure || hasMedicalPersonal;
+      
+      // SUPPRESS if:
+      // 1. Educational/informational context, OR
+      // 2. Non-medical context (personality, learning styles), OR
+      // 3. Product/Food classification (TYPE O RICE, etc.)
+      const shouldSuppress = hasEducational || hasNonMedical || hasProductClassification;
+      
+      if (shouldSuppress) {
+        console.log(`[TrustPrompt/contextFilter] blood_type_mention suppressed: "${rawMatch}"`);
+        console.log(`  Personal: ${hasPersonalDisclosure}, Medical-Personal: ${hasMedicalPersonal}, Educational: ${hasEducational}, Non-Medical: ${hasNonMedical}, Product: ${hasProductClassification}`);
+      }
+      
+      return !shouldSuppress; // Return false to suppress, true to allow
+    }
   },
 
   // -- HEIGHT MENTION
   {
     id: "height_mention",
     label: "Height Mention",
-    reason: "Height is personal physical characteristic information under RA 10173.",
-    regex: /\b(?:(?:height|taas|tall|high)\s*(?:is|:)?\s*)?(?:(\d{1,2})\s*(?:feet|ft|')\s*(\d{1,2})\s*(?:inches?|in|")?|(\d{1,3}(?:\.\d{1,2})?)\s*(?:cm|centimeters?|m|meters?))\s*(?:tall|high)?\b/gi,
+    reason: "Height is personal physical characteristic information under RA 10173. Only captured in ID/document contexts.",
+    regex: /\b(?:(?:height|taas|tall|high)\s*(?:is|:)?\s*)?(?:(\d{1,2})\s*(?:feet|ft|')\s*(\d{1,2})?\s*(?:inches?|in|")?|(\d{1,3}(?:\.\d{1,2})?)\s*(?:cm|centimeters?|m|meters?))\s*(?:tall|high)?\b/gi,
     risk: "low",
     validate: null,
-    sanitize: (_m) => "[HEIGHT REDACTED]"
+    sanitize: (_m) => "[HEIGHT REDACTED]",
+    // CRITICAL: Only match height in ID/personal document contexts
+    // Do NOT match height in furniture, room dimensions, or general measurements
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow only if it was reached (shouldn't happen)
+      
+      // Extract context: before and after the match (±150 chars)
+      const beforeStart = Math.max(0, matchIndex - 150);
+      const beforeText = fullText.slice(beforeStart, matchIndex).toLowerCase();
+      
+      const afterStart = matchIndex + rawMatch.length;
+      const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
+      
+      const fullContext = beforeText + " [MATCH] " + afterText;
+      
+      // Personal Attribute Context - ALLOW these (direct statements about self)
+      const personalAttributeMarkers = [
+        /\b(i\s+am|i\s*'?m|my|me)\s+.*?(?:height|tall|cm|m|feet|ft|inches?)\b/i,
+        /\b(height|tall)\s+(?:is|:)?\s*(?:my|mine|i|me)\b/i,
+        /\b(my|i\s+am|i\s*'?m)\s+.*?\b(?:cm|m|feet|ft|inches?|tall)\b/i,
+        // Person profile context: Name at start, then characteristics
+        /^[A-Z][a-z]+\s+[A-Z][a-z]+.*?(?:height|tall|cm|m|feet|ft|inches?)\b/i,
+        // Person data in breach/profile context - with specific job titles
+        /\b(name|age|weight|job|position|religion|faith|salary|loan|email|phone|engineer|director|manager|supervisor|doctor|nurse|teacher|driver)\b.*?(?:height|tall|cm|m|feet|ft|inches?)\b/i,
+        /(?:height|tall|cm|m|feet|ft|inches?).*?\b(weight|age|name|job|position|religion|faith|salary|loan|email|phone|engineer|director|manager|supervisor|doctor|nurse|teacher|driver)\b/i,
+        // Breach/profile with multiple personal attributes: height + weight + job + email pattern
+        /(?:height|tall|cm|m|feet|ft|inches?)\s+.*?(?:weight|weighs?|kg|g|lbs?|pounds?)\s+.*?\b(engineer|director|manager|job|position|email|religion|faith|phone|salary)\b/i,
+        /\b(engineer|director|manager|supervisor|doctor|nurse|teacher|driver)\b.*?(?:height|tall|cm|m|feet|ft|inches?)\b/i,
+      ];
+      
+      // Objects/Items that measurements apply to - SUPPRESS these
+      // These are explicit markers that the measurement is of an object, not a person
+      const objectSubjectMarkers = [
+        /\b(ceiling|shelf|furniture|table|chair|door|wall|room|building|frame)\s+(?:is|has)?\s+.*?(?:\d+(?:\.\d+)?)\s*(?:cm|m|feet|ft|inches?)\b/i,
+        /(?:\d+(?:\.\d+)?)\s*(?:cm|m|feet|ft|inches?)\s+(?:ceiling|shelf|furniture|table|room|building|high|tall|dimension)\b/i,
+      ];
+      
+      // ID/Personal Document Context - ALLOW these
+      const idContextMarkers = [
+        /\b(id|driver.?s?.*license|passport|identification|document|form|medical|health|record|profile)\b/i,
+        /\b(height|weight|physical.*characteristic|personal.*information|biometric)\b/i,
+      ];
+      
+      // Non-ID Contexts - SUPPRESS these (these are NOT personal information)
+      const nonIdContextMarkers = [
+        // Furniture/Building Dimensions (explicit non-person context)
+        /\b(ceiling|shelf|furniture|table|chair|desk|cabinet|door|window|room|building|wall|floor|doorway|frame)\b/i,
+        // Interior Design/Rearrangement (explicit non-person context)
+        /\b(rearrang|redesign|layout|interior|decor|furnish|setup|arrange|fit|fits?)\b/i,
+      ];
+      
+      const hasPersonalAttribute = personalAttributeMarkers.some(m => m.test(fullContext));
+      const hasObjectSubject = objectSubjectMarkers.some(m => m.test(fullContext));
+      const hasIdMarker = idContextMarkers.some(m => m.test(fullContext));
+      const hasNonIdMarker = nonIdContextMarkers.some(m => m.test(fullContext));
+      
+      // SUPPRESS ONLY if the measurement clearly applies to an object, not a person
+      // Allow if: personal attributes detected OR id marker detected OR no non-ID marker
+      const shouldSuppress = hasObjectSubject || (hasNonIdMarker && !hasPersonalAttribute && !hasIdMarker);
+      
+      if (shouldSuppress) {
+        console.log(`[TrustPrompt/contextFilter] height_mention suppressed: "${rawMatch}"`);
+        console.log(`  Personal: ${hasPersonalAttribute}, ID: ${hasIdMarker}, Object: ${hasObjectSubject}, Non-ID: ${hasNonIdMarker}`);
+      }
+      
+      return !shouldSuppress; // Return false to suppress, true to allow
+    }
   },
 
   // -- WEIGHT MENTION
   {
     id: "weight_mention",
     label: "Weight Mention",
-    reason: "Weight is personal physical characteristic information under RA 10173.",
+    reason: "Weight is personal physical characteristic information under RA 10173. Only captured in ID/document contexts.",
     regex: /\b(?:(?:weight|timbang|weighs?|heavy|mass)\s*(?:is|:)?\s*)?(?:(\d{1,3}(?:\.\d{1,2})?)\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?|stone))\s*(?:heavy|heavy|kilos?)?\b/gi,
     risk: "low",
     validate: null,
-    sanitize: (_m) => "[WEIGHT REDACTED]"
+    sanitize: (_m) => "[WEIGHT REDACTED]",
+    // CRITICAL: Only match weight in ID/personal document contexts
+    // Do NOT match weight in product specs, shipping, recipes, or general measurements
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true; // No context, allow only if it was reached (shouldn't happen)
+      
+      // Extract context: before and after the match (±150 chars)
+      const beforeStart = Math.max(0, matchIndex - 150);
+      const beforeText = fullText.slice(beforeStart, matchIndex).toLowerCase();
+      
+      const afterStart = matchIndex + rawMatch.length;
+      const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
+      
+      const fullContext = beforeText + " [MATCH] " + afterText;
+      
+      // Personal Attribute Context - ALLOW these (direct statements about self)
+      const personalAttributeMarkers = [
+        /\b(i\s+am|i\s*'?m|my|me)\s+.*?(?:weight|weighs?|kg|g|lbs?|pounds?)\b/i,
+        /\b(weight|weighs?)\s+(?:is|:)?\s*(?:my|mine|i|me)\b/i,
+        /\b(my|i\s+am|i\s*'?m)\s+.*?\b(?:kg|g|lbs?|pounds?)\b/i,
+        /\b(weighs?|weigh)\s+(?:about|around|approximately|roughly)?\s+(\d+)\s*(?:kg|g|lbs?|pounds?)\s+(?:now|currently|today)\b/i,
+        // Person profile context: Name at start, then characteristics
+        /^[A-Z][a-z]+\s+[A-Z][a-z]+.*?(?:weight|weighs?|kg|g|lbs?|pounds?)\b/i,
+        // Person data in breach/profile context - with specific job titles and personal markers
+        /\b(name|age|height|job|position|religion|faith|salary|loan|email|phone|engineer|director|manager|supervisor|doctor|nurse|teacher|driver)\b.*?(?:weight|weighs?|kg|g|lbs?|pounds?)\b/i,
+        /(?:weight|weighs?|kg|g|lbs?|pounds?).*?\b(height|age|name|job|position|religion|faith|salary|loan|email|phone|engineer|director|manager|supervisor|doctor|nurse|teacher|driver)\b/i,
+        // Breach/profile with multiple personal attributes: weight + height + job + email pattern
+        /(?:weight|weighs?|kg|g|lbs?|pounds?)\s+.*?(?:height|tall|cm|m|feet|ft|inches?)\s+.*?\b(engineer|director|manager|job|position|email|religion|faith|phone|salary)\b/i,
+        // Job titles as strong indicator of personal profile context
+        /\b(engineer|director|manager|supervisor|doctor|nurse|teacher|driver|accountant|architect|designer|analyst)\b.*?(?:weight|weighs?|kg|g|lbs?|pounds?)\b/i,
+      ];
+      
+      // Objects/Items that measurements apply to - SUPPRESS these
+      // These are explicit markers that the measurement is of an object, not a person
+      const objectSubjectMarkers = [
+        // Check if BEFORE text ends with packaging keywords
+        /\b(package|box|bag|shipping|container|item|product)\s*$/i,  // Applied to beforeText
+        /\b(box|boxes|bag|bags|package|packages|item|items|product|products?|container|carton)\b.*?(?:\d+)\s*(?:kg|g|lbs?|pounds?)\b/i,
+        /(?:\d+)\s*(?:kg|g|lbs?|pounds?)\s+(?:bag|bags|box|boxes|package|packages|item|items|of|dried|mangoes?|container|carton)\b/i,
+        /\b(weight)\s+(?:of\s+the|of\s+this|of\s+a)?\s*(?:box|bag|package|item|product|container|carton)\b/i,
+        /\b(mangoes?|flour|sugar|ingredients?|food|meal|dish|rice|salt|spice)\s+(?:weighs?|is)?\s+.*?(?:\d+)\s*(?:kg|g|lbs?|pounds?)\b/i,
+        /(?:\d+)\s*(?:kg|g|lbs?|pounds?)\s+(?:of\s+)?(?:dried|mangoes?|flour|sugar|ingredients?|food|rice)\b/i,
+      ];
+      
+      // Check beforeText specifically for packaging keywords
+      const beforeTextEndsWithPackaging = /\b(package|box|bag|shipping|container|item|product)\s*$/i.test(beforeText);
+      
+      // ID/Personal Document Context - ALLOW these
+      const idContextMarkers = [
+        /\b(id|driver.?s?.*license|passport|identification|document|medical|health|record|profile)\b/i,
+        /\b(height|weight|physical.*characteristic|personal.*information|biometric)\b/i,
+      ];
+      
+      // Non-ID Contexts - SUPPRESS these (these are NOT personal information)
+      // Note: Be conservative - don't suppress if it could be personal profile
+      const nonIdContextMarkers = [
+        // Shipping/Logistics — explicit non-person context
+        /\b(ship|shipping|courier|parcel|cargo|freight|mail|postal|delivery|transport|estimate|cost|charge|fee|order|shipped|warehouse)\b/i,
+        // Food/Cooking — explicit non-person context
+        /\b(recipe|ingredient|cook|bake|flour|sugar|food|meal|dish|serving|portion|bag.*mangoes?|dried.*mangoes?|rice)\b/i,
+      ];
+      
+      // Exclude: Furniture/Objects context - too many false positives with personal data
+      // A furniture measurement appearing with height/weight keywords could still be personal profile
+      
+      const hasPersonalAttribute = personalAttributeMarkers.some(m => m.test(fullContext));
+      const hasObjectSubject = objectSubjectMarkers.some(m => m.test(fullContext)) || beforeTextEndsWithPackaging;
+      const hasIdMarker = idContextMarkers.some(m => m.test(fullContext));
+      const hasNonIdMarker = nonIdContextMarkers.some(m => m.test(fullContext));
+      
+      // SUPPRESS ONLY if clear non-person context AND no personal indicators
+      // IMPORTANT: If we have STRONG shipping indicators (warehouse, parcel, shipped),
+      // suppress the measurement even if there's a coincidental personal marker match
+      // This handles cases like "LOAN APPLICATION FORM" matching with "kg"
+      const hasStrongShippingIndicator = /\b(warehouse|parcel|shipped|shipping|courier|order.*shipped|ship to)\b/i.test(fullContext);
+      const shouldSuppress = hasObjectSubject || (hasNonIdMarker && !hasPersonalAttribute && !hasIdMarker) || (hasStrongShippingIndicator && !hasIdMarker);
+      
+      return !shouldSuppress; // Return false to suppress, true to allow
+    }
   },
 
   // -- SEX MENTION
@@ -2315,11 +3072,17 @@ const TRUSTPROMPT_PATTERNS = [
   },
 
   // -- EYE COLOR MENTION
+  // -- EYE COLOR MENTION
+  // NOTE: Eye color detection is now handled by Path B (gazetteer + trigger phrases)
+  // This pattern is DISABLED to avoid duplication with gazetteer detection.
+  // The gazetteer approach is more context-aware (uses trigger phrases like "my eyes are")
+  // Path B will detect: trigger_eye_color, gazetteer_eye_color
+  // See gazetteer.js for implementation
   {
     id: "eye_color_mention",
     label: "Eye Color Mention",
-    reason: "Eye color is a personal physical characteristic under RA 10173. As a biometric-adjacent descriptor it contributes to individual identification when combined with other personal attributes.",
-    regex: /\b(?:eye\s*colou?r|eyes?)\s*(?:is|are|:|=)?\s*(?:brown|black|blue|green|grey|gray|hazel|amber)\b/gi,
+    reason: "Eye color is a personal physical characteristic under RA 10173. Detection now handled by gazetteer (Path B).",
+    regex: null,  // DISABLED - use gazetteer instead
     risk: "low",
     validate: null,
     sanitize: (_m) => "[EYE COLOR REDACTED]"
@@ -2494,10 +3257,42 @@ Object.freeze(TRUSTPROMPT_PATTERNS);
 // Make patterns available to scanner.js and other modules
 if (typeof globalThis !== 'undefined') {
   globalThis.TRUSTPROMPT_PATTERNS = TRUSTPROMPT_PATTERNS;
+  globalThis.isKnownPlaceholder = isKnownPlaceholder;
+  globalThis.shannonEntropy = shannonEntropy;
 }
 if (typeof window !== 'undefined') {
   window.TRUSTPROMPT_PATTERNS = TRUSTPROMPT_PATTERNS;
-}
-if (typeof window !== 'undefined') {
+  window.isKnownPlaceholder = isKnownPlaceholder;
   window.shannonEntropy = shannonEntropy;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    TRUSTPROMPT_PATTERNS,
+    isKnownPlaceholder,
+    shannonEntropy,
+    extractPHIDValue,
+    isPhIDPlaceholder,
+    normalizePHID,
+    isLikelyApiKey,
+    validateHeightPattern,
+    validateWeightPattern,
+    structuralValidateApiKey,
+    structuralValidatePHID_UMID,
+    structuralValidatePHID_SSS,
+    structuralValidatePHID_GSIS,
+    structuralValidatePHID_Passport,
+    structuralValidatePHID_TIN,
+    structuralValidatePHID_DriversLicense,
+    structuralValidatePHID_PhilHealth,
+    structuralValidatePHID_PRC,
+    structuralValidatePHID_PSACertificate,
+    structuralValidatePHID_PagIBIG,
+    structuralValidatePHID_NBIClearance,
+    structuralValidatePHID_PoliceClearance,
+    structuralValidatePHID_BarangayClearance,
+    structuralValidatePHID_COMELECVoterID,
+    structuralValidatePHID_PhilID,
+    structuralValidatePHStreetAddress
+  };
 }

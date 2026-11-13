@@ -1489,8 +1489,9 @@ const TrustGazetteer = (() => {
     
     // EXPANDED DURATION MARKERS - for work, education, residence
     const durationMarkers = [
-      // Work experience
-      /\b(worked|work|employed|employment|tenure|experience|career)\s+(for|of|spanning)\b/,
+      // Work experience - match verb with optional preposition
+      // "worked", "work", "employment", or "worked for", "work for"
+      /\b(worked|work|employed|employment|tenure|experience|career)(?:\s+(for|of|spanning))?\b/,
       /\b(years (of|in|at|with)|years experience|worked for|work for|been at|been with)\b/,
       /\b(more than|over|less than|at least)\s+\d{1,3}\s+years\b/,
       // Education
@@ -1500,6 +1501,8 @@ const TrustGazetteer = (() => {
       /\b(lived|lived for|lived in|stayed|residing|residence|been here|based in)\b/,
       // General time duration
       /\b(for|during|throughout|spanning|lasting|period|duration)\b/,
+      // ADDED: Work domains after years (logistics, IT, finance, etc.)
+      /\b(years\s+(in|of)\s+(logistics|it|technology|finance|banking|healthcare|education|sales|marketing|hr|administration|supply.?chain|engineering|consulting|retail))\b/,
     ];
     
     // EXPANDED TIME-AGO MARKERS - for historical references
@@ -1511,6 +1514,21 @@ const TrustGazetteer = (() => {
     ];
     
     // Priority order: non-pii → time-ago → duration → age
+    
+    // ★ PERSONAL HEALTH MARKERS: Override non-PII medical context for personal health disclosures
+    // When a user asks about THEIR OWN health at THEIR AGE, the age is PII and should be detected
+    const personalHealthMarkers = [
+      /\b(i am|i'm|at my age|for someone my age|at this age|for my age)\b/,
+      /\b(my health|my doctor|my checkup|my health status)\b/,
+    ];
+    const hasPersonalHealthContext = personalHealthMarkers.some(m => m.test(fullText.toLowerCase()));
+    
+    // ★ PERSONAL AGE MARKERS: When "I am" directly precedes the number, it's always age disclosure
+    // This overrides duration classification even if "for"/"during" appears elsewhere in the context
+    const personalAgeMarkers = [
+      /\b(i\s+am|i'm|im|my age is|age:)\s+\d{1,3}\s+(years?\s*old|yrs?\s*old|y\/o)/,
+    ];
+    const hasDirectAgeStatement = personalAgeMarkers.some(m => m.test(fullText.toLowerCase()));
     
     // CRITICAL: Check for explicit "today is" + date pattern FIRST (highest priority)
     // This prevents "birthday" keywords elsewhere from triggering false positives
@@ -1538,7 +1556,8 @@ const TrustGazetteer = (() => {
     }
     
     // Check for non-PII contexts first (most specific)
-    if (nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText))) {
+    // BUT: Skip this check if there's a personal health context (user disclosing their own age/health)
+    if (!hasPersonalHealthContext && (nonPIIContextPatterns.some(m => m.test(beforeText)) || nonPIIContextPatterns.some(m => m.test(afterText)))) {
       return "non_pii_context";
     }
     
@@ -1548,7 +1567,8 @@ const TrustGazetteer = (() => {
     }
     
     // Check for duration second (specific work/education/residence keywords)
-    if (durationMarkers.some(m => m.test(beforeText))) {
+    // BUT: Skip duration check if there's a direct "I am X years old" statement (personal age disclosure)
+    if (!hasDirectAgeStatement && durationMarkers.some(m => m.test(beforeText))) {
       return "duration";
     }
     
@@ -1951,6 +1971,11 @@ const TrustGazetteer = (() => {
         continue;
       }
 
+      // ★ AGE/DOB CONTEXT FILTERING: Skipped in Path B
+      // (Path A regex already applies determineYearsContext filtering)
+      // Path B primarily handles personal disclosure detection; for age contexts,
+      // Path A's regex + context analysis provides the authoritative filtering
+
       // FIX #4: already handled — fuzzyMatchPhrase let this through
 
       // FIX #2: recapitalise the span before grammar check
@@ -2031,4 +2056,8 @@ if (typeof globalThis !== 'undefined') {
 }
 if (typeof window !== 'undefined') {
   window.TrustGazetteer = TrustGazetteer;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = TrustGazetteer;
 }

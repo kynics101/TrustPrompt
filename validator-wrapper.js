@@ -36,18 +36,27 @@ const TrustValidator = (() => {
 
   /**
    * Luhn algorithm + validator.js isCreditCard.
+   * Supports both 16-digit cards and 15-digit cards (Amex).
    */
   function isCreditCard(raw) {
     const digits = digitsOnly(raw);
-    if (digits.length !== 16) return false;
+    // Accept both 15-digit (Amex) and 16-digit cards
+    if (digits.length !== 15 && digits.length !== 16) return false;
     return validator.isCreditCard(digits);
   }
 
   /**
    * Standard RFC 5322 email check.
+   * Normalizes to lowercase before validation since some email validators
+   * (like validator.js) may be strict about case or other formatting.
+   * Email addresses are case-insensitive per RFC 5321, so MARIA.SANTOS@EXAMPLE.COM
+   * is equivalent to maria.santos@example.com.
    */
   function isEmail(raw) {
-    return validator.isEmail(clean(raw));
+    const cleaned = clean(raw);
+    // Normalize to lowercase for validation since emails are case-insensitive
+    const normalized = cleaned.toLowerCase();
+    return validator.isEmail(normalized);
   }
 
   /**
@@ -240,4 +249,8 @@ if (typeof window !== 'undefined') {
 }
 if (typeof globalThis !== 'undefined') {
   globalThis.TrustValidator = TrustValidator;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = TrustValidator;
 }

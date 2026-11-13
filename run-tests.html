@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustPrompt Test Runner</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .header h1 { margin-bottom: 5px; }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .test-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .test-pass {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .test-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #output {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔒 TrustPrompt Test Runner</h1>
+        <p>Comprehensive test suite for PII detection and risk scoring</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="runDebugTests()">▶️ Debug Tests</button>
+        <button onclick="runFixesTests()">▶️ Fixes Tests</button>
+        <button onclick="runSemanticTests()">▶️ Semantic Tests</button>
+        <button onclick="clearOutput()">🗑️ Clear Output</button>
+    </div>
+
+    <div id="output"></div>
+
+    <!-- Load dependencies first - LOAD ORDER IS CRITICAL -->
+    <script>console.log('[Test Runner] Loading dependencies...');</script>
+    <script src="lib/validator.min.js" onload="console.log('[✓] validator.min.js loaded')"></script>
+    <script src="normalizer.js" onload="console.log('[✓] normalizer.js loaded')"></script>
+    <script src="patterns.js" onload="console.log('[✓] patterns.js loaded')"></script>
+    <script src="ph-address-db.js" onload="console.log('[✓] ph-address-db.js loaded')"></script>
+    <script src="gazetteer.js" onload="console.log('[✓] gazetteer.js loaded')"></script>
+    <script src="linguistic-detector.js" onload="console.log('[✓] linguistic-detector.js loaded')"></script>
+    <script src="scanner.js" onload="console.log('[✓] scanner.js loaded'); onAllDependenciesLoaded();"></script>
+
+    <script>
+        const output = document.getElementById('output');
+        let dependenciesReady = false;
+
+        function log(message, type = 'info') {
+            const item = document.createElement('div');
+            item.className = `test-item test-${type}`;
+            item.textContent = message;
+            output.appendChild(item);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function clearOutput() {
+            output.innerHTML = '';
+        }
+
+        function onAllDependenciesLoaded() {
+            dependenciesReady = true;
+            console.log('[✓ ALL DEPENDENCIES LOADED]');
+            log('✅ All modules loaded successfully', 'pass');
+        }
+
+        function checkDependencies() {
+            if (!dependenciesReady) {
+                log('❌ Dependencies still loading... Please wait and try again.', 'fail');
+                return false;
+            }
+            if (typeof TrustScanner === 'undefined') {
+                log('❌ ERROR: TrustScanner is not defined!', 'fail');
+                log('This means scanner.js did not load correctly.', 'fail');
+                console.error('TrustScanner undefined. Available globals:', Object.keys(window).filter(k => k.includes('Trust')));
+                return false;
+            }
+            return true;
+        }
+
+        function createTestSection(title) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            const heading = document.createElement('h2');
+            heading.textContent = title;
+            heading.style.marginBottom = '15px';
+            section.appendChild(heading);
+            output.appendChild(section);
+            return section;
+        }
+
+        function runDebugTests() {
+            clearOutput();
+            if (!checkDependencies()) return;
+
+            createTestSection('Debug Tests');
+
+            log('=== Test 1: Check TrustScanner availability ===', 'info');
+            if (typeof TrustScanner !== 'undefined' && TrustScanner.computeSourceCodeScore) {
+                log('✓ TrustScanner.computeSourceCodeScore is available', 'pass');
+                
+                const testCode = `const apiKey = 'sk-abc123def456';
+function test() {
+    return 42;
+}`;
+                
+                try {
+                    const result = TrustScanner.computeSourceCodeScore(testCode);
+                    log(`Code classification: ${result.classification}`, 'pass');
+                    log(`Code score: ${result.score}`, 'pass');
+                } catch (e) {
+                    log(`Error: ${e.message}`, 'fail');
+                }
+            } else {
+                log('✗ TrustScanner.computeSourceCodeScore NOT available', 'fail');
+            }
+
+            log('', 'info');
+            log('=== Test 2: Check TrustScanner.scan ===', 'info');
+            if (typeof TrustScanner !== 'undefined' && TrustScanner.scan) {
+                const testPrompt = `My name is John Doe.
+My email is john.doe@example.com.`;
+                
+                try {
+                    const scanResult = TrustScanner.scan(testPrompt);
+                    log(`✓ Scan completed successfully`, 'pass');
+                    log(`Risk level: ${scanResult.riskLevel}`, 'info');
+                    log(`Score: ${scanResult.score}`, 'info');
+                    log(`Findings: ${scanResult.findings.length}`, 'info');
+                } catch (e) {
+                    log(`Error: ${e.message}`, 'fail');
+                }
+            } else {
+                log('✗ TrustScanner.scan NOT available', 'fail');
+            }
+        }
+
+        function runFixesTests() {
+            clearOutput();
+            if (!checkDependencies()) return;
+
+            createTestSection('Detection Fixes Tests');
+
+            const testCases = [
+                {
+                    name: "Credit Card",
+                    input: "card number is 5360 3452 2113 6543"
+                },
+                {
+                    name: "Email",
+                    input: "contact me at test@example.com"
+                },
+                {
+                    name: "Phone",
+                    input: "call me at 09123456789"
+                }
+            ];
+
+            let passCount = 0;
+            let failCount = 0;
+
+            for (const testCase of testCases) {
+                try {
+                    const result = TrustScanner.scan(testCase.input);
+                    if (result.findings.length > 0) {
+                        log(`✓ ${testCase.name}: ${result.findings.length} findings`, 'pass');
+                        passCount++;
+                    } else {
+                        log(`⚠ ${testCase.name}: No findings (might be normal)`, 'warn');
+                        failCount++;
+                    }
+                } catch (e) {
+                    log(`✗ ${testCase.name}: ${e.message}`, 'fail');
+                    failCount++;
+                }
+            }
+
+            log(`\nSummary: ${passCount} passed, ${failCount} issues`, passCount > 0 ? 'pass' : 'fail');
+        }
+
+        function runSemanticTests() {
+            clearOutput();
+            if (!checkDependencies()) return;
+
+            createTestSection('Semantic Context Tests');
+
+            const testCases = [
+                "My name is John Smith",
+                "I work at Accenture",
+                "My email is john@company.com"
+            ];
+
+            log('Testing semantic context detection...', 'info');
+
+            for (const testText of testCases) {
+                try {
+                    const findings = TrustScanner.scan(testText);
+                    
+                    if (findings.findings.length > 0) {
+                        log(`✓ "${testText}"`, 'pass');
+                        log(`  Findings: ${findings.findings.length}`, 'info');
+                    } else {
+                        log(`⚠ "${testText}" - No findings detected`, 'warn');
+                    }
+                } catch (e) {
+                    log(`✗ Error: ${e.message}`, 'fail');
+                }
+            }
+        }
+
+        // Show ready message when page loads
+        window.addEventListener('load', () => {
+            if (dependenciesReady) {
+                log('✅ Test runner ready! Click buttons above to run tests.', 'pass');
+            } else {
+                log('⏳ Still loading modules... Please wait...', 'warn');
+                setTimeout(() => {
+                    if (dependenciesReady) {
+                        log('✅ All modules loaded! Click buttons above to run tests.', 'pass');
+                    } else {
+                        log('❌ Module loading timeout. Check browser console for errors.', 'fail');
+                    }
+                }, 3000);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -18127,7 +18127,25 @@ const OCCUPATIONS_EXTRA = [
   "E-Commerce Specialist", "Ecommerce Seller", "Amazon Virtual Assistant", "Shopify Developer", "WordPress Developer", "Remote Developer",
   "Remote Customer Service Representative", "Work From Home Agent", "Home-Based Agent", "Dropshipper", "Copywriter", "Videographer",
   // small item 5 follow-up: the bare noun was missing (only Claim / Insurance / Patent / Tax / Title Attorney existed); single word, cue-gated
-  "Attorney"
+  "Attorney",
+  // audit of common titles (ISCO-08 major-group structure), category 1-managers-government
+  "Mayor", "Governor", "Senator", "Congressman", "Congresswoman", "Councilor", "Councillor", "Chairwoman", "Executive Director", "Managing Director", "Marketing Manager", "HR Manager", "Finance Manager", "Restaurant Manager", "Hotel Manager", "Farm Manager", "Headmaster", "Headmistress", "Dean", "Ambassador", "Consul", "Commissioner", "Undersecretary", "Cabinet Secretary", "Comptroller", "Controller", "Bank Manager", "Property Manager", "Fleet Manager", "Logistics Manager",
+  // audit of common titles (ISCO-08 major-group structure), category 2-professionals
+  "Physiotherapist", "Counsel", "Barrister", "Attorney General", "Magistrate", "Legal Counsel", "Web Designer", "Mobile App Developer", "Network Engineer", "Data Engineer", "QA Engineer", "Industrial Engineer", "Novelist", "Columnist", "Copy Editor",
+  // audit of common titles (ISCO-08 major-group structure), category 3-technicians-associate
+  "Draftsman", "Drafter", "Network Technician", "IT Technician", "Help Desk Technician", "Computer Technician", "Flight Dispatcher", "Financial Analyst", "Stockbroker", "Insurance Adjuster", "Realtor", "Sales Agent", "Salesperson", "Purchasing Officer", "Customs Officer", "Tax Examiner", "Police Inspector",
+  // audit of common titles (ISCO-08 major-group structure), category 4-clerical
+  "Executive Assistant", "Personal Assistant", "Filing Clerk", "Records Clerk", "Payroll Clerk", "Postman", "Warehouse Clerk", "Shipping Clerk", "Front Desk Agent",
+  // audit of common titles (ISCO-08 major-group structure), category 5-services-sales
+  "Busboy", "Hostess", "Caterer", "Cabin Crew", "Hairstylist", "Manicurist", "Masseuse", "Personal Trainer", "Fitness Instructor", "Yoga Instructor", "Childcare Worker", "Babysitter", "Shop Assistant", "Sales Clerk", "Sales Associate", "Salesman", "Saleswoman", "Undertaker",
+  // audit of common titles (ISCO-08 major-group structure), category 6-agriculture-fishery
+  "Rice Farmer", "Farm Worker", "Farmhand", "Rancher", "Cowboy", "Dairy Farmer", "Aquaculture Technician", "Logger", "Lumberjack", "Groundskeeper", "Plantation Worker", "Coconut Farmer", "Sugarcane Worker", "Fishpond Caretaker", "Tenant Farmer", "Farm Manager", "Crop Farmer",
+  // audit of common titles (ISCO-08 major-group structure), category 7-craft-trades
+  "Cabinetmaker", "Tiler", "Pipefitter", "Sheet Metal Worker", "Toolmaker", "Aircraft Mechanic", "Lineman", "Linesman", "Elevator Technician", "HVAC Technician", "Appliance Repairman", "Goldsmith", "Seamstress",
+  // audit of common titles (ISCO-08 major-group structure), category 8-operators-drivers
+  "Excavator Operator", "Factory Worker", "Assembly Line Worker", "Garment Worker", "Textile Worker", "Train Driver", "Deck Officer", "Co-Pilot", "Ground Crew", "Motorcycle Courier",
+  // audit of common titles (ISCO-08 major-group structure), category 9-elementary-military-religious
+  "Messenger", "Lieutenant", "Colonel", "Admiral", "Airman", "Minister", "Reverend", "Deacon", "Bishop", "Nun", "Missionary", "Chaplain", "Altar Server", "Car Wash Attendant",
 ];
 // make the additions part of the dictionary (case-insensitive de-duplication; the generic-sentence rule is kept for the extras)
 // OCCUPATIONS_EXTRA_ADDED = only the entries that were NOT already in the dictionary (titles that were already there keep their old behavior)

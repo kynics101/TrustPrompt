@@ -33,6 +33,7 @@ console.warn  = (...a) => _initLogs.push(['warn',  ...a]);
 require('./terms-organizations.js');
 require('./terms-occupations.js');
 require('./terms-names.js');           // as manifest.json: the detector's name anchor needs NAMES_DATA
+require('./terms-names-extra.js');     // as manifest.json: the extra names (NAMES_EXTRA_DATA), loaded before the detector
 require('vm').runInThisContext(
   require('fs').readFileSync(require('path').join(__dirname, 'ph-address-db.js'), 'utf8') +
   ';globalThis.PH_ADDRESS_DB=PH_ADDRESS_DB;'

@@ -194,6 +194,20 @@ const ENTITY_TIER = {
   age_value:           "limited",  // Age (numeric or text) — demographic identifier
 };
 
+// Rule 2 condition 1 is limited to valid personal identifiers: personal name,
+// email, phone, physical address, date of birth, card number, government ID.
+const RULE2_TRIGGER_IDS = new Set([
+  "nlp_person_name", "trigger_person_name",
+  "email", "ph_mobile", "phone_intl",
+  "ph_address",
+  "birthday_date", "trigger_dob",
+  "credit_card",
+  "id_label",
+]);
+function isRule2TriggerEntity(patternId) {
+  return RULE2_TRIGGER_IDS.has(patternId) || /^ph_id_/.test(patternId);
+}
+
 const SENSITIVE_CONTEXT_IDS = new Set([
   "gazetteer_medical",
   "gazetteer_financial",
@@ -399,7 +413,7 @@ function evaluateGovernance(findings, preliminary, fullText) {
   // Condition 1: at least one scored entity (BASE_SCORES > 0) OR an explicit
   //              first-person self-attribution anchor (trigger only, unscored).
   const hasScoredEntity = findings.some(
-    f => (BASE_SCORES[f.patternId] ?? 0) > 0
+    f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)
   );
   const hasAnchor = hasFirstPersonAnchor(fullText);
   const triggerPresent = hasScoredEntity || hasAnchor;

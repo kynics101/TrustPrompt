@@ -53,8 +53,10 @@ Any validated critical entity already yields a pre-governance score of 10.00, wh
 ## Rule 2 — Sensitive-Context Co-occurrence Rule
 
 ### Condition
-**Both** of the following must be true in the same prompt:
-1. At least **one (1) validated personal entity** is detected — any entity type with an assigned base score > 0 (Low, Moderate, or High impact)
+**All** of the following must be true in the same prompt:
+1. A **trigger is present**: either
+   - at least **one (1) validated personal identifier** limited to: **personal name, email address, phone number, physical address, date of birth, card number, or government ID**. Other scored types (job titles, organizations, departments, IP/MAC addresses, age, etc.) still contribute to the numeric score but are **not** valid Rule 2 triggers (e.g. "her doctor" detected as a job title must not escalate a medical-context prompt), **or**
+   - an explicit **first-person self-attribution anchor** (e.g. "I was diagnosed", "I have [condition]", "my salary is"). The anchor is a trigger only: never scored, never changes the numeric base score. The bare pronoun "I" is **not** an anchor. The list covers explicit medical, financial, and ethnicity/religion self-attribution phrasings.
 2. At least **one (1) non-scoring sensitive context indicator** is also present from the following categories:
 
 | Context Type  | Examples |
@@ -64,10 +66,25 @@ Any validated critical entity already yields a pre-governance score of 10.00, wh
 | Financial     | Salary, loan, payment, debt, payroll, tax filing, etc. |
 
 Context indicators are detected via the **gazetteer wordlist** lookup and carry **no independent base score**.
+3. The **Contextual Exclusion Filter does not suppress** the escalation (see below).
+
+### Contextual Exclusion Filter
+A deterministic check on the sentence(s) containing a sensitive context term. If **every** such sentence is a non-disclosure reference **and none** carries an explicit attribution, the Rule 2 escalation is **suppressed**. Only the escalation is suppressed: detected identifiers, context terms, and the numeric base score are unchanged. The filter is conservative: absence of an exclusion phrase never suppresses escalation.
+
+| Category | Illustrative phrases |
+|---|---|
+| Research / academic | researching, studying, investigating, thesis, assignment, research on/about |
+| Educational / informational | what is, explain, define, how does, causes of, symptoms of |
+| General discussion | commonly affects, refers to, is defined as, examples of |
+| Hypothetical | imagine if, suppose that, for example, hypothetically |
+
+**Attribution override:** a clear personal disclosure in the same sentence keeps the escalation (e.g. "I have [condition]", "I was diagnosed with [condition]", "my salary is [amount]", "Carlo was diagnosed with [condition]").
+
+Implementation: `EXCLUSION_PATTERNS`, `ATTRIBUTION_PATTERNS`, `splitSentences()`, `findSentenceContaining()`, `shouldSuppressContextEscalation(findings, fullText)`. The anchor and exclusion/attribution phrase lists are provisional and must be tuned and validated against the test dataset.
 
 ### Effect
 **Raise the preliminary risk level by one level** (capped at High Risk):
-- No Risk → No Risk (rule does not apply — requires a validated personal entity)
+- No Risk → Low **only via the first-person anchor** (e.g. "I was diagnosed with diabetes"); with no scored entity and no anchor, No Risk stays No Risk
 - Low → Moderate
 - Moderate → High
 - High → High (already at ceiling)
@@ -84,7 +101,7 @@ Under RA 10173, Sensitive Personal Information (SPI) encompasses health, financi
 
 ### Condition
 **All** of the following must be true:
-1. All scored entities in the prompt are **Low-impact** (`BASE_SCORES[patternId] === 2`):
+1. All scored entities in the prompt are **Low-impact** (`BASE_SCORES[patternId] === 2`; the Organizational Affiliation unit has base 2 and qualifies):
    - Personal names, organizational names, job titles/departments, MAC addresses, IP addresses
 2. **No Moderate or High impact entity** was detected
 3. Rule 1 (Critical-Entity) does not apply
@@ -132,13 +149,20 @@ None of Rules 1, 2, or 3 apply.
 | Personal name only | 1 Low (2) | 2 × 1.00 = 2.00 | None | **Low** |
 | Email only | 1 Moderate (5) | 5 × 1.00 = 5.00 | None | **Moderate** |
 | Personal name + Email | 2 types (7) | 7 × 1.20 = 8.40 | None | **Moderate** |
-| Email + Organization + Job title | 3 types (9) | 9 × 1.40 = 12.60 | None | **Moderate** |
-| Personal name + Email + Phone number | 3 types (12) | 12 × 1.40 = 16.80 | None | **High** |
+| Email + Organization + Job title | 2 units (7) | 7 × 1.20 = 8.40 | None | **Moderate** |
+| Personal name + Email + Phone number | 2 units: Name + Contact (7) | 7 × 1.20 = 8.40 | None | **Moderate** |
+| Email + Phone number | 1 unit: Contact (5) | 5 × 1.00 = 5.00 | None | **Moderate** |
+| Organization + Job title + Department | 1 unit: Org Affiliation (2) | 2 × 1.00 = 2.00 | None | **Low** |
 | Validated Philippine Passport number | 1 High (10) | 10 × 1.00 = 10.00 (Preliminary: Moderate) | Rule 1: Critical entity | **High** |
 | Credit card number + personal name | 2 types (12) | 12 × 1.20 = 14.40 (Preliminary: Moderate) | Rule 1: Critical entity | **High** |
 | Name + Org + Job title + Dept + IP address | 5 Low types (10) | 10 × 2.00 = 20.00 (Preliminary: High) | Rule 3: Low-Impact Cap | **Moderate** |
 | Name + Medical Context Term | 1 scored (2) + 1 context | 2 × 1.00 = 2.00 (Preliminary: Low) | Rule 2: Co-occurrence → raise to Moderate | **Moderate** |
-| Financial term only | 0 scored entities | 0 | None (context-only, no personal entity) | **No Risk** |
+| Financial term only | 0 scored entities | 0 | None (context-only, no personal entity or anchor) | **No Risk** |
+| "I was diagnosed with diabetes" | 0 scored + anchor + 1 context | 0 | Rule 2: anchor trigger → No Risk raised to Low | **Low** |
+| "I am researching diabetes because I was diagnosed with it." | anchor + context | 0 | Rule 2: attribution overrides exclusion → Low | **Low** |
+| "Maria is researching cancer for her thesis paper." | 1 Low (2) + context | 2 × 1.00 = 2.00 | Rule 2 suppressed by exclusion filter | **Low** |
+| "Can you explain the symptoms of diabetes for my assignment?" | context only | 0 | Excluded (educational) | **No Risk** |
+| "My name is Carlo and I have hypertension." | 1 Low (2) + context | 2 × 1.00 = 2.00 | Rule 2: attribution, raise Low → Moderate | **Moderate** |
 
 ---
 
@@ -148,7 +172,12 @@ None of Rules 1, 2, or 3 apply.
 - The engine receives the consolidated entity list from the **Entity Validation and Consolidation** stage (deduplicated, reliability-filtered).
 - Low-reliability detections (RegEx-only fails Validator.js, fuzzy below 0.8 threshold) are **excluded before the engine runs** — they never reach governance evaluation.
 - The governance decision order in Table 15 is **deterministic** — implement as a cascading `if / else-if` chain, not parallel conditions.
-- Rule 2 condition 1 checks `BASE_SCORES[patternId] > 0`, **not** entity tier name — this ensures all scored entity types (Low, Moderate, High) qualify, not just critical/significant ones.
+- Rule 2 condition 1 checks `BASE_SCORES[patternId] > 0 && isRule2TriggerEntity(patternId)`, **not** entity tier name. `isRule2TriggerEntity` uses `RULE2_TRIGGER_IDS` (`nlp_person_name`, `trigger_person_name`, `email`, `ph_mobile`, `phone_intl`, `ph_address`, `birthday_date`, `trigger_dob`, `credit_card`, `id_label`) plus any `ph_id_*` government ID. Defined identically in `scanner.js` and `trust-worker.js`. The trigger is `hasScoredEntity || hasFirstPersonAnchor(fullText)`.
+- Rule 2 flow: `if (triggerPresent && hasSensitiveContext) { if (!shouldSuppressContextEscalation(findings, fullText)) return raised; }` — when suppressed, fall through to the next rule.
+- `evaluateGovernance(findings, preliminary, fullText)` requires the raw prompt text.
+- Governance must run for context-only findings when an anchor is present (do not early-return in `computeRiskScore` when the base total is 0 and an anchor plus context finding exist).
+- Gazetteer notes: `SUPPLEMENTARY_MEDICAL_TERMS` / `mergeSupplementaryMedical()` add common terms missing from `terms-medical.js` (e.g. hypertension, cancer, surgery, medication, insulin) and must be re-merged in `rebuildGazetteers()`. `analyzeTermContext` treats "diagnosed with/as", "diagnosis of", "suffering from", "treated for" before a medical term as personal attribution.
+- PATH C trigger patterns "my name is" and "call me" accept an upper-case first letter (the normalizer capitalizes the prompt's first character). Known gap: "I am Carlo" is not detected, on purpose, to avoid flagging "I am Filipino".
 - Rule 3 condition checks `BASE_SCORES[patternId] === 2` for every scored finding — **do not use ENTITY_TIER string for this check**.
 - Context indicators (`gazetteer_medical`, `gazetteer_financial`, `trigger_health`, `trigger_financial`) have `BASE_SCORES = 0` and are **never** included in the scorable set. They only participate in Rule 2 via the `SENSITIVE_CONTEXT_IDS` set.
 

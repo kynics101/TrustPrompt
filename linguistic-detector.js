@@ -13,7 +13,7 @@
 // Graceful degradation: If compromise.js is unavailable, returns empty findings
 // without error, allowing scanner to continue with PATH A/B results only.
 
-/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA, NAMES_DATA, PH_ADDRESS_DB */
+/* global window, OCCUPATIONS_DATA, ORGANIZATIONS_DATA, NAMES_DATA, PH_ADDRESS_DB, TrustIdentityTerms */
 
 // KNOWN LIMITATIONS (intentional, documented):
 // 1. Lowercase names: names written entirely in lowercase (e.g. after "cousin" or "brother" in casual text)
@@ -95,6 +95,22 @@ const TrustLinguisticDetector = (() => {
     // (e.g. "In Davao, we...", "On Monday", "At the office") — never names.
     'in', 'on', 'at', 'of', 'to', 'for', 'with', 'from', 'by', 'as',
     'and', 'or', 'but', 'nor', 'so', 'if', 'is', 'are', 'was', 'were',
+
+    // ★ Sentence-initial question words, pronouns, modals and fillers. These are
+    // capitalised at the start of a sentence ("What is...", "Will other systems...",
+    // "Please explain...") and were being reported as person names.
+    'what', 'which', 'who', 'whom', 'whose', 'when', 'where', 'why', 'how',
+    // ("will" and "may" are intentionally omitted: they are also real first names)
+    'would', 'can', 'could', 'should', 'shall', 'might', 'must',
+    'do', 'does', 'did', 'have', 'has', 'had', 'am', 'be', 'been',
+    'i', 'me', 'we', 'us', 'you', 'he', 'she', 'it', 'they', 'them', 'him',
+    'please', 'thanks', 'thank', 'hello', 'hi', 'hey', 'ok', 'okay', 'yes', 'no',
+    'also', 'just', 'only', 'not', 'some', 'any', 'all', 'each', 'every', 'other',
+    'another', 'such', 'both', 'either', 'neither', 'many', 'much', 'more', 'most',
+    'because', 'since', 'while', 'although', 'though', 'unless', 'until', 'whether',
+    'about', 'into', 'over', 'under', 'than', 'then', 'else',
+    'explain', 'describe', 'write', 'create', 'make', 'help', 'tell', 'show',
+    'give', 'list', 'summarize', 'translate', 'draft', 'generate', 'fix', 'check',
     
     // ★ EXPANDED: Added common verbs, participles, and discourse markers causing false positives
     
@@ -138,6 +154,8 @@ const TrustLinguisticDetector = (() => {
     'future', 'past', 'present', 'today', 'tomorrow', 'yesterday', 'now', 'then', 'here', 'there',
     'above', 'below', 'inside', 'outside', 'before', 'after', 'during', 'between', 'through',
     'morning', 'afternoon', 'evening', 'night', 'day', 'week', 'month', 'year', 'time', 'hour',
+    // Plural forms: "Mornings are impossible" was reported as a person name
+    'mornings', 'afternoons', 'evenings', 'nights', 'days', 'weeks', 'months', 'years', 'hours',
     
     // Abstract nouns & common concepts
     'number', 'thing', 'stuff', 'world', 'place', 'way', 'reason', 'cause', 'result', 'effect',
@@ -174,6 +192,36 @@ const TrustLinguisticDetector = (() => {
     const lower = candidate.toLowerCase().trim();
     if (PLACE_NAME_WORDS.has(lower)) return true;
     return lower.split(/\s+/).some(w => PLACE_NAME_WORDS.has(w));
+  }
+
+  /**
+   * Proper-noun evidence for a single capitalized word in subject position.
+   * Capitalization at the start of a sentence is not evidence of a name:
+   * "Mornings are impossible" is a plural common noun.
+   *
+   * Uses compromise.js (bundled as lib/compromise.min.js). Compromise tags a word
+   * it knows from its lexicon with specific tags ("Mornings": Plural, "Freelancer":
+   * Actor). For a word it does not know, it only guesses Noun/Singular, and that
+   * includes most real names ("Kyleen", "Balais"). So a word is rejected only when
+   * compromise knows it as a common word and it is not tagged ProperNoun.
+   * When compromise is not loaded the check cannot run, so it passes and the
+   * caller keeps its previous behavior.
+   * @param {string} word
+   * @returns {boolean}
+   * @private
+   */
+  function hasProperNounEvidence(word) {
+    if (!COMPROMISE_AVAILABLE || !word) return true;
+    try {
+      const term = window.nlp(word).json()[0]?.terms?.[0];
+      const tags = new Set(term?.tags || []);
+      if (tags.has('ProperNoun')) return true;
+      // Only the default guess (Noun, Singular): compromise does not know the word.
+      return [...tags].every(tag => tag === 'Noun' || tag === 'Singular');
+    } catch (error) {
+      console.debug('[TrustPrompt/PATH_C] POS check failed:', error.message);
+      return true;
+    }
   }
 
   // Common job titles used for optional filtering
@@ -1415,6 +1463,38 @@ const TrustLinguisticDetector = (() => {
     return false;
   }
 
+  // ── Helper: ambiguous single-word organization names ───────────────────────
+  /**
+   * The organizations dictionary contains many single-word entries that are also
+   * ordinary English words or brand names ("Target", "Apple", "Shell", "Visa").
+   * An exact dictionary hit alone is not evidence that the user is disclosing an
+   * employer. For a single-word match we therefore require an employment or
+   * affiliation cue earlier in the same sentence (or a corporate suffix right
+   * after it). Multi-word organization names are specific enough to keep as-is.
+   *
+   * @param {string} text - Full text being scanned
+   * @param {string} orgRaw - The matched organization string
+   * @returns {boolean} true if the match should be dropped as a general word
+   * @private
+   */
+  function isAmbiguousSingleWordOrg(text, orgRaw) {
+    if (!orgRaw || /\s/.test(orgRaw.trim())) return false;  // multi-word: keep
+
+    const re = new RegExp('\\b' + escapeRegex(orgRaw.trim()) + '\\b', 'gi');
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      // Same-sentence text before the match
+      const before = text.slice(0, m.index).split(/[.!?;\n]/).pop();
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 16);
+
+      const employmentCue = /\b(?:work(?:s|ed|ing)?|employ(?:ed|ee|er)?|intern(?:s|ed|ing|ship)?|join(?:s|ed|ing)?|hired|hiring|resign(?:s|ed)?|laid\s+off|staff|colleague|coworker|co-worker|boss|manager|supervisor|affiliated|member|alumn(?:us|a|i)|studied|studying|graduated)\b/i.test(before);
+      const corporateSuffix = /^\s*,?\s*(?:inc|corp|corporation|ltd|limited|llc|llp|co|company|group|holdings)\b/i.test(after);
+
+      if (employmentCue || corporateSuffix) return false;  // genuine affiliation
+    }
+    return true;  // only ever appears as a plain word
+  }
+
   // ── Helper: Find organization in CSV database (reverse lookup) ──────────────
 
   /**
@@ -1623,6 +1703,9 @@ const TrustLinguisticDetector = (() => {
       const words = potentialName.split(/\s+/);
       if (words.length === 1 && potentialName.length < 3) continue;
       
+      // Heuristic 3b: A single capitalized word needs proper-noun evidence (same rule as scan METHOD 3)
+      if (words.length === 1 && !hasProperNounEvidence(potentialName)) continue;
+
       // Heuristic 4: Filter obvious non-names (using subject position context)
       if (shouldFilterCommonName(potentialName, { isInSubjectPosition: true })) continue;
       
@@ -3315,6 +3398,66 @@ const TrustLinguisticDetector = (() => {
 
   // ── Entity extraction: Job titles ──────────────────────────────────────────
 
+  // ── First-person job-title attribution (Option A scoring gate) ─────────────
+  //
+  // A job title contributes a base score ONLY when it is self-attributed in a
+  // first-person construction. This mirrors the limited first-person NLP used
+  // for person names (Paths A/B). Detection is unaffected — this helper only
+  // decides whether a detected title is `attributed` (scored) or detect-only.
+  //
+  // Recognised attribution forms (same sentence as the title):
+  //   "I am a/an [title]"        "I'm a/an [title]"
+  //   "I work as a/an [title]"   "I am employed as a/an [title]"
+  //   "my role is [title]"       "my position is [title]"
+  //   "my job title is [title]"  "my occupation is [title]"
+  //   "as the [title] of ..."    "as a/an [title]" (first-person role)
+  //   "serve/working as a/an [title]"
+  //
+  // The check is sentence-scoped: the attribution phrase and the title must sit
+  // in the same sentence so an unrelated "I am a developer. The manager said..."
+  // does not score "manager".
+  const FIRST_PERSON_JOB_ATTRIBUTION = [
+    // "I am a/an [title]" / "I'm a/an [title]" (with optional adverb hedges)
+    /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an)\s+/i,
+    // "I work/working/worked as a/an [title]" / "I serve as a/an/the [title]"
+    /\bi\s+(?:work(?:ing|ed)?|serv(?:e|ing))\s+as\s+(?:a|an|the)\s+/i,
+    // "I am/was employed as a/an [title]"
+    /\bi\s+(?:am|was)\s+employed\s+as\s+(?:a|an)\s+/i,
+    // "my role/position/title/occupation/job is [title]"
+    /\bmy\s+(?:job\s+)?(?:role|position|title|occupation|job)\s+(?:is|was|:)\s+/i,
+    // Sentence-initial first-person role: "As a freelancer, I ...",
+    // "As the head of marketing, I ...". Anchored to start-of-sentence so a
+    // trailing third-person "He works as a lawyer" does NOT match. The trailing
+    // first-person reference keeps it attributed to the speaker.
+    /^\s*as\s+(?:a|an|the)\s+.*\bi\b/i,
+  ];
+
+  /**
+   * Decide whether a detected job title is self-attributed in first person.
+   * Sentence-scoped: the attribution phrase must occur in the same sentence as
+   * the title's raw match.
+   *
+   * @param {string} fullText - the original (normalized) prompt text
+   * @param {string} rawMatch - the detected job-title string
+   * @returns {boolean} true when the title is first-person self-attributed
+   * @private
+   */
+  function hasFirstPersonJobAttribution(fullText, rawMatch) {
+    if (!fullText || !rawMatch) return false;
+    try {
+      const low = rawMatch.toLowerCase();
+      // Sentence split on . ! ? and newlines.
+      const sentences = fullText.split(/(?<=[.!?])\s+|\n+/);
+      for (const sentence of sentences) {
+        if (!sentence.toLowerCase().includes(low)) continue;
+        if (FIRST_PERSON_JOB_ATTRIBUTION.some(re => re.test(sentence))) return true;
+      }
+    } catch (error) {
+      console.debug('[TrustPrompt/PATH_C] Job attribution check failed:', error.message);
+    }
+    return false;
+  }
+
   /**
    * Extract job title findings from the document.
    * Uses compromise.js tagging and multi-method detection to identify occupational entities via:
@@ -3409,12 +3552,20 @@ const TrustLinguisticDetector = (() => {
         /\bposition\s+(?:is|as)\s+a\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)/gi,
         /\brole\s+(?:is|as)\s+a\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)/gi,
         /\b(?:job\s+)?title\s+(?:is|:)?\s+a\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)/gi,
-        // NEW: Predicate nominative - "[Name] is a/an [job]"
-        // Captures job title after "is a/an"
+      ];
+
+      // Third-person predicate-nominative triggers — "[Name] is a/an [job]".
+      // These DETECT a job title but carry NO first-person self-attribution,
+      // so findings produced here are tagged attributed:false (detect-only,
+      // not scored). See the attributed-scoring gate in computeRiskScore.
+      const thirdPersonJobTriggers = [
         /\b[A-Z][a-z]+\s+is\s+a(?:n)?\s+([a-z]+(?:\s+[a-z]+)*?)(?:\s+at|\s+in|\.|,|$)/gi,
       ];
       
-      // Extract job titles using trigger patterns
+      // Extract job titles using first-person trigger patterns.
+      // ATTRIBUTION: these express explicit first-person self-attribution
+      // ("I am a / I work as / my role is / my position is"), so they are the
+      // only Method-3 findings that contribute a base score (attributed:true).
       for (const trigger of jobTriggers) {
         let match;
         while ((match = trigger.exec(text)) !== null) {
@@ -3422,19 +3573,68 @@ const TrustLinguisticDetector = (() => {
           
           // Filter common generic titles and ensure minimum length
           if (potentialTitle.length >= 2 && !shouldFilterCommonJobTitle(potentialTitle)) {
-            // Check for duplicates
-            if (!findings.some(f => f.rawMatch.toLowerCase() === potentialTitle.toLowerCase())) {
+            // If a prior (non-attributed) method already detected this exact
+            // title, promote it to attributed rather than adding a duplicate —
+            // first-person attribution should always win for scoring.
+            const existing = findings.find(f => f.rawMatch.toLowerCase() === potentialTitle.toLowerCase());
+            if (existing) {
+              existing.attributed = true;
+            } else {
               findings.push({
                 patternId: 'nlp_job_title',
-                label: 'Job Title (NLP)',
+                label: 'Job Title (NLP - First-Person Attribution)',
                 risk: 'low',
                 rawMatch: potentialTitle,
                 safeVersion: '[JOB TITLE REDACTED]',
                 source: 'C_linguistic',
-                validated: false
+                validated: false,
+                attributed: true
               });
             }
           }
+        }
+      }
+
+      // Third-person predicate nominative ("[Name] is a [job]") — detect-only.
+      for (const trigger of thirdPersonJobTriggers) {
+        let match;
+        while ((match = trigger.exec(text)) !== null) {
+          const potentialTitle = match[1].trim();
+          if (potentialTitle.length >= 2 && !shouldFilterCommonJobTitle(potentialTitle)) {
+            if (!findings.some(f => f.rawMatch.toLowerCase() === potentialTitle.toLowerCase())) {
+              findings.push({
+                patternId: 'nlp_job_title',
+                label: 'Job Title (NLP - Predicate Nominative)',
+                risk: 'low',
+                rawMatch: potentialTitle,
+                safeVersion: '[JOB TITLE REDACTED]',
+                source: 'C_linguistic',
+                validated: false,
+                attributed: false
+              });
+            }
+          }
+        }
+      }
+
+      // Method 4: First-person role lists (see extractFirstPersonRoles).
+      // ATTRIBUTION: first-person role statements ("As a X", "I'm sometimes a
+      // X") — these contribute a base score (attributed:true).
+      for (const candidate of extractFirstPersonRoles(text)) {
+        const existing = findings.find(f => f.rawMatch.toLowerCase() === candidate.toLowerCase());
+        if (existing) {
+          existing.attributed = true;
+        } else {
+          findings.push({
+            patternId: 'nlp_job_title',
+            label: 'Job Title (NLP - First-Person Role)',
+            risk: 'low',
+            rawMatch: candidate,
+            safeVersion: '[JOB TITLE REDACTED]',
+            source: 'C_linguistic',
+            validated: false,
+            attributed: true
+          });
         }
       }
     } catch (error) {
@@ -3442,6 +3642,74 @@ const TrustLinguisticDetector = (() => {
     }
 
     return findings;
+  }
+
+  /**
+   * Extract job titles from first-person role statements.
+   * Handles: "As a freelancer, I'm sometimes a graphic designer, sometimes a VA,
+   * and on weekends a tricycle driver."
+   * @param {string} text
+   * @returns {string[]} unique role strings
+   * @private
+   */
+  function extractFirstPersonRoles(text) {
+    const results = [];
+    if (!text) return results;
+    try {
+      const ROLE_END = '(?=\\s*[,.;:!?]|\\s+(?:and|but|or|who|at|in|for|so|because|sometimes|on|while|when)\\b|\\s*$)';
+      const ROLE = '([A-Za-z][A-Za-z\\-]*(?:\\s+[A-Za-z][A-Za-z\\-]*){0,2}?)';
+      const firstPersonRolePatterns = [
+        // "As a freelancer,"
+        new RegExp('\\bas\\s+an?\\s+' + ROLE + ROLE_END, 'gi'),
+        // "I'm sometimes a X" / "I am currently an X"
+        new RegExp('\\bi(?:[\'\u2019]m|\\s+am)\\s+(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\\s+)+an?\\s+' + ROLE + ROLE_END, 'gi'),
+      ];
+      // List continuations ("sometimes a VA", "and on weekends a tricycle driver")
+      // only apply in sentences that contain a first-person role statement.
+      const listContinuation = new RegExp(
+        '(?:\\bsometimes|\\band|\\bor|\\balso|\\bthen|\\bon\\s+(?:the\\s+)?(?:weekends?|weekdays?|holidays?|(?:mon|tues|wednes|thurs|fri|satur|sun)days?)|\\bduring\\s+\\w+)\\s+(?:and\\s+)?an?\\s+' + ROLE + ROLE_END,
+        'gi'
+      );
+      const sentences = text.split(/(?<=[.!?])\s+/);
+      for (const sentence of sentences) {
+        const patterns = [...firstPersonRolePatterns];
+        const hasFirstPersonRole = /\bi(?:['\u2019]m|\s+am)\b/i.test(sentence) || /\bas\s+an?\s/i.test(sentence);
+        if (hasFirstPersonRole) patterns.push(listContinuation);
+        for (const re of patterns) {
+          re.lastIndex = 0;
+          let m;
+          while ((m = re.exec(sentence)) !== null) {
+            const candidate = m[1].trim();
+            if (candidate.length < 2) continue;
+            if (/^(?:i|me|my|you|he|she|it|we|they|lot|bit|few|little|result|member|part|way|time|result)$/i.test(candidate)) continue;
+            if (TrustIdentityTerms.containsTerm(candidate)) continue;  // identity, not a job
+            if (!isKnownRoleTitle(candidate)) continue;                // must be job vocabulary
+            if (shouldFilterCommonJobTitle(candidate, { isFromPredicate: true })) continue;
+            if (!results.some(r => r.toLowerCase() === candidate.toLowerCase())) {
+              results.push(candidate);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.debug('[TrustPrompt/PATH_C] First-person role extraction failed:', error.message);
+    }
+    return results;
+  }
+
+  // ── Role-statement vocabulary ──────────────────────────────────────────────
+  // A role from a first-person statement ("As a freelancer, ...") must be known
+  // job vocabulary. SUPPLEMENTARY_ROLE_TITLES covers gig roles missing from
+  // OCCUPATIONS_DATA. Acronyms are matched case-sensitively, so "va" is not "VA".
+  const SUPPLEMENTARY_ROLE_TITLES = ['freelancer', 'virtual assistant', 'tricycle driver'];
+  const ACRONYM_ROLE_TITLES = new Set(['VA']);
+
+  function isKnownRoleTitle(candidate) {
+    if (ACRONYM_ROLE_TITLES.has(candidate)) return true;
+    const lower = candidate.toLowerCase();
+    return EXTENSIVE_JOB_TITLES.has(lower) ||
+      COMMON_JOB_TITLES.has(lower) ||
+      SUPPLEMENTARY_ROLE_TITLES.includes(lower);
   }
 
   // ── Entity extraction: Organizations ───────────────────────────────────────
@@ -5299,6 +5567,12 @@ const TrustLinguisticDetector = (() => {
       while ((match = subjectNamePattern.exec(textNLP)) !== null) {
         const candidateName = match[1].trim();
         console.log(`[PATH_C/NAMES] METHOD 3: Found: "${candidateName}"`);
+
+        // A single capitalized word needs proper-noun evidence ("Mornings are" is not a name).
+        if (!candidateName.includes(' ') && !hasProperNounEvidence(candidateName)) {
+          console.log(`[PATH_C/NAMES] METHOD 3: Skip "${candidateName}" - common noun, not a proper noun`);
+          continue;
+        }
         
         // Basic filters
         const pronouns = new Set(['i', 'me', 'you', 'he', 'she', 'it', 'we', 'they', 'him', 'her', 'us', 'them']);
@@ -5493,17 +5767,25 @@ const TrustLinguisticDetector = (() => {
       // STAGE 4: Add job titles and organizations to findings
       // ═══════════════════════════════════════════════════════════════════════
       
-      // Add job titles to findings
+      // Add job titles to findings.
+      // SCORING GATE (Option A): a job title contributes a base score ONLY when
+      // it appears in a first-person self-attribution context ("I am a / I work
+      // as / my role is / as the [title] of"). CSV/dictionary detection finds
+      // the title regardless of context, so we tag `attributed` per finding;
+      // computeRiskScore scores nlp_job_title only when attributed === true.
+      // Non-attributed titles are still detected and shown (explainability).
       for (const title of validatedJobTitles) {
+        const rawMatch = title.rawMatch || title.name;
         findings.push({
           patternId: 'nlp_job_title',
           label: `Job Title (${title.source})`,
           risk: 'low',
-          rawMatch: title.rawMatch || title.name,
+          rawMatch,
           safeVersion: '[JOB TITLE REDACTED]',
           source: 'C_linguistic',
           confidence: title.confidence,
-          csvValidated: true
+          csvValidated: true,
+          attributed: hasFirstPersonJobAttribution(textNLP, rawMatch)
         });
       }
       
@@ -5527,6 +5809,10 @@ const TrustLinguisticDetector = (() => {
           console.debug(`[TrustPrompt/PATH_C] Filtered non-exact CSV org (place name): "${orgRaw}"`);
           continue;
         }
+        if (isAmbiguousSingleWordOrg(textNLP, orgRaw)) {
+          console.debug(`[TrustPrompt/PATH_C] Filtered CSV org (general word, no affiliation cue): "${orgRaw}"`);
+          continue;
+        }
         findings.push({
           patternId: 'nlp_organization',
           label: `Organization (${org.source})`,
@@ -5539,6 +5825,28 @@ const TrustLinguisticDetector = (() => {
         });
       }
       
+      // First-person role statements ("As a freelancer, I'm sometimes a graphic designer...")
+      // These are inherently first-person self-attribution, so they are scored
+      // (attributed: true). If a non-attributed CSV finding already matched the
+      // same raw text, promote it to attributed rather than duplicating.
+      for (const role of extractFirstPersonRoles(textNLP)) {
+        const existing = findings.find(f => f.patternId === 'nlp_job_title' && f.rawMatch.toLowerCase() === role.toLowerCase());
+        if (existing) {
+          existing.attributed = true;
+        } else {
+          findings.push({
+            patternId: 'nlp_job_title',
+            label: 'Job Title (First-Person Role)',
+            risk: 'low',
+            rawMatch: role,
+            safeVersion: '[JOB TITLE REDACTED]',
+            source: 'C_linguistic',
+            validated: false,
+            attributed: true
+          });
+        }
+      }
+
       console.debug(`[TrustPrompt/PATH_C] Total findings: ${findings.length} (names: ${nameCount}, jobs: ${validatedJobTitles.length}, orgs: ${validatedOrganizations.length})`);
 
       // D3: Push structural org findings (not run through Compromise validation).
@@ -5670,6 +5978,7 @@ const TrustLinguisticDetector = (() => {
 
           // Filter: Reject if it's a known non-name word (adjectives, verbs, discourse markers)
           if (nonNameWordsDirective.has(name.toLowerCase())) continue;
+          if (NON_NAME_WORDS.has(name.toLowerCase())) continue;
 
           // Filter: Reject known organizations and AI models
           const knownOrganizations = new Set(['azure', 'google', 'amazon', 'microsoft', 'apple', 'claude', 'gpt', 'gemini', 'bard']);

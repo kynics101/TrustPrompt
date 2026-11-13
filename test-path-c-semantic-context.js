@@ -1,0 +1,43 @@
+// test-path-c-semantic-context.js - Inline script extracted from test-path-c-semantic-context.html
+
+const testCases = [
+    "Kyleen Nicdao works in Accenture",
+    "Madeline is a virtual assistant at PGH Hospital",
+    "juliah is a nurse",
+    "GENERATE AN EMAIL FOR BEATRICE, THE PROJECT MANAGER OF AZURE"
+];
+
+const resultsDiv = document.getElementById('results');
+
+for (const testText of testCases) {
+    console.log('\n================================');
+    console.log('TEST:', testText);
+    console.log('================================');
+    
+    const findings = window.TrustLinguisticDetector.scan(testText);
+    
+    const resultHtml = `
+        <div style="margin: 20px 0; padding: 10px; border: 1px solid #ccc;">
+            <h3>Input: "${testText}"</h3>
+            <p><strong>Findings Count: ${findings.length}</strong></p>
+            <ul>
+                ${findings.map(f => `
+                    <li>
+                        <strong>${f.patternId}</strong>: "<span style="color: red;">${f.rawMatch}</span>" 
+                        <br/>&nbsp;&nbsp;Label: ${f.label}
+                        <br/>&nbsp;&nbsp;Semantic Context: <code>${JSON.stringify(f.semanticContext || 'MISSING')}</code>
+                    </li>
+                `).join('')}
+            </ul>
+        </div>
+    `;
+    
+    resultsDiv.innerHTML += resultHtml;
+    
+    // Log to console
+    console.log('Findings:', findings.length);
+    for (const f of findings) {
+        console.log(`  - ${f.patternId}: "${f.rawMatch}"`);
+        console.log(`    Context: ${JSON.stringify(f.semanticContext)}`);
+    }
+}

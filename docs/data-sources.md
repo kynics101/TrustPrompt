@@ -37,3 +37,16 @@ Built by `scripts/build-names-extra.js`; the header of `terms-names-extra.js` st
 - File: `terms-names-ph-proposed.js` (170 given names and 285 surnames of nicknames, Muslim / Mindanao, indigenous and regional, Chinese-Filipino and Spanish-catalogue names).
 - Written by hand from general knowledge of Filipino naming practice; vocabulary only (single words); no individual, record, document or third-party list was copied. It is a separate source in the
   build (`--ph`) and passes the same word filters; it has no frequency floor. After the filters 88 given names and 78 surnames are new (56 + 196 were already in terms-names.js; 11 dropped as ordinary words).
+
+## 5. Place, dish, festival, disease and religion word lists  (AUTHORED, NOT DOWNLOADED)
+- Where: constants `G_PLACES_PH`, `G_PLACES_WORLD`, `G_FOOD_EVENT`, `G_DISEASE`, `G_RELIGION` in `linguistic-detector.js` (Phase 2 type vetoes). Closed lists of single names; no individual, record or third-party file was copied.
+- Places: Philippine cities, municipalities, Metro Manila districts and regions written from general knowledge (the official PSGC, https://psa.gov.ph/classification/psgc, was **not downloaded**, so municipalities missing from the list are not vetoed; the 82 provinces already in `ph-address-db.js` are used as well), the sovereign states, continents, major world cities, US states and Canadian / Australian states written from general knowledge (ISO 3166-1 country names).
+- Dishes and festivals: Filipino dishes, festivals and religious holidays, plus the seven weekdays.
+- Diseases: common conditions and disease-name suffixes (-itis, -osis, -emia, -pathy, -tension).
+- Religion words: names of religions and denominations. Nationality and language words reuse `G_LANG_NAT`.
+- Use: a person finding that is entirely one of these words is dropped unless a person cue stands with it (see "PHASE 2" in the detector).
+
+## 6. Public figures  (AUTHORED, NOT DOWNLOADED)
+- Where: constant `G4_PUBLIC` in `linguistic-detector.js` (Phase 4 rule `public`).
+- Content: full names of Filipino national heroes and presidents (the proclaimed heroes of the National Historical Commission of the Philippines and the list of presidents of the Philippines, written from general knowledge; neither list was downloaded, so the list is incomplete) and about 50 historical figures of world history (scientists, rulers, writers, artists, civil-rights leaders; all deceased). Public record only: no living private person, no contact data.
+- Use: a person finding that equals one of these names is not reported unless the sentence is about the user's own circle ("my name is ...", "my classmate ... named ...").

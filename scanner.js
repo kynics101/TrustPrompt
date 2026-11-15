@@ -4274,6 +4274,20 @@ const TrustScanner = (() => {
         console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch}`).join(", "));
       }
 
+      // ── Phase 1: say why findings are not visible in the in-page panel ──────────
+      // The injected panel (ui.js TrustUI.update) removes the bar and the panel when riskLevel is "none", so every finding
+      // that is listed above but did not raise the risk (a job title that is not first-person, a context-only term) is
+      // detected and returned, but not drawn. The side-panel page (sidepanel.js) draws every returned finding.
+      if (findings.length > 0 && riskLevel === "none") {
+        const why = f => !isScorable(f)
+          ? (f.patternId === "nlp_job_title" && f.attributed !== true
+              ? "job title is not first-person (scored only when attributed, see isScorable)"
+              : ((BASE_SCORES[f.patternId] ?? 0) <= 0 ? "context-only pattern with no score of its own" : "not scorable"))
+          : "scored, but the final risk level is none";
+        console.log("[TrustPrompt/scanner] PANEL HIDDEN: riskLevel=none so the in-page panel is cleared although " + findings.length +
+          " finding(s) were detected: " + findings.map(f => `${f.patternId}:${f.rawMatch} (${why(f)})`).join("; "));
+      }
+
       // ── TASK 12.4: Label Enhancement for Code+ID Context ────────────────────
       // When source_code and government ID patterns are detected together,
       // update the ID pattern labels to explicitly show "[Source Code]" context

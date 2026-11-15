@@ -140,6 +140,43 @@ const PH_ADDRESS_DB = (() => {
   //                         substrings, needed because a candidate like
   //                         "Davao City" should match the phrase "davao city")
   const PLACE_SET = new Set(ALL_PLACES);
+
+  // ── Extra places: exact-match ONLY ─────────────────────────────────────────
+  // Cities/municipalities missing from CITIES, plus Metro Manila districts and
+  // well-known landmarks. They are used solely by isPlaceNameExact (so the person
+  // name detector can tell "from Cubao" or "Plaza Miranda" is a place, not a
+  // person). They are deliberately NOT added to ALL_PLACES: matchesAny /
+  // matchesWhole use substring matching, and short district names could
+  // false-match inside ordinary words.
+  //
+  // Names that are ALSO common surnames or given names (Rodriguez, Toledo, Clark,
+  // Paco, Guadalupe, Santa Cruz, Ortigas, Rockwell, Espana, Escolta, Recto...) are
+  // left out on purpose: an exact place match drops an uncued person finding, so
+  // listing them would hide real people.
+  const EXTRA_PLACES = [
+    // cities / municipalities not in CITIES
+    "zamboanga", "tagaytay", "tagaytay city", "cainta", "taytay", "san mateo",
+    "binangonan", "angono", "cabuyao", "binan", "santa rosa", "sta. rosa",
+    "tanauan", "cavite city", "trece martires", "tarlac city", "tarlac", "subic",
+    "baliuag", "marilao", "bocaue", "roxas city", "kalibo", "boracay",
+    "carcar", "carcar city", "toledo city", "naga city", "legazpi city",
+    "sorsogon city", "masbate city", "tuguegarao city", "cauayan", "ilagan",
+    "santiago city", "bayombong", "cabanatuan city", "mabalacat", "lingayen",
+    "alaminos", "dasmarinas", "las pinas", "paranaque",
+    // Metro Manila districts / neighbourhoods
+    "cubao", "quiapo", "binondo", "tondo", "malate", "ermita", "intramuros",
+    "sampaloc", "pandacan", "santa mesa", "sta. mesa", "diliman", "kamuning",
+    "novaliches", "commonwealth", "fairview", "alabang", "bgc",
+    "bonifacio global city", "fort bonifacio", "greenhills", "divisoria",
+    "bicutan", "araneta center", "libis", "katipunan", "blumentritt",
+    "monumento", "balintawak", "baclaran",
+    // landmarks / thoroughfares / bodies of water
+    "luneta", "luneta park", "rizal park", "plaza miranda", "plaza lawton",
+    "liwasang bonifacio", "fort santiago", "mall of asia", "sm mall of asia",
+    "manila bay", "pasig river", "laguna de bay", "taal lake", "mayon volcano",
+    "chocolate hills", "banaue", "edsa", "roxas boulevard", "taft avenue"
+  ];
+  const EXTRA_SET = new Set(EXTRA_PLACES.map(p => p.toLowerCase()));
   const PLACE_PHRASE_LIST = ALL_PLACES.filter(p => p.includes(" "));
 
   /**
@@ -185,7 +222,8 @@ const PH_ADDRESS_DB = (() => {
    */
   function isPlaceNameExact(text) {
     if (!text) return false;
-    return PLACE_SET.has(text.toLowerCase().trim());
+    const key = text.toLowerCase().trim();
+    return PLACE_SET.has(key) || EXTRA_SET.has(key);
   }
 
   return { matchesAny, findMatches, matchesWhole, isPlaceNameExact };

@@ -1655,7 +1655,15 @@ const PH_AREA_FOLLOW_STOPWORDS = [
   "manage", "manages", "confirm", "confirming", "confirmed", "confirms",
   // document words
   "permit", "permits", "clearance", "certificate", "license", "document", "documents",
-  "form", "forms"
+  "form", "forms",
+  // ordinary nouns that follow "barangay" in prose ("barangay budget", "barangay
+  // ordinance"), and a brand/team name that is not a locality ("Barangay Ginebra").
+  "budget", "ordinance", "ordinances", "fund", "funds", "road", "roads", "ginebra",
+  // verbs / auxiliaries / function words. These also stop the name run: without
+  // them "Sitio Maligaya is a beautiful place" swallowed "is a".
+  "has", "have", "had", "are", "were", "been", "will", "would", "does", "did",
+  "play", "plays", "played", "win", "wins", "won", "also", "just", "very",
+  "from", "after", "before", "when", "who", "which", "because", "while", "then", "than"
 ];
 
 
@@ -1663,6 +1671,10 @@ const _streetTypeAlt = PH_STREET_TYPES.join("|");
 const _areaMarkerAlt = PH_AREA_MARKERS.join("|");
 const _unitMarkerAlt = PH_UNIT_MARKERS.join("|");
 const _areaStopAlt = PH_AREA_FOLLOW_STOPWORDS.join("|");
+// Case-insensitive literal for a case-SENSITIVE RegExp: "Brgy" -> "[Bb][Rr][Gg][Yy]".
+const ciLiteral = (w) => w.replace(/[A-Za-z]/g, c => `[${c.toLowerCase()}${c.toUpperCase()}]`);
+const _areaMarkerCI = PH_AREA_MARKERS.map(ciLiteral).join("|");
+const _areaStopCI = PH_AREA_FOLLOW_STOPWORDS.map(ciLiteral).join("|");
 
 /**
  * Structural validator for a street-level PH address candidate.
@@ -1688,20 +1700,36 @@ function structuralValidatePHStreetAddress(raw) {
   const areaMarker = `(?:${_areaMarkerAlt})\\.?`;
   const unitMarker = `(?:${_unitMarkerAlt})\\.?`;
 
-  // 1. Number somewhere before a street-type word ("123 Rizal St.")
-  if (new RegExp(`\\b\\d+[A-Za-z]?\\b[\\s\\S]{0,40}?\\b${streetType}(?:\\b|$)`, "i").test(s)) {
+  // 1. Number, then a street NAME word, then a street-type word ("123 Rizal St.").
+  //    A word must sit directly before the street type, so a count plus an
+  //    abbreviation ("3 Dr. appointments", "2 Ave") is not an address.
+  if (new RegExp(`\\b\\d+[A-Za-z]?\\b[\\s\\S]{0,40}?\\b[A-Za-z][\\w.-]*[\\s,]+${streetType}(?:\\b|$)`, "i").test(s)) {
     return true;
   }
-  // 2. Unit / block / lot / building marker + a NUMERIC identifier.
-  //    Requiring a digit avoids matching common words ("Lot of", "Unit tests").
-  if (new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+[A-Za-z]?`, "i").test(s)) {
-    return true;
+  // 2. Unit / block / lot / building marker + a NUMERIC identifier, AND at least
+  //    one corroborating anchor. A lone "Unit 4" / "Room 305" / "Blk 5" is just as
+  //    often a course unit or an exam block, so it needs a second signal:
+  //    another marker ("Blk 5 Lot 12"), a letter id ("4B"), a street type, an area
+  //    marker, or a comma + Title-Case component ("Unit 4, Sunrise Tower").
+  {
+    const units = s.match(new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+(?:-?[A-Za-z])?`, "ig")) || [];
+    if (units.length) {
+      const multi = units.length >= 2;
+      const alnumId = units.some(u => /\d-?[A-Za-z]$/.test(u.trim()));
+      const hasStreet = new RegExp(`\\b${streetType}(?:\\b|$)`, "i").test(s);
+      const hasArea = new RegExp(`\\b${areaMarker}\\s+\\S`, "i").test(s);
+      const commaTitle = /,\s*[A-Z][a-z]/.test(s);
+      if (multi || alnumId || hasStreet || hasArea || commaTitle) return true;
+    }
   }
-  // 3. Area marker + a following PROPER-NOUN name token.
-  //    A following common word ("captain", "in", "hall", ...) means this is
-  //    ordinary prose ("barangay captain", "barangay in Batanes"), not an
-  //    address, so it is rejected via a negative lookahead stopword list.
-  if (new RegExp(`\\b${areaMarker}\\s+(?!(?:${_areaStopAlt})\\b)[A-Za-z0-9][\\w-]*`, "i").test(s)) {
+  // 3. Area marker + a following PROPER-NOUN name token. Barangay, purok,
+  //    sitio and subdivision names are proper nouns, so the token after the
+  //    marker must start with a capital letter or a digit. A lowercase word is
+  //    ordinary prose ("complaint to the barangay about it", "barangay captain").
+  //    The check is case-sensitive; the marker and the stopword list are matched
+  //    case-insensitively through ciLiteral(), so "Captain" and "captain" are both
+  //    rejected as a name.
+  if (new RegExp(`\\b(?:${_areaMarkerCI})\\.?\\s+(?!(?:${_areaStopCI})\\b)[A-Z0-9][\\w-]*`).test(s)) {
     return true;
   }
   // 4. Labeled field with content
@@ -2110,24 +2138,41 @@ const TRUSTPROMPT_PATTERNS = [
       // The negative lookahead blocks common connectors that may follow a comma
       // ("..., and the rent...") — needed because the /i flag makes [A-Z] match
       // any case, so without it a lowercase "and" could be consumed.
-      const NOT_CONNECTOR = "(?!(?:and|or|but|the|a|an|with|for|then|so|which|who|that|is|are|was|were)\\b)";
-      const CONT = "(?:\\s*,\\s*" + NOT_CONNECTOR + "(?:" + AREA + "\\.?\\s+)?[A-Z][\\w.-]*(?:\\s+[A-Z][\\w.-]*){0,2}){0,4}";
+      const NOT_CONNECTOR = "(?!(?:and|or|but|the|a|an|with|for|then|so|which|who|that|is|are|was|were|near|beside|behind|across|along|at|in|on|by|to|from|please|can|could|i|we|you|my|our|just|also)\\b)";
+      // Lookbehind placed before a token separator: the previous character must not
+      // be a sentence-ending ".", unless it closes an address abbreviation
+      // ("St.", "Brgy.", "Sto."). Without it the span ran past the sentence end:
+      // "...Cainta. I play guitar" was captured as "...Cainta. I play".
+      const NO_SENT_END = "(?<=\\b(?:Sto|Sta|St|Ave|Blvd|Rd|Dr|Ln|Hwy|Ext|Brgy|Subd|Bldg|Blk|Mt|Jr|Sr)\\.|[^.])";
+      const CONT = "(?:\\s*,\\s*" + NOT_CONNECTOR + "(?:" + AREA + "\\.?\\s+)?[A-Z][\\w.-]*(?:" + NO_SENT_END + "\\s+" + NOT_CONNECTOR + "[A-Z][\\w.-]*){0,2}){0,4}";
       return new RegExp(
         "(?:" +
           // A. number [unit run] name(s) street-type (+ continuation)
-          "\\b(?:Blk|Block|Lot|Unit|No)\\.?\\s*\\d+[A-Za-z]?(?:[,\\s]+(?:Blk|Block|Lot|Unit)\\.?\\s*\\d+[A-Za-z]?)*[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          // The street NAME is required ({1,3}): a bare "3 Dr." / "2 Ave" / "5 Ext"
+          // is a count + abbreviation ("3 Dr. appointments"), not an address.
+          "\\b(?:Blk|Block|Lot|Unit|No)\\.?\\s*\\d+[A-Za-z]?(?:[,\\s]+(?:Blk|Block|Lot|Unit)\\.?\\s*\\d+[A-Za-z]?)*[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
           "|" +
-          "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
           "|" +
           // B. area marker + PROPER-NOUN name (+ continuation).
           //    AREA_STOP rejects a following common word so "barangay captain"
           //    and "barangay in Batanes" are NOT treated as an address.
-          "\\b" + AREA + "\\.?\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*(?:\\s+[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
+          //    Each extra name token is also checked against the stopword list so the
+          //    span stops before "is a" / "play basketball" instead of swallowing them.
+          "\\b" + AREA + "\\.?\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*(?:" + NO_SENT_END + "\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
           "|" +
           // C. unit/building marker + a NUMERIC identifier (+ optional building name)
           //    The identifier must contain a digit (e.g. "4B", "5", "12") so common
           //    words like "Lot of", "Unit tests", "Block diagram" do NOT match.
-          "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+[A-Za-z]?(?:[,\\s]+[A-Za-z0-9][\\w.-]*){0,3}" +
+          //    Chained markers ("Lot 5 Block 3 Phase 2") and the following building /
+          //    subdivision name are kept in ONE span, then the continuation consumes
+          //    ", City, Province". Free tokens are stopword-guarded so "unit 4 tests
+          //    and ..." does not run on. The structural validator additionally
+          //    requires corroboration for a lone "Unit 4".
+          "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+(?:-?[A-Za-z])?" +
+            "(?:[,\\s]+(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+(?:-?[A-Za-z])?)*" +
+            "(?:" + NO_SENT_END + "[,\\s]+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*){0,3}" +
+            "(?:\\s+" + STREET + "\\b\\.?)?" + CONT +
           "|" +
           // D. labeled address field
           // Only match if followed by typical address components:
@@ -2184,7 +2229,12 @@ const TRUSTPROMPT_PATTERNS = [
         if (wordAfterBrgy && wordAfterBrgy[1]) {
           wordsToCheck.add(wordAfterBrgy[1]);
         }
-        if (nextWordInText && nextWordInText[1]) {
+        // The word AFTER the match only matters for a bare "Brgy. X" mention. A
+        // full multi-part address ("45 Mabini St., Brgy. San Roque, Cainta.") ends
+        // at a sentence boundary, and the next sentence's first word ("I", "We",
+        // "She") says nothing about whether the span is an address.
+        const isSimpleAreaMention = !/[,\d]/.test(rawMatch);
+        if (nextWordInText && nextWordInText[1] && isSimpleAreaMention) {
           wordsToCheck.add(nextWordInText[1]);
         }
         
@@ -2208,6 +2258,9 @@ const TRUSTPROMPT_PATTERNS = [
           "have", "do", "does", "did", "should", "would", "could"
         ]);
         
+        // Share the structural validator's stopword list so both stay in step.
+        PH_AREA_FOLLOW_STOPWORDS.forEach(w => nonPlaceWords.add(w));
+
         // Check if any of the next words indicate this is NOT a place name
         for (const word of wordsToCheck) {
           if (nonPlaceWords.has(word)) {

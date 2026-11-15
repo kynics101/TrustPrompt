@@ -1442,7 +1442,7 @@ const TrustScanner = (() => {
     // Use the same scoring-eligibility gate as computeRiskScore so a
     // non-attributed nlp_job_title (detected but not scored) does not count as
     // a scored entity for the Low-Impact Cap.
-    const scoredFindings = findings.filter(isScorable);
+    const scoredFindings = findings.filter(f => isScorable(f, fullText));
     const hasAnyScoredEntity = scoredFindings.length > 0;
     const allLowImpact = scoredFindings.every(
       f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -1484,14 +1484,79 @@ const TrustScanner = (() => {
   // detected and shown in the UI, but do not contribute to the risk score or
   // the distinct-unit count. This prevents correctly-detected titles in the
   // wrong context (e.g. "her doctor", "the project manager said") from scoring.
-  function isScorable(f) {
+  // ── Organization attribution (scoring gate) ───────────────────────────────
+  // An organization name is scored only when the sentence ties it to the writer:
+  //   "my company Ayala Corporation", "our school ...", "I work at ...",
+  //   "I am a member of ...", "I was hired by ...".
+  // A name in a general question or a third-party mention ("Is the Department of
+  // X a real office?", "a seminar by the Department of X") is still detected and
+  // shown, but adds no score. Same idea as the job-title gate (`attributed`).
+  const ORG_AFFILIATION_BEFORE_RE = new RegExp(
+    // possessive + affiliation noun: "my company", "our school", "my employer"
+    "\\b(?:my|our|mine)\\s+(?:[\\w'’-]+\\s+){0,2}?" +
+      "(?:company|employer|workplace|office|school|university|college|organization|team|firm|church|association|club|agency|hospital|clinic|branch|department|unit|group)\\b[^.!?\\n]*$" +
+    "|" +
+    // first person + affiliation verb: "I work at", "we serve", "I am a member of", "I was hired by"
+    "\\b(?:i|we)\\s+(?:" +
+      "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired)\\b" +
+      "|(?:am|was|are|were)\\s+(?:(?:a|an|the)\\s+)?" +
+        "(?:(?:member|members|employee|employees|staff|student|students|intern|interns|volunteer|volunteers|alumni|alumnus|alumna|graduate|graduates)\\s+(?:of|at|with|for)\\b" +
+        "|(?:hired|employed|recruited)\\s+(?:by|at)\\b)" +
+    ")[^.!?\\n]*$" +
+    // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
+    // (a named person's employer, a profile line)
+    "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
+    "i"
+  );
+  function isAttributedOrganization(fullText, name) {
+    if (!fullText || !name) return false;
+    const lower = fullText.toLowerCase();
+    const needle = name.trim().toLowerCase();
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      const sentenceStart = Math.max(lower.lastIndexOf('.', i - 1), lower.lastIndexOf('!', i - 1),
+                                     lower.lastIndexOf('?', i - 1), lower.lastIndexOf('\n', i - 1)) + 1;
+      if (ORG_AFFILIATION_BEFORE_RE.test(fullText.slice(sentenceStart, i))) return true;
+    }
+    return false;
+  }
+
+  // ── Labeled record fields (scoring gate) ──────────────────────────────────
+  // A structured record ("Position: warehouse supervisor. Company: Pacific
+  // Harvest Foods Inc. Location: ... Shift: night.") states a specific person's
+  // job and employer as data values, the same disclosure as "I work at X as a Y",
+  // but it has no first-person phrasing, so both gates above rejected it and the
+  // prompt scored No Risk. A finding is attributed when it is the VALUE of a
+  // matching field label. Guards:
+  //   - the prompt must carry at least two "Label: value" fields (a record, not
+  //     one stray "Company:" in prose);
+  //   - a hiring / vacancy notice is a job ad, not a person's record, so record
+  //     attribution is off when one is present.
+  const RECORD_FIELD_LABEL_RE = /(?:^|[\n.;|]|\s)\s*[A-Za-z][A-Za-z ]{1,24}\s*[:=]\s*\S/g;
+  const RECORD_JOB_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:position|job\s*title|title|role|designation|occupation)\s*[:=]\s*$/i;
+  const RECORD_ORG_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:company|employer|organi[sz]ation|workplace|agency|affiliation)\s*[:=]\s*$/i;
+  const RECORD_HIRING_RE = /\b(?:hiring|vacanc(?:y|ies)|job\s+(?:opening|openings|posting|ad|advert(?:isement)?)|now\s+accepting|apply\s+(?:now|here|at|by|online)|applicants?|we\s+are\s+looking\s+for|qualifications?|requirements?)\b/i;
+  function isRecordFieldValue(fullText, name, labelRe) {
+    if (!fullText || !name) return false;
+    if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+    if (RECORD_HIRING_RE.test(fullText)) return false;
+    const lower = fullText.toLowerCase();
+    const needle = name.trim().toLowerCase();
+    if (!needle) return false;
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      if (labelRe.test(fullText.slice(Math.max(0, i - 40), i))) return true;
+    }
+    return false;
+  }
+
+  function isScorable(f, fullText) {
     if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
-    if (f.patternId === "nlp_job_title") return f.attributed === true;
+    if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE);
+    if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
     return true;
   }
 
   function computeRiskScore(findings, fullText) {
-    const scorable = findings.filter(isScorable);
+    const scorable = findings.filter(f => isScorable(f, fullText));
     
     console.log("[TrustPrompt/scorer] computeRiskScore called with", findings.length, "findings");
     console.log("[TrustPrompt/scorer] Scorable findings:", scorable.map(f => f.patternId).join(", "));
@@ -1694,6 +1759,22 @@ const TrustScanner = (() => {
     const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
     
     const fullContext = beforeText + " [MATCH] " + afterText;
+
+    // ── SPECIAL: an explicit residence / delivery cue protects a PH address ───
+    // The generic filters below (educational, example, validation, reference,
+    // title/directions) test loose words anywhere in a +/-150 char window:
+    // "show", "check", "valid", "format", "nearest", "play"... So
+    // "I live at 123 Rizal St. - can you find the nearest LRT station?" or
+    // "My address is 45 Mabini St. I watch a show every night." were suppressed
+    // even though the writer is plainly disclosing where they live. When the
+    // text right before the match (or the match itself, e.g. "I live at Rizal
+    // Street") carries a residence/delivery cue, treat it as a real disclosure.
+    if (patternId === 'ph_address') {
+      const cueWindow = (fullText.slice(Math.max(0, matchIndex - 60), matchIndex) + " " + rawMatch).toLowerCase();
+      if (/\b(?:i\s+(?:live|stay|reside)|we\s+(?:live|stay|reside)|my\s+(?:home\s+|office\s+|work\s+|current\s+|permanent\s+)?address|address\s*(?:is|:)|residing\s+(?:at|in)|located\s+at|deliver(?:\s+it)?\s+to|ship(?:\s+it)?\s+to|send\s+it\s+to|mail\s+(?:it\s+)?to|my\s+(?:house|home|apartment|condo|office)\s+is\s+(?:at|in))\b/.test(cueWindow)) {
+        return false;  // do NOT filter
+      }
+    }
 
     // ── SPECIAL: JWT-in-debugging context suppresses api_key false positives ──
     // When api_key pattern matches a JWT (eyJ...) in a debugging/troubleshooting context,
@@ -2142,18 +2223,19 @@ const TrustScanner = (() => {
     /import\s+["'][^"']+["']/gi,
     /require\s*\(\s*["'][^"']+["']\s*\)/gi,
     /export\s+(?:default\s+)?(?:function|class|const|let|var|async)/gi,
-    /^[ \t]*import\s+[\w\.]+/gim,
+    // Bare "<keyword> <word>" at line start also matches ordinary English ("import permit",
+    // "package delivery", "using Ilocano as..."). Require the line to END like a statement.
+    /^[ \t]*import\s+[\w\.]+(?:[ \t]*,[ \t]*[\w\.]+)*(?:[ \t]+as[ \t]+\w+)?[ \t]*;?[ \t]*(?:[#\/].*)?$/gim,
     /^[ \t]*from\s+[\w\.]+\s+import\s+[\w\,\s*]+/gim,
-    /^[ \t]*import\s+[\w\.]+;?/gim,
-    /^[ \t]*using\s+[\w\.]+;?/gim,
-    /^[ \t]*namespace\s+[\w\.]+/gim,
-    /^[ \t]*package\s+[\w\.]+/gim,
+    /^[ \t]*using\s+[\w\.]+[ \t]*;/gim,
+    /^[ \t]*namespace\s+[\w\.]+[ \t]*(?:\{|;)?[ \t]*$/gim,
+    /^[ \t]*package\s+[\w\.]+[ \t]*(?:;|$)/gim,
     /^[ \t]*#include\s+[<"][^>"]+[>"]/gim,
     /^[ \t]*#import\s+[<"][^>"]+[>"]/gim,
     /^[ \t]*import\s+\(/gim,
     /^[ \t]*import\s+"[^"]+"/gim,
-    /^[ \t]*use\s+[\w:]+/gim,
-    /^[ \t]*mod\s+[\w]+/gim,
+    /^[ \t]*use\s+[\w:]+(?:::[\w{}*, \t:]+)*[ \t]*;/gim,
+    /^[ \t]*(?:pub\s+)?mod\s+\w+[ \t]*[;{]/gim,
     /(?:require|include|require_once|include_once)\s+["'][^"']+["']/gi
   ];
 
@@ -3084,15 +3166,47 @@ const TrustScanner = (() => {
     // CRITICAL: Group consecutive code sections together, don't fragment on empty lines
     // This preserves complete Python modules, functions with their calls, etc.
     const extractedCodeLines = normalisedText.split('\n');
+    // Each pattern must match a code-SHAPED line, not just a line that starts with an
+    // English word that also happens to be a keyword ("let me know", "from Cebu",
+    // "select your religion", "class of 2020"). Bare-keyword prefixes were the cause of
+    // ordinary prose being routed to source_code and bypassing the prose checks below.
     const codeLinePatterns = [
-      /^\s*\w+\.\w+\s*\([^)]*\)\s*;?\s*$/,           // method calls
-      /^\s*(SELECT|INSERT|UPDATE|DELETE)\s+/i,       // SQL
-      /^\s*const\s+\w+\s*=\s*\{/,                    // const
-      /^\s*db\.\w+\s*\([^)]*\)\s*;?\s*$/,            // db.execute
-      /^\s*\w+\s*=\s*.*[=>{}\[\];]/,                 // assignments
-      /^\s*(def|class|import|from)\s+/,              // Python keywords
-      /^\s*(function|const|let|var|async)\s+/       // JS keywords
+      /^\s*\w+\.\w+\s*\([^)]*\)\s*;?\s*$/,                                   // method calls
+      /^\s*(?:SELECT|INSERT|UPDATE|DELETE)\s+/,                              // SQL (upper-case)
+      /^\s*select\s+.+\s+from\s+\w+/i,                                       // SQL (any case, structured)
+      /^\s*insert\s+into\s+\w+/i,
+      /^\s*update\s+\w+\s+set\s+\w+\s*=/i,
+      /^\s*delete\s+from\s+\w+/i,
+      /^\s*const\s+\w+\s*=\s*\{/,                                            // const
+      /^\s*db\.\w+\s*\([^)]*\)\s*;?\s*$/,                                    // db.execute
+      /^\s*def\s+\w+\s*\(/,                                                  // Python def
+      /^\s*class\s+\w+\s*(?:\([^)]*\)\s*)?[:{]/,                             // class Foo: / class Foo(Bar): / class Foo {
+      /^\s*class\s+\w+\s+(?:extends|implements)\s+\w+/,
+      /^\s*import\s+[\w.*]+(?:\s*,\s*[\w.*]+)*(?:\s+as\s+\w+)?\s*;?\s*$/,    // import os / import a.b.C;
+      /^\s*import\s+.+\s+from\s+['"]/,                                       // import x from 'y'
+      /^\s*import\s*[{(]/,                                                   // import { x } / import (
+      /^\s*import\s+['"]/,
+      /^\s*from\s+[\w.]+\s+import\s+\S/,                                     // from x import y
+      /^\s*(?:async\s+)?function\s*\*?\s*[\w$]*\s*\(/,                       // function foo(
+      /^\s*(?:const|let|var)\s+(?:[\w$]+\s*(?:=|;|:\s*[\w<>\[\]]+\s*=)|[{\[])/, // const x = / let x; / const {
+      /^\s*async\s+(?:def\s|\(|[\w$]+\s*=>)/                                 // async def / async () / async x =>
     ];
+    // Weak signal: bare "name = ...". Accepted unless the line reads as a prose
+    // attribute list such as "Religion = Catholic, Ethnicity = Ilocano".
+    const assignmentPattern = /^\s*\w+\s*=\s*.*[=>{}\[\];]/;
+    const isProseAttributeLine = (line) => {
+      const segments = line.split(/=>|=|[,;:]/).map(s => s.trim()).filter(Boolean);
+      if (segments.length === 0) return false;
+      // Only plain words and digits: no quotes, brackets, operators, underscores, dots.
+      if (!segments.every(s => /^[A-Za-z0-9 ]+$/.test(s))) return false;
+      // A clause of 4+ plain words is natural language, not an expression.
+      if (segments.some(s => s.split(/\s+/).length >= 4)) return true;
+      // Title-case words (Catholic, Filipino) on a code-free line = prose attributes.
+      return segments.some(s => /\b[A-Z][a-z]{2,}\b/.test(s));
+    };
+    const isCodeLineText = (text) =>
+      codeLinePatterns.some(pattern => pattern.test(text)) ||
+      (assignmentPattern.test(text) && !isProseAttributeLine(text));
     
     const codeLines = [];
     let currentCodeBlock = [];
@@ -3101,14 +3215,14 @@ const TrustScanner = (() => {
       const line = extractedCodeLines[i];
       const trimmed = line.trim();
       const isIndented = /^\s+/.test(line);
-      const isCodeLike = codeLinePatterns.some(pattern => pattern.test(trimmed));
+      const isCodeLike = isCodeLineText(trimmed);
       
       // Check if next non-empty line is code
       let nextLineIsCode = false;
       for (let j = i + 1; j < extractedCodeLines.length; j++) {
         const nextLine = extractedCodeLines[j].trim();
         if (nextLine) {
-          nextLineIsCode = codeLinePatterns.some(p => p.test(nextLine)) || /^\s+/.test(extractedCodeLines[j]);
+          nextLineIsCode = isCodeLineText(nextLine) || /^\s+/.test(extractedCodeLines[j]);
           break;
         }
       }
@@ -3925,6 +4039,18 @@ const TrustScanner = (() => {
         );
         if (insideAddress) return false;
       }
+
+      // Financial and health context words inside an organization name are part of
+      // the name ("Wealth Management" in "Department of Wealth Management"), not a
+      // disclosure about the writer. Drop them so they add no context indicator.
+      if (f.patternId === 'gazetteer_financial' || f.patternId === 'gazetteer_medical' ||
+          f.patternId === 'trigger_financial' || f.patternId === 'trigger_health') {
+        const term = f.rawMatch.trim().toLowerCase();
+        const inOrganization = result.some(other =>
+          other.patternId === 'nlp_organization' && other.rawMatch &&
+          other.rawMatch.trim().toLowerCase().includes(term));
+        if (inOrganization) return false;
+      }
       return true;
     });
   }
@@ -4162,22 +4288,33 @@ const TrustScanner = (() => {
         console.warn("[TrustPrompt/scanner] Gazetteer not available - PATH B skipped");
       }
       
-      // ★ FILTER PATH B: Remove name and organization detections
-      // Path B should detect medical, financial, nationality, sex, eye_color
+      // ★ FILTER PATH B: Keep context indicators and employer triggers; drop NLP-only types
+      // Path B (gazetteer + B2 triggers) is authoritative for: medical, financial,
+      // nationality, sex, eye_color, health, AND trigger_employer.
+      // Person names, job titles, and organization NER belong to Path C only.
       pathBFindings = pathBFindings.filter(finding => {
         const patternId = (finding.patternId || '').toLowerCase();
-        
-        // BLOCK: person names, organizations, job titles
+
+        // BLOCK: person names and job titles — Path C handles these via NLP/NER
         if (patternId.includes('trigger_person_name') ||
-            patternId.includes('trigger_employer') ||
             patternId.includes('trigger_job_title') ||
             patternId.includes('person_name') ||
-            patternId.includes('organization') ||
             patternId.includes('job_title')) {
           return false;
         }
-        
-        // KEEP: medical, financial, nationality, religion, sex, eye_color, health
+
+        // KEEP: employer triggers — trigger_employer is a valid B2 output;
+        // it is scored at base 2 and grouped into the organizational_affiliation unit
+        if (patternId === 'trigger_employer') {
+          return true;
+        }
+
+        // BLOCK: NLP organization detections — Path B does not run NER
+        if (patternId.includes('organization')) {
+          return false;
+        }
+
+        // KEEP: context indicators and other scored B-path outputs
         if (patternId.includes('medical') ||
             patternId.includes('financial') ||
             patternId.includes('nationality') ||
@@ -4187,7 +4324,7 @@ const TrustScanner = (() => {
             patternId.includes('eye_color')) {
           return true;
         }
-        
+
         // Block everything else
         return false;
       });

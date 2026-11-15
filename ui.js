@@ -186,6 +186,8 @@ const TrustUI = (() => {
     badge.style.cssText = [
       "all:initial",
       "position:fixed",
+      "top:-9999px",   // keep off-screen until positionBadge places it correctly
+      "left:-9999px",
       "display:inline-flex",
       "align-items:center",
       "gap:6px",
@@ -207,13 +209,22 @@ const TrustUI = (() => {
   function positionBadge(inputEl) {
     const badge = document.getElementById(ID_BADGE);
     if (!badge || !inputEl) return;
-    const card  = getCardRect(inputEl);
     const input = inputEl.getBoundingClientRect();
-    if (!card || !input) return;
+    // Skip if the input element has not been laid out yet.
+    if (!input || input.width === 0 || input.height === 0) return;
+    const card  = getCardRect(inputEl);
+    if (!card || card.width === 0) return;
     const BADGE_H = 28;
     const badgeW  = badge.getBoundingClientRect().width || 160;
-    badge.style.left = (card.left + card.width / 2 - badgeW / 2) + "px";
-    badge.style.top  = (input.top - BADGE_H - 4) + "px";
+    const top  = input.top - BADGE_H - 4;
+    const left = card.left + card.width / 2 - badgeW / 2;
+    // Only write if the computed position is within a plausible visible area.
+    // A top value less than 10 px means the input rect is a stale/transitional
+    // snapshot taken mid-reflow (ChatGPT redraws the conversation area after
+    // each response). Skip rather than flash to 0,0.
+    if (top < 10) return;
+    badge.style.top  = top + "px";
+    badge.style.left = left + "px";
   }
 
   function setBadge(riskLevel, inputEl) {
@@ -642,11 +653,11 @@ const TrustUI = (() => {
 
   function _reposition() {
     if (!_currentInputEl) return;
-    positionBadge(_currentInputEl);
+    positionBadge(_currentInputEl);  // positionBadge already guards zero-rects
     const bar = document.getElementById(ID_BAR);
     if (bar) {
       const box = _currentInputEl.getBoundingClientRect();
-      if (!box) return;
+      if (!box || box.width === 0 || box.height === 0) return;
       let composerBottom = box.bottom;
       let composerLeft   = box.left;
       let composerWidth  = box.width;
@@ -660,14 +671,31 @@ const TrustUI = (() => {
         if (r.bottom >= box.bottom + 30) break;
         el = el.parentElement;
       }
+      // Skip writing if the bar's computed top would be nonsensical (zero or
+      // negative — same transient-reflow scenario as the badge guard).
+      if (composerBottom < 10) return;
       bar.style.left  = composerLeft + "px";
       bar.style.top   = (composerBottom + 6) + "px";
       bar.style.width = composerWidth + "px";
     }
   }
 
-  window.addEventListener("scroll", _reposition, true);
-  window.addEventListener("resize", _reposition);
+  // Use requestAnimationFrame on scroll so the reposition always runs after
+  // the browser has completed its layout pass. This prevents the badge and bar
+  // from being placed at 0,0 when scroll events fire mid-reflow (e.g. while
+  // ChatGPT is re-rendering the conversation after a response).
+  let _rafPending = false;
+  function _rafReposition() {
+    if (_rafPending) return;
+    _rafPending = true;
+    requestAnimationFrame(() => {
+      _rafPending = false;
+      _reposition();
+    });
+  }
+
+  window.addEventListener("scroll", _rafReposition, true);
+  window.addEventListener("resize", _rafReposition);
 
   function setScanning(inputEl) {
     _currentInputEl  = inputEl;

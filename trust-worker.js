@@ -279,7 +279,9 @@ const FIRST_PERSON_ANCHORS = [
 // and the numeric base score are unchanged.
 const EXCLUSION_PATTERNS = [
   // Research / academic reference
-  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper))\b/i,
+  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper)|for\s+my\s+(?:thesis|research|paper|study|report))\b/i,
+  // Declared-hypothetical / sample data framing (mirrors context-attribution.js excl_sample_data)
+  /\b(?:sample\s+(?:fake\s+)?(?:record|data|entry|case|profile|example)|faux\s+(?:record|data|patient|entry|example)|mock\s+(?:record|data)|example\s+(?:record|data)|test\s+(?:data|case)|dummy\s+(?:data|record)|(?:might|could|would)\s+read\b|critique\s+(?:how|the)|how\s+realistic|this\s+is\s+(?:example|sample|test|dummy|faux|mock)\s+(?:data|record)?)\b/i,
   // Educational / informational inquiry
   /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about)\b/i,
   // General discussion
@@ -399,6 +401,58 @@ function preliminaryClass(score) {
 //
 // Rule 4 — No governance rule applies → retain preliminary
 
+// ── Organization attribution (scoring gate; mirrors scanner.js) ───────────────
+// An organization is scored only when the sentence ties it to the writer
+// ("my company X", "I work at X", "I am a member of X"). A third-party or
+// general mention is detected and shown with no score.
+const ORG_AFFILIATION_BEFORE_RE = new RegExp(
+  "\\b(?:my|our|mine)\\s+(?:[\\w'’-]+\\s+){0,2}?" +
+    "(?:company|employer|workplace|office|school|university|college|organization|team|firm|church|association|club|agency|hospital|clinic|branch|department|unit|group)\\b[^.!?\\n]*$" +
+  "|" +
+  "\\b(?:i|we)\\s+(?:" +
+    "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired)\\b" +
+    "|(?:am|was|are|were)\\s+(?:(?:a|an|the)\\s+)?" +
+      "(?:(?:member|members|employee|employees|staff|student|students|intern|interns|volunteer|volunteers|alumni|alumnus|alumna|graduate|graduates)\\s+(?:of|at|with|for)\\b" +
+      "|(?:hired|employed|recruited)\\s+(?:by|at)\\b)" +
+  ")[^.!?\\n]*$" +
+  // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
+  "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
+  "i"
+);
+function isAttributedOrganization(fullText, name) {
+  if (!fullText || !name) return false;
+  const lower = fullText.toLowerCase();
+  const needle = name.trim().toLowerCase();
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const sentenceStart = Math.max(lower.lastIndexOf('.', i - 1), lower.lastIndexOf('!', i - 1),
+                                   lower.lastIndexOf('?', i - 1), lower.lastIndexOf('\n', i - 1)) + 1;
+    if (ORG_AFFILIATION_BEFORE_RE.test(fullText.slice(sentenceStart, i))) return true;
+  }
+  return false;
+}
+// Labeled record fields (mirrors scanner.js): the value of a "Company:" field in a
+// multi-field record that is not a hiring notice is an attributed organization.
+const RECORD_FIELD_LABEL_RE = /(?:^|[\n.;|]|\s)\s*[A-Za-z][A-Za-z ]{1,24}\s*[:=]\s*\S/g;
+const RECORD_ORG_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:company|employer|organi[sz]ation|workplace|agency|affiliation)\s*[:=]\s*$/i;
+const RECORD_HIRING_RE = /\b(?:hiring|vacanc(?:y|ies)|job\s+(?:opening|openings|posting|ad|advert(?:isement)?)|now\s+accepting|apply\s+(?:now|here|at|by|online)|applicants?|we\s+are\s+looking\s+for|qualifications?|requirements?)\b/i;
+function isRecordFieldValue(fullText, name, labelRe) {
+  if (!fullText || !name) return false;
+  if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+  if (RECORD_HIRING_RE.test(fullText)) return false;
+  const lower = fullText.toLowerCase();
+  const needle = name.trim().toLowerCase();
+  if (!needle) return false;
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    if (labelRe.test(fullText.slice(Math.max(0, i - 40), i))) return true;
+  }
+  return false;
+}
+function isScorableFinding(f, fullText) {
+  if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
+  if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+  return true;
+}
+
 function evaluateGovernance(findings, preliminary, fullText) {
 
   // ── Rule 1: validated critical entity → HIGH ────────────────────────────
@@ -438,7 +492,7 @@ function evaluateGovernance(findings, preliminary, fullText) {
   // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
   // Condition: every *scored* entity (BASE_SCORES > 0) has a base score of
   // exactly 2, meaning no Moderate (5) or Critical (10) entity is present.
-  const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+  const scoredFindings = findings.filter(f => isScorableFinding(f, fullText));
   const hasAnyScoredEntity = scoredFindings.length > 0;
   const allLowImpact = scoredFindings.every(
     f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -468,7 +522,7 @@ function finalClass(preliminary, governance) {
 // ── Main scoring function ─────────────────────────────────────────────────────
 
 function computeRiskScore(findings, fullText) {
-  const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+  const scorable = findings.filter(f => isScorableFinding(f, fullText));
 
   // ── No scored entities ──────────────────────────────────────────────────
   // Normally No Detected Risk — except the Rule 2 anchor-only path: an
@@ -668,6 +722,17 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
         other.rawMatch.trim().toLowerCase().includes(frag)
       );
       if (insideAddress) return false;
+    }
+
+    // Financial and health context words inside an organization name are part of
+    // the name, not a disclosure about the writer (mirrors scanner.js).
+    if (f.patternId === 'gazetteer_financial' || f.patternId === 'gazetteer_medical' ||
+        f.patternId === 'trigger_financial' || f.patternId === 'trigger_health') {
+      const term = f.rawMatch.trim().toLowerCase();
+      const inOrganization = merged.some(other =>
+        other.patternId === 'nlp_organization' && other.rawMatch &&
+        other.rawMatch.trim().toLowerCase().includes(term));
+      if (inOrganization) return false;
     }
     return true;
   });

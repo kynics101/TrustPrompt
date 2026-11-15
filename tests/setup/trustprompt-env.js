@@ -97,6 +97,10 @@ const LOAD_ORDER = [
   "patterns.js",
   "ph-address-db.js",
   "validator-wrapper-worker.js",
+  "terms-medical.js",
+  "terms-financial.js",
+  "terms-organizations.js",
+  "terms-identity.js",
   "gazetteer.js",
   "linguistic-detector.js",
 ];

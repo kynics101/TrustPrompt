@@ -5567,7 +5567,7 @@ const TrustLinguisticDetector = (() => {
     if (G_FOOD_EVENT.has(k)) return 'food_or_event';
     if (ws.length === 1 && (G_DISEASE.has(k) || G_DISEASE_SUFFIX_RE.test(k))) return 'disease';
     if (G_RELIGION.has(k)) return 'religion';
-    if (ws.every(w => G_LANG_NAT.has(w))) return 'nationality_or_language';
+    if (ws.every(w => G_LANG_NAT.has(w) || g2IsEthnic(w))) return 'nationality_or_language';
     if (ws.length >= 2 && G_STREET_SUFFIX.has(ws[ws.length - 1]) && ws.slice(0, -1).every(w => /^[\p{L}-]+$/u.test(w))) return 'street';
     if (G_PLACES_PH.has(k) || G_PLACES_WORLD.has(k)) return 'place';
     // a single word that is a dictionary organization and not a name ("Amazon", "Apple", "Shell", "Google") is a brand, not a person
@@ -5739,6 +5739,7 @@ const TrustLinguisticDetector = (() => {
     return out.join('');
   }
   const G3_REL_CUE_RE = /(?:^|[\s,;(])(?:lola|lolo|kuya|tita|tito|ninang|ninong|mang|aling|manang|call|remind|meet|invite|message|text|ping|friend|friends|cousin|cousins|sister|brother|mom|dad|mother|father|husband|wife|uncle|aunt|auntie|tito|tita|niece|nephew|boss|colleague|coworker|classmate|groupmate|teammate|neighbor|neighbour|roommate|named|called|name\s+is|thank|thanks|ask|tell|email|contact|remind|dear|hi|hello|hey)\s+(?:my\s+)?$/;
+  const G3_KIN_CUE_RE = /(?:^|[\s,;(])(?:husband|wife|cousin|cousins|kuya|ate|lola|lolo|tita|tito|ninang|ninong|friend|sister|brother|uncle|aunt|auntie|niece|nephew|boyfriend|girlfriend|fiance|fiancee|partner|neighbor|neighbour|classmate|colleague|coworker|officemate|roommate|manang|mang|aling)\s+$/;
   const G3_PARTICLES = new Set(['de', 'del', 'dela', 'delos', 'los', 'las', 'y', 'van', 'von', 'bin', 'al', 'el']);
   function g3RecoverLowercase(text) {
     if (!NAMES_DICT_AVAILABLE || !/\p{Ll}{2}/u.test(text)) return text;
@@ -5789,6 +5790,14 @@ const TrustLinguisticDetector = (() => {
           while (j < toks.length && j < i + 3 && gap(end, toks[j]) && (given(toks[j].w) || surname(toks[j].w) || unknownLow(toks[j].w)) && !G3_PARTICLES.has(toks[j].w)) { end = toks[j]; j++; }
         }
       }
+      // (c) a relationship word followed by a word the lexicon does not know ("my wife genoveva", "kuya benigno"): a name, unless it is an ordinary word.
+      // Verb / plural forms ("visited", "works") are left alone.
+      if (!ok && !given(t.w) && unknownLow(t.w) && t.w.length >= 4 && !/(?:ed|ing|ly|s)$/.test(t.w) && G3_KIN_CUE_RE.test(text.slice(Math.max(0, t.i - 30), t.i).toLowerCase())) {
+        ok = true; end = t; j = i + 1;
+        while (j < toks.length && j < i + 3 && gap(end, toks[j]) && (given(toks[j].w) || surname(toks[j].w) || unknownLow(toks[j].w)) && !G3_PARTICLES.has(toks[j].w) && !/(?:ed|ing|ly|s)$/.test(toks[j].w)) { end = toks[j]; j++; }
+      }
+      // a Filipino kinship form of address in front of the name ("kuya benigno") is capitalised with it, as written in Title Case
+      if (ok && j - i === 1 && i > 0 && /^(?:kuya|ate|lola|lolo|tita|tito|ninang|ninong|manang|mang|aling)$/.test(toks[i - 1].w) && gap(toks[i - 1], t) && !used.has(i - 1)) cap(toks[i - 1].i, toks[i - 1].e);
       if (ok) { cap(t.i, end.e); for (let q = i; q < j; q++) used.add(q); }
     }
     // lower-case organizations through the same head words: "<frame> <name words> <head>" ("i work at harbor light steel works"). A frame word
@@ -5817,9 +5826,45 @@ const TrustLinguisticDetector = (() => {
     }
     return out.join('');
   }
+  // 3) digit-for-letter names ("J0se", "M4ria", "Cr1stobal"): a token of letters with 1-2 digits (0 1 3 4 5 7 8) or "@" that becomes a dictionary given
+  // name or surname when the digits are read as letters, next to another name word or after a person cue. Same length, so offsets are kept.
+  const G3_DIGIT_MAP = { '0': ['o'], '1': ['i', 'l'], '3': ['e'], '4': ['a'], '5': ['s'], '7': ['t'], '8': ['b'], '@': ['a'] };
+  function g3RecoverDigits(text) {
+    if (!NAMES_DICT_AVAILABLE || !/[\p{L}][\p{L}\p{M}]*[0134578@]/u.test(text)) return text;
+    const out = text.split('');
+    const toks = [...text.matchAll(/[\p{L}][\p{L}\p{M}\d@]*/gu)].map(m => ({ w: m[0], i: m.index, e: m.index + m[0].length }));
+    const key = w => w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const nameWord = w => { const k = key(w); return /^\p{Lu}/u.test(w) && k.length >= 3 && (NAMES_FIRST.has(k) || NAMES_SURNAMES.has(k)) && !isLexiconOrdinaryWord(k) && !isOrdinaryNonNameWord(w); };
+    for (let ti = 0; ti < toks.length; ti++) {
+      const t = toks[ti], w = t.w;
+      const sp = w.replace(/[\p{L}\p{M}]/gu, '');
+      if (!sp || sp.length > 2 || !/^[0134578@]+$/.test(sp) || w.length < 3 || w.length > 20) continue;
+      const chunk = (text.slice(0, t.e).match(/(\S+)$/) || ['', ''])[1] + (text.slice(t.e).match(/^(\S*)/) || ['', ''])[1];
+      if (/[\/\\]|\.(?:com|org|net|ph|edu|gov|io|co)\b/i.test(chunk) || (w.includes('@') && chunk !== w && !/^[\p{L}@]+[.,;:!?]?$/u.test(chunk))) continue;
+      const upperTok = w === w.toUpperCase();
+      let found = null;
+      const opts = [[]];
+      for (const ch of w) { const cands = G3_DIGIT_MAP[ch]; if (!cands) { opts.forEach(o => o.push(ch)); continue; } const next = []; for (const o of opts) for (const c of cands) next.push([...o, c]); opts.length = 0; opts.push(...next); }
+      for (const o of opts) {
+        const cand = o.join('');
+        const Cap = cand[0].toUpperCase() + cand.slice(1).toLowerCase();
+        if (nameWord(Cap) || (NAMES_FIRST.has(key(cand)) || NAMES_SURNAMES.has(key(cand))) && key(cand).length >= 4 && !isLexiconOrdinaryWord(key(cand))) { found = cand; break; }
+      }
+      if (!found) continue;
+      // evidence: a neighbouring name word, or a person cue / honorific / relationship word in front
+      const L = toks[ti - 1], Rn = toks[ti + 1];
+      const near = (n, side) => n && /^\s+$/.test(side === 'l' ? text.slice(n.e, t.i) : text.slice(t.e, n.i)) && nameWord(n.w);
+      const before = text.slice(Math.max(0, t.i - 30), t.i);
+      const cue = G3_REL_CUE_RE.test(before.toLowerCase()) || /\b(?:mr|mrs|ms|miss|dr|engr|atty|prof|sir|madam)\.?\s+$/i.test(before) || PERSON_DIRECTED_BEFORE_RE.test(before);
+      if (!(near(L, 'l') || near(Rn, 'r') || cue)) continue;
+      for (let q = 0; q < w.length; q++) { const ch = w[q]; if (G3_DIGIT_MAP[ch]) { const rep = found[q]; out[t.i + q] = upperTok ? rep.toUpperCase() : rep; } }
+    }
+    return out.join('');
+  }
   function g3Fold(text) {
     let t = text;
     try {
+      t = g3RecoverDigits(t);
       t = g3FoldCaps(t);
       t = g3RecoverLowercase(t);
     } catch (e) { return text; }
@@ -5846,7 +5891,7 @@ const TrustLinguisticDetector = (() => {
   //           reported. Switch on with TP_CTX_RULES = { bareJob: true } (measured both ways in the report).
   // Rules can be switched with a global TP_CTX_RULES = { hypo, brand, public, bareJob } (used by the measurement harness).
   // ═══════════════════════════════════════════════════════════════════════
-  const G4_DEFAULT = { hypo: true, brand: true, public: true, bareJob: false };
+  const G4_DEFAULT = { hypo: true, brand: true, public: true, bareJob: false, hiring: true };
   function g4Rules() {
     try { if (typeof TP_CTX_RULES !== 'undefined' && TP_CTX_RULES) return Object.assign({}, G4_DEFAULT, TP_CTX_RULES); } catch (_) { /* default */ }
     return G4_DEFAULT;
@@ -5868,7 +5913,7 @@ const TrustLinguisticDetector = (() => {
     if (start < text.length) out.push([start, text.length]);
     return out;
   }
-  const G4_HYPO_RE = /\b(?:suppose|supposing|supposed\s+(?:that|there)|imagine|imagining|hypothe\w*|fictional\w*|fictitious|made[- ]?up|let['’]?s\s+say|lets\s+say|if\s+(?:someone|somebody|a\s+(?:person|man|woman|student|teacher|nurse|doctor|worker|hacker|employee)|an?\s+\w+)\s+(?:named|called)|in\s+theory|theoretically|if\s+i\s+(?:became|become|were\s+to\s+become|was\s+to\s+become)\b|scen[ae]rio|case\s+study|in\s+my\s+(?:novel|story|book|screenplay|script)|my\s+(?:novel|story)\b|the\s+(?:main\s+)?characters?\b|the\s+plot\b|pretend\w*|role[- ]?play|(?:is|as|it['’]?s|here['’]?s|this|that|just)\s+(?:a|an|just\s+a)\s+(?:sample|template|placeholder|dummy|mock|invented|example)\b|(?:sample|placeholder|dummy|mock|example)\s+(?:name|names|data|text|entry|entries|record|records|log|email|e-?mail|profile|user|resume|id|number|input|scenario)\b|\bfor\s+example\b|\bfor\s+instance\b|\be\.g\.)/i;
+  const G4_HYPO_RE = /\b(?:suppose|supposing|supposed\s+(?:that|there)|imagine|imagining|hypothe\w*|fictional\w*|fictitious|made[- ]?up|let['’]?s\s+say|lets\s+say|if\s+(?:someone|somebody|a\s+(?:person|man|woman|student|teacher|nurse|doctor|worker|hacker|employee)|an?\s+\w+)\s+(?:named|called)|in\s+theory|theoretically|if\s+i\s+(?:became|become|were\s+to\s+become|was\s+to\s+become)\b|scen[ae]rio|case\s+study|in\s+my\s+(?:novel|story|book|screenplay|script)|(?:my|our)\s+(?:short\s+story|novel|story|script|screenplay|poem|fan\s?fic(?:tion)?)\b|the\s+(?:main\s+)?characters?\b|the\s+plot\b|pretend\w*|role[- ]?play|(?:is|as|it['’]?s|here['’]?s|this|that|just)\s+(?:a|an|just\s+a)\s+(?:sample|template|placeholder|dummy|mock|invented|example)\b|(?:sample|placeholder|dummy|mock|example)\s+(?:name|names|data|text|entry|entries|record|records|log|email|e-?mail|profile|user|resume|id|number|input|scenario)\b|\bfor\s+example\b|\bfor\s+instance\b|\be\.g\.)/i;
   // a person named inside the quoted title of a book / film / song ("the book 'The Diary of ...'") is a title, not a person
   const G4_WORK_TITLE_BEFORE_RE = /\b(?:book|novel|film|movie|song|play|series|show|article|poem|story|documentary|album|titled|entitled|called)\s+['"“‘]\s*[^'"”’]{0,40}$/i;
   const G4_AFFIL_RE = [
@@ -5905,7 +5950,7 @@ const TrustLinguisticDetector = (() => {
   const G_IMPERATIVE_START = new Set('compare summarize summarise explain describe translate calculate convert review rewrite outline list draft write check fix help make create give show find define analyze analyse rank contrast improve proofread edit shorten expand format sort tell ask thank please'.split(' '));
   const G_PLACEHOLDER_ONLY = new Set(['example', 'sample', 'test', 'abc', 'xyz', 'demo', 'dummy', 'foo', 'bar', 'lorem', 'ipsum', 'acme', 'placeholder']);
   const G_PLACE_LEAD = new Set(['fort', 'camp', 'mount', 'mt', 'lake']);
-  const G_NOT_JOB = new Set(['starter', 'associates']);
+  const G_NOT_JOB = new Set(['starter', 'associates', 'factor']);
   function smallVetoes(findings, text) {
     const drop = new Map();
     findings.forEach((f, idx) => {
@@ -5913,6 +5958,13 @@ const TrustLinguisticDetector = (() => {
       const raw = f.rawMatch.trim(), ws = raw.split(/\s+/), lw = ws.map(w => w.toLowerCase().replace(/[^\p{L}]/gu, ''));
       const occs = jobOccurrences(text, raw);
       if (f.patternId === 'nlp_job_title' && G_NOT_JOB.has(raw.toLowerCase())) { drop.set(idx, 'not_a_job:' + raw.toLowerCase()); return; }
+      // "home server", "web server", "file server": a machine, not a waiter
+      if (f.patternId === 'nlp_job_title' && raw.toLowerCase() === 'server' && occs.length && occs.every(([s]) => G_MACHINE_WORD_RE.test((text.slice(Math.max(0, s - 14), s).match(/([\p{L}]+)\s+$/u) || ['', ''])[1]))) { drop.set(idx, 'not_a_job:machine_server'); return; }
+      // "visa" is a travel document: lower case never, "Visa" only with a card context or an affiliation
+      if (f.patternId === 'nlp_organization' && raw.toLowerCase() === 'visa') {
+        const okV = occs.some(([s, e]) => /^(?:Visa|VISA)$/.test(text.slice(s, e)) && (G_VISA_CARD_RE.test(text.slice(Math.max(0, s - 40), e + 40)) || G4_AFFIL_RE.some(re => re.test(text.slice(Math.max(0, s - 60), s)))));
+        if (!okV) { drop.set(idx, 'visa_not_organization'); return; }
+      }
       if (f.patternId === 'nlp_organization' && lw.some(w => G_PLACEHOLDER_ONLY.has(w))) { drop.set(idx, 'placeholder_organization'); return; }
       if (f.patternId !== 'nlp_person_name' || !occs.length) return;
       if (lw.some(w => G_PLACEHOLDER_ONLY.has(w))) { drop.set(idx, 'placeholder_name'); return; }
@@ -5934,7 +5986,7 @@ const TrustLinguisticDetector = (() => {
   }
   function contextLayer(findings, text) {
     const R = g4Rules();
-    if (!R.hypo && !R.brand && !R.public && !R.bareJob) return findings.slice();
+    if (!R.hypo && !R.brand && !R.public && !R.bareJob && !R.hiring) return findings.slice();
     const sents = g4Sentences(text);
     const people = findings.filter(f => f.patternId === 'nlp_person_name'), orgsF = findings.filter(f => f.patternId === 'nlp_organization'), jobsF = findings.filter(f => f.patternId === 'nlp_job_title');
     const occsOf = f => jobOccurrences(text, f.rawMatch || '');
@@ -5944,6 +5996,7 @@ const TrustLinguisticDetector = (() => {
       if (!/^nlp_(?:person_name|job_title|organization)$/.test(f.patternId) || !f.rawMatch) return;
       const occs = occsOf(f);
       if (!occs.length) return;
+      if (R.hiring && f.patternId !== 'nlp_person_name' && !G4_FIRST_PERSON_ORG_RE.test(text) && occs.every(([s]) => { const se = g4SentenceOf(sents, s); return G4_HIRING_RE.test(text.slice(se[0], se[1])); })) { drop.set(idx, 'hiring_frame'); return; }
       if (R.hypo && occs.every(([s]) => { const se = g4SentenceOf(sents, s); return G4_HYPO_RE.test(text.slice(se[0], se[1])); })) { drop.set(idx, 'hypothetical_marker'); return; }
       if (R.hypo && f.patternId === 'nlp_person_name' && occs.every(([s]) => G4_WORK_TITLE_BEFORE_RE.test(text.slice(Math.max(0, s - 60), s)))) { drop.set(idx, 'work_title_in_quotes'); return; }
       if (R.public && f.patternId === 'nlp_person_name') {
@@ -5961,7 +6014,7 @@ const TrustLinguisticDetector = (() => {
           // a question word or request verb opens a general question only when the organization is near it: in a run-on stretch of text
           // without punctuation ("How To Cook ... A nurse at X told me ...") the opening words belong to something else
           const near = (s - se[0]) <= 140;
-          if (!(promptQuestion || /\?\s*$/.test(sentText.trim()) || (near && (JOB_GENERIC_SENTENCE_RE.test(sentText) || /^\s*(?:summari[sz]e|compare|contrast|explain|describe|define|list|rank|review|analy[sz]e|tell\s+me)\b/i.test(sentText))))) return true;
+          if (!(promptQuestion || /\?\s*$/.test(sentText.trim()) || (near && (JOB_GENERIC_SENTENCE_RE.test(sentText) || /^\s*(?:summari[sz]e|compare|contrast|explain|describe|define|list|rank|review|analy[sz]e|tell\s+me|combine|merge|compile|draft|write|compose|rewrite|paraphrase|outline)\b/i.test(sentText))))) return true;
           if (G4_AFFIL_RE.some(re => re.test(text.slice(se[0], s)))) return true;
           if (sentHas(people, se, f) || sentHas(jobsF, se, f)) return true;
           return false;
@@ -5978,6 +6031,157 @@ const TrustLinguisticDetector = (() => {
     drop.forEach((rule, idx) => g2Log(rule, findings[idx]));
     return findings.filter((_, i) => !drop.has(i));
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 7 (round 4): surname-first records, "<Name> and <Word>", lowercase organizations, record-line organizations, hiring posts,
+  // "visa", machine "server", Philippine ethnolinguistic groups. Job-title scoring and the panel are not touched here.
+  // ═══════════════════════════════════════════════════════════════════════
+  const G_ETHNIC = new Set(('tagalog bisaya visayan cebuano hiligaynon ilonggo ilocano ilokano waray warayanon bikolano bicolano bikolnon maranao maguindanao maguindanaon tausug kapampangan ' +
+    'pangasinense zambal ivatan ibanag igorot ifugao kankanaey ibaloi isneg itneg mangyan tagbanwa palawano manobo bagobo tboli blaan yakan badjao subanen aklanon capiznon masbateno ' +
+    'romblomanon surigaonon butuanon boholano leyteno samareno chavacano kinaray-a karay-a cuyonon ilongo').split(' '));
+  function g2IsEthnic(k) {
+    k = k.toLowerCase();
+    if (G_ETHNIC.has(k)) return true;
+    if (k.length < 7) return false;
+    for (const e of G_ETHNIC) if (e.length >= 7 && Math.abs(e.length - k.length) <= 1 && levenshteinDistance(k, e) <= 1) return true;
+    return false;
+  }
+  const g7Person = (raw, method) => ({ patternId: 'nlp_person_name', label: 'Person Name', risk: 'low', rawMatch: raw, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: method, validated: false });
+  const g7Org = (raw, method) => ({ patternId: 'nlp_organization', label: 'Organization', risk: 'low', rawMatch: raw, safeVersion: '[ORGANIZATION REDACTED]', source: 'C_linguistic', extractionMethod: method, validated: false });
+  const g7Overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
+  // 1) "Surname, Given [Given | M.]" in a record or list context is one name
+  function addSurnameFirstNames(findings, text) {
+    if (!text.includes(',')) return;
+    const U = String.raw`\p{Lu}[\p{L}\p{M}'’-]+`;
+    const re = new RegExp(String.raw`(?<![\p{L}\p{M}])((?:(?:De|Del|Dela|Delos|Van|Von|San|Santa)\s+)?${U})\s*,\s*(${U})(?:\s+(${U}|\p{Lu}\.))?(?![\p{L}\p{M}])`, 'gu');
+    const ctxRe = /(?:^|[\n\r:;|(–—•*-]\s*|\b(?:of|for|to|by|from|name|names|applicant|employee|student|patient|record|list|with|and)\s+)$/i;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const sur = m[1], given = m[2], third = m[3];
+      if (!ctxRe.test(text.slice(Math.max(0, m.index - 30), m.index))) continue;
+      const sk = g2Key(sur).replace(/^(?:de|del|dela|delos|van|von|san|santa)\s+/, ''), lastSur = sk.split(' ').pop();
+      if (!sk || G3_NAME_STOP.has(sk) || NON_NAME_WORDS.has(sk) || isLexiconOrdinaryWord(lastSur) || isOrdinaryNonNameWord(lastSur[0].toUpperCase() + lastSur.slice(1)) || isKnownPlaceWord(sur) || g2TypeOf(sur) || G_LANG_NAT.has(sk)) continue;
+      if (isKnownGivenName(sur) && !NAMES_SURNAMES.has(sk)) continue;       // "Maria, Rosa Lim": a list of first names, not a surname
+      if (!isKnownGivenName(given)) continue;
+      let raw = m[0];
+      const thirdOk = !!third && (/^\p{Lu}\.$/u.test(third) || isKnownGivenName(third));
+      if (third && !thirdOk) raw = raw.slice(0, raw.length - third.length).replace(/\s+$/, '');
+      // a surname the dictionary does not list needs a middle name or initial as well ("Mercury, Venus, Earth" is a list of planets)
+      if (!NAMES_SURNAMES.has(sk) && !thirdOk) continue;
+      const span = [m.index, m.index + raw.length];
+      for (let i = findings.length - 1; i >= 0; i--) {
+        const g = findings[i];
+        if (g.patternId !== 'nlp_person_name' || !g.rawMatch) continue;
+        if (jobOccurrences(text, g.rawMatch).some(o => g7Overlap(o, span))) findings.splice(i, 1);
+      }
+      findings.push(g7Person(raw, 'surname_first'));
+    }
+  }
+  // 4) "<detected person> and <Title Case word>", mid-sentence: the word is a name even when it is an English word ("Nelson Reyes and Cook")
+  function addAndNeighborNames(findings, text) {
+    const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    for (const p of people) {
+      for (const [, e] of jobOccurrences(text, p.rawMatch)) {
+        const m = text.slice(e, e + 40).match(/^\s+(?:and|&)\s+(\p{Lu}\p{Ll}{2,}[\p{L}'’-]*)(?![\p{L}\p{M}'’-])/u);
+        if (!m) continue;
+        const w = m[1], k = w.toLowerCase();
+        if (/^\s+\p{Lu}/u.test(text.slice(e + m[0].length, e + m[0].length + 3))) continue;      // a Title Case phrase goes on
+        if (G3_NAME_STOP.has(k) || G3_RUN_BREAK.has(k) || caHeadKind(w) || G_LANG_NAT.has(k) || isKnownPlaceWord(w) || g2TypeOf(w) || EXTENSIVE_ORGANIZATIONS.has(k) || G_ETHNIC.has(k)) continue;
+        let closed = false;
+        try { const d = window.nlp(k); closed = ['Determiner', 'Pronoun', 'Preposition', 'Conjunction', 'QuestionWord', 'Auxiliary', 'Modal', 'Adverb', 'Month', 'WeekDay', 'Place', 'Value', 'Honorific', 'Expression'].some(t => d.has('#' + t)); } catch (_) { /* no nlp */ }
+        if (closed) continue;
+        if (findings.some(f => f.patternId === 'nlp_person_name' && f.rawMatch && f.rawMatch.toLowerCase().split(/\s+/).includes(k))) continue;
+        const ji = findings.findIndex(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase() === k);
+        if (ji >= 0 && jobOccurrences(text, findings[ji].rawMatch).length === 1) findings.splice(ji, 1);
+        findings.push(g7Person(w, 'and_neighbor'));
+      }
+    }
+  }
+  // well-known organization acronyms and short names that the organization dictionary writes only in capitals or lacks (matched case-insensitively, with a frame)
+  const G7_LOWER_ORG = new Set(['pldt', 'sgv', 'bdo', 'bpi', 'jfc', 'ust', 'ateneo', 'dlsu', 'mapua', 'pup', 'sss', 'gsis', 'bir', 'lto', 'prc', 'psa', 'nbi', 'pnp', 'afp', 'dilg', 'dti', 'dole', 'deped', 'ched', 'tesda', 'doh', 'dost', 'dpwh', 'dswd', 'dfa', 'dof', 'pagibig', 'philhealth', 'meralco', 'sm',
+    'sm megamall', 'sm mall of asia', 'sm north edsa', 'sm city', 'sm supermalls', 'ayala malls', 'robinsons galleria']);
+  const G3_GENERIC_ACRONYMS = new Set(['hr', 'it', 'id', 'ids', 'pc', 'tv', 'ai', 'ok', 'pdf', 'faq', 'pin', 'atm', 'otp', 'up']);
+  // "Visa" as a payment card: Title Case with a card context
+  function addVisaCard(findings, text) {
+    const re = /\b(Visa|VISA)\b/g; let m;
+    while ((m = re.exec(text)) !== null) {
+      if (!G_VISA_CARD_RE.test(text.slice(Math.max(0, m.index - 40), m.index + 40))) continue;
+      if (findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && f.rawMatch.toLowerCase().includes('visa'))) continue;
+      findings.push(g7Org(m[1], 'visa_card'));
+    }
+  }
+  // 5) lowercase organizations: dictionary names and acronyms, case-insensitive, with an evidence frame or a person in the sentence; "<1-3 words> and co"
+  function addLowercaseOrganizations(findings, text) {
+    if (!/\p{Ll}/u.test(text)) return;
+    const toks = [...text.matchAll(/[\p{L}\p{M}\d'’&-]+/gu)].map(m => ({ w: m[0], i: m.index, e: m.index + m[0].length }));
+    const isLow = w => w === w.toLowerCase() && /^[\p{Ll}\p{M}\d'’&-]+$/u.test(w);
+    const FRAME_RE = /(?:(?:^|[\s,;:(])(?:at|from|of|in|for|with|by)|\b(?:transferred|moved|applied|reported|belong(?:s|ed)?|resigned|returned)\s+(?:back\s+)?to)\s+$/i;
+    const sents = g4Sentences(text);
+    const inAddr = t => /[@\/\\]/.test(text[t.i - 1] || '') || /^[@\/\\]/.test(text[t.e] || '') || /^\.[a-z]{2,4}\b/i.test(text.slice(t.e, t.e + 6));
+    const covered = (s, e) => findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && jobOccurrences(text, f.rawMatch).some(o => g7Overlap(o, [s, e])));
+    const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    for (let i = 0; i < toks.length; i++) {
+      if (!isLow(toks[i].w) || inAddr(toks[i])) continue;
+      for (let n = 3; n >= 1; n--) {
+        if (i + n > toks.length) continue;
+        const win = toks.slice(i, i + n);
+        if (!win.every(t => isLow(t.w)) || win.some((t, q) => q > 0 && text.slice(win[q - 1].e, t.i) !== ' ')) continue;
+        const key = win.map(t => t.w).join(' ');
+        if (!EXTENSIVE_ORGANIZATIONS.has(key) && !G7_LOWER_ORG.has(key)) continue;
+        if (n === 1) {
+          const w = key;
+          const acronym = G7_LOWER_ORG.has(w) || g3IsAcronym(w) && !G3_GENERIC_ACRONYMS.has(w);
+          if (!acronym && (w.length < 4 || isLexiconOrdinaryWord(w) || isOrdinaryNonNameWord(w[0].toUpperCase() + w.slice(1)) || isKnownGivenName(w) || NON_NAME_WORDS.has(w) || isKnownPlaceWord(w))) continue;
+        }
+        const s = win[0].i, e = win[n - 1].e;
+        const framed = FRAME_RE.test(text.slice(Math.max(0, s - 30), s));
+        const se = g4SentenceOf(sents, s);
+        const paired = people.some(p => jobOccurrences(text, p.rawMatch).some(([ps]) => ps >= se[0] && ps < se[1]));
+        if (!framed && !paired) continue;
+        if (covered(s, e)) { i += n - 1; break; }
+        findings.push(g7Org(text.slice(s, e), 'lowercase_dictionary_org'));
+        i += n - 1; break;
+      }
+    }
+    // "<1-3 words> and co" / "& co": a firm name ("sgv and co")
+    const re = /(?<![\p{L}\p{M}])((?:[\p{Ll}][\p{Ll}\d'’-]*\s+){1,3}?)(?:and|&)\s+co\b\.?/gu;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const ws = m[1].trim().split(/\s+/);
+      const keep = [];
+      for (let q = ws.length - 1; q >= 0; q--) { if (G3_NAME_STOP.has(ws[q]) || G3_RUN_BREAK.has(ws[q]) || /^(?:done|made|audited|by|signed|checked)$/.test(ws[q])) break; keep.unshift(ws[q]); }
+      if (!keep.length || keep.every(w => w.length < 2)) continue;
+      const tail = m[0].slice(m[1].length);
+      const lead = m[1].trimEnd().length - keep.join(' ').length;
+      const s = m.index + lead, raw = text.slice(s, m.index + m[1].trimEnd().length) + text.slice(m.index + m[1].trimEnd().length, m.index + m[0].length).replace(/\.$/, '');
+      if (covered(s, s + raw.length) || /[@\/]/.test(text.slice(Math.max(0, s - 1), s))) continue;
+      findings.push(g7Org(raw.replace(/\s+$/, ''), 'and_co_firm'));
+    }
+  }
+  // 8) "Name, job, Org" record lines and bullets: the pairing is the evidence for the organization (even a public one)
+  function addRecordOrganizations(findings, text) {
+    const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    const jobs = findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch);
+    if (!people.length || !jobs.length) return;
+    for (const j of jobs) {
+      for (const [s, e] of jobOccurrences(text, j.rawMatch)) {
+        if (!/,\s*$/.test(text.slice(Math.max(0, s - 3), s))) continue;
+        const pb = text.slice(Math.max(0, s - 90), s).replace(/,\s*$/, '').toLowerCase();
+        if (!people.some(p => pb.endsWith(p.rawMatch.toLowerCase()))) continue;
+        const m = text.slice(e).match(/^\s*,\s*(\p{Lu}[\p{L}\p{M}&'’-]*(?:\.?\s+(?:(?:of|the|and|&)\s+)?\p{Lu}[\p{L}\p{M}&'’-]*){0,4})/u);
+        if (!m) continue;
+        const org = m[1].replace(/[\s.,;-]+$/, '');
+        const os = e + m[0].length - m[1].length, oe = os + org.length;
+        if (!org || EXTENSIVE_JOB_TITLES.has(org.toLowerCase()) || findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && jobOccurrences(text, f.rawMatch).some(o => g7Overlap(o, [os, oe])))) continue;
+        findings.push(g7Org(org, 'record_line_org'));
+      }
+    }
+  }
+  // 10) hiring posts: a job or organization in a job post / vacancy / "X is hiring" sentence is not reported unless the prompt has a first-person affiliation
+  const G4_HIRING_RE = /\b(?:(?:is|are|now|currently|we['’]?re)\s+hiring|hiring\s+(?:a|an|for|now|\w+\s+(?:and|or)\b)|job\s+(?:post(?:ing)?|ad|advert(?:isement)?|description|opening|vacancy)|vacanc(?:y|ies)|now\s+accepting\s+applications|position\s+available|duties\s+and\s+responsibilities|key\s+responsibilities)/i;
+  const G4_FIRST_PERSON_ORG_RE = /\b(?:our\s+(?:\w+\s+)?(?:company|firm|business|store|shop|bakery|restaurant|office|organi[sz]ation|startup|clinic|school|barangay|village|town|city|municipality|parish|church|hospital|department|agency|ngo|cooperative|association|club|community|council|lgu|team|branch|factory|farm)|my\s+(?:company|employer|business|firm|store|shop|restaurant|clinic)|i\s+(?:work|worked|own|run|manage|founded)\b|i['’]m\s+(?:the|an?)\s+\w+\s+(?:at|of)\b)/i;
+  const G_VISA_CARD_RE = /\b(?:card|debit|credit|paid|pay|payment|charged?|checkout|swipe)\b/i;
+  const G_MACHINE_WORD_RE = /^(?:home|web|file|mail|email|database|proxy|game|cloud|print|dns|vpn|backup|sql|app|application|ftp|local|remote|dedicated|virtual)$/i;
 
   function scan(textNLP) {
     G_SUPPRESSED = [];
@@ -6582,6 +6786,11 @@ const TrustLinguisticDetector = (() => {
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
       addAppositiveOrganizations(findings, textNLP);
       addFramedSingleBrands(findings, textNLP);
+      addSurnameFirstNames(findings, textNLP);
+      addAndNeighborNames(findings, textNLP);
+      addLowercaseOrganizations(findings, textNLP);
+      addRecordOrganizations(findings, textNLP);
+      addVisaCard(findings, textNLP);
       { const kept = stripLeadingImperativeFromOrganizations(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }

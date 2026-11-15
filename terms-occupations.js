@@ -18061,6 +18061,8 @@ const OCCUPATIONS_DATA = [
 // does not accept them (the detector knows this list as OCCUPATIONS_EXTRA). Single-word entries stay cue-gated like every single word.
 // Deliberately NOT included: status roles (student, volunteer, intern, trainee, applicant, retiree, freelancer, jobseeker).
 const OCCUPATIONS_EXTRA = [
+  // 0. Added after the set-C round (data only): common role titles that were missing
+  "Team Lead", "Shift Lead", "Corporate Lawyer",
   // 1. Barangay and local-government posts (PH)
   "Barangay Captain", "Punong Barangay", "Barangay Kagawad", "Kagawad", "Barangay Councilor", "Barangay Secretary", "Barangay Treasurer",
   "Barangay Tanod", "Tanod", "Barangay Health Worker", "Barangay Health Officer", "Barangay Nutrition Scholar", "Barangay Day Care Worker",

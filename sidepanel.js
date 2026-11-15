@@ -97,8 +97,9 @@ function renderFindings(findings, riskLevel) {
   btnSendAnyway.disabled    = false;
 
   for (const f of findings) {
-    const colour    = RISK_COLOURS[f.risk] || "#9E9E9E";
-    const textColour= f.risk === "low" ? "#000" : "#fff";
+    const noted     = f.noted === true;   // detected and listed, not scored: no change to the risk level
+    const colour    = noted ? "#9ca3af" : (RISK_COLOURS[f.risk] || "#9E9E9E");
+    const textColour= noted ? "#fff" : (f.risk === "low" ? "#000" : "#fff");
 
     const card = document.createElement("div");
     card.className = "finding-card";
@@ -108,7 +109,7 @@ function renderFindings(findings, riskLevel) {
         <span class="finding-label">${escapeHtml(f.label)}</span>
         <span class="finding-risk-tag"
               style="background:${colour};color:${textColour}">
-          ${escapeHtml(f.risk)}
+          ${noted ? "NOTED" : escapeHtml(f.risk)}
         </span>
       </div>
       <div class="finding-row">

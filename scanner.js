@@ -4292,6 +4292,29 @@ const TrustScanner = (() => {
       // When source_code and government ID patterns are detected together,
       // update the ID pattern labels to explicitly show "[Source Code]" context
       // This helps users understand their ID was found within code, not just prose.
+      // ── Console / panel parity ────────────────────────────────────────────────────
+      // Findings that did not raise the score (a job title that is not first-person, a context-only term) are still listed in the panel,
+      // marked "noted" (f.noted). The score and the risk level were computed above and are not touched. Every Path C finding must be in the
+      // returned list; if the merge step dropped one, the console says which and why.
+      {
+        const keyOf = f => f.patternId + ":" + String(f.rawMatch).trim().toLowerCase();
+        for (const f of findings) { if (!isScorable(f) && /^nlp_/.test(f.patternId)) f.noted = true; }
+        const finalKeys = new Set(findings.map(keyOf));
+        const lost = pathCFindings.filter(f => !finalKeys.has(keyOf(f)));
+        if (lost.length > 0) {
+          const addr = findings.filter(g => g.patternId === "ph_address").map(g => String(g.rawMatch).toLowerCase());
+          console.log("[TrustPrompt/scanner] PATH C finding(s) not in the final list: " + lost.map(f => {
+            const raw = String(f.rawMatch).trim().toLowerCase();
+            const why = addr.some(a => a.includes(raw)) ? "inside a ph_address finding (merge step)"
+              : isKnownPlaceholder(f.patternId, f.rawMatch) ? "placeholder value"
+              : "dropped by the merge / de-duplication step";
+            return `${f.patternId}:${f.rawMatch} (${why})`;
+          }).join("; "));
+        }
+        const notedN = findings.filter(f => f.noted).length;
+        console.log("[TrustPrompt/scanner] PANEL LIST: " + findings.length + " finding(s), " + findings.filter(f => /^nlp_/.test(f.patternId)).length + " from Path C, " + notedN + " noted (listed, not scored)");
+      }
+
       const enhancedFindings = enhanceFindingsWithCodeContext(findings);
 
       return { findings: enhancedFindings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted: false };

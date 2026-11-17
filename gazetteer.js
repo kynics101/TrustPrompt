@@ -480,58 +480,22 @@ const TrustGazetteer = (() => {
     "chinoy",        // Chinese-Filipino self-identifier
     "tisoy", "tisay",              // half-Filipino, half-Caucasian
     "mestizo", "mestiza",          // mixed-heritage Filipino
-    // ── PH ethno-regional self-identifiers ────────────────────────────────────
-    "bisaya",        // Visayan ethnic/linguistic identity (largest regional group)
-    "ilocano", "ilokano",          // Ilocos region (both spellings common)
-    "cebuano",
-    "kapampangan",
-    "waray",         // Eastern Visayas; also a PH surname — word-boundary acceptable
-    "bicolano", "bikolano",
-    "bangsamoro",    // Muslim Mindanao political/ethnic self-identifier
-    "maranao", "maranaw",
-    "tausug",
-    "maguindanao",
-    "moro",          // historic/community self-identifier; PH Muslim identity
-    // ── Religion — standard English ───────────────────────────────────────────
-    "muslim", "christian", "catholic", "protestant", "evangelical",
-    "buddhist", "hindu", "jewish", "sikh",
-    "atheist", "agnostic",
-    "adventist", "pentecostal",
-    "mormon",        // colloquial name for LDS; more commonly typed than "latter-day saint"
-    "presbyterian", "methodist", "episcopal",
-    "taoist",        // Chinese-Filipino community
-    "sunni", "islamic",
-    "moslem",        // older spelling; appears on PH civil registry and school records
-    // ── Religion — Filipino-language terms ────────────────────────────────────
-    "kristyano",     // Tagalog: "Christian"
-    "katoliko", "katolika",        // Tagalog: Catholic (male/female)
-    "protestante",   // Tagalog: "Protestant"
-    "budista",       // Tagalog: "Buddhist"
-    // ── PH-specific denominations ─────────────────────────────────────────────
-    "aglipayan",     // Philippine Independent Church
-    "baptist",
-    "lds",           // Latter-day Saints abbreviation; "Latter-day Saint" in PHRASES
-    // NOTE: "iglesia" removed as standalone — means any church in Filipino
-    //       Use phrase "iglesia ni cristo" instead (in NATIONALITY_PHRASES)
-    // NOTE: "karaniwang" removed — means "ordinary/common", NOT a denomination
+    // NOTE: PH ethno-regional identifiers (ilocano, cebuano, kapampangan, waray, etc.)
+    // have been removed from this list. They are ethnic-group names, not nationalities.
+    // They are detected as ethnic-origin context indicators via the gazetteer ethnic path,
+    // not as nationality disclosures.
+    //
+    // NOTE: Religion terms (muslim, christian, catholic, etc.) have been removed here.
+    // They are handled exclusively by the RELIGION_TERMS / RELIGION_GAZETTEER_TERMS path
+    // and the religion trigger phrases. Keeping them here caused double-detection.
   ];
 
   // ── Nationality — multi-word phrases ─────────────────────────────────────
   // Sorted longest-first so longer phrases shadow shorter substrings.
   // These match without \b anchors — natural spacing provides the boundary.
+  // NOTE: Religion denomination phrases (iglesia ni cristo, roman catholic, etc.)
+  // have been removed — they are handled by the religion gazetteer path only.
   const NATIONALITY_PHRASES = [
-    // Denominations and religious identities
-    "iglesia ni cristo",           // full name; more reliable than bare "iglesia"
-    "inc member",                  // INC abbreviation in phrase context
-    "seventh-day adventist",
-    "born again christian",        // full form; more common than bare "born again"
-    "roman catholic",
-    "born again",
-    "jehovah's witness",
-    "jehovahs witness",            // no-apostrophe variant
-    "jehovah witness",             // no-apostrophe, no-s variant
-    "latter-day saint",
-    "latter day saint",
     // Citizenship and status
     "overseas filipino worker",    // full expanded form of OFW
     "dual citizen",                // RA 9225 Filipino dual citizenship
@@ -550,9 +514,6 @@ const TrustGazetteer = (() => {
     "sri lankan",
     "new zealander",
     "new zealand",
-    // Non-Catholic phrases (appear in PH school/hospital enrollment forms)
-    "non-catholic christian",
-    "non-catholic",
     // Additional multi-word nationalities from countries.csv (SRC-GAZ-001)
     "trinidadian or tobagonian",
     "papua new guinean",
@@ -615,7 +576,9 @@ const TrustGazetteer = (() => {
     // have followPattern guards that immediately reject non-digit / non-gender
     // values, so they are independent. grammarCheck("person_name") rejects spans
     // that start with a digit, ensuring no overlap with the age trigger.
-    { phrase: "i am",                 category: "person_name",  risk: "low"    },
+    // GUARD: Reject words ending with -ing (verbs), -ed (past tense), and ethnic/nationality adjectives
+    // to prevent false positives like "I am applying", "I am ilocano", "I am Filipino", etc.
+    { phrase: "i am",                 category: "person_name",  risk: "low",   followPattern: /^(?![a-z]*(?:ing|ed)\b|(?:ilocano|cebuano|tagalog|bikol|kapampangan|pangasinense|waray|ilonggo|hiligaynon|mindanaoan|tausug|maranao|maguindanao|muslim|christian|catholic|buddhist|hindu|jewish|sikh|atheist|agnostic|philippine|filipin|pilipino|in\s|at\s|from\s|for\s|with\s|happy|sad|angry|tired|sick|well|born)\b)/i },
     // Age / DOB
     // FIXED: Made "years old" suffix mandatory to prevent false positives like "worked for 20 years"
     // Changed followPattern from /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ (optional suffix)
@@ -711,8 +674,9 @@ const TrustGazetteer = (() => {
   // Split of the source lists. Each term is in exactly one category:
   //   religion      → gazetteer_religion (scored, Low, base 2)
   //   nationality   → gazetteer_nationality (Rule 2 context indicator, score 0)
-  const RELIGION_GAZETTEER_TERMS = [...NATIONALITY_WORDS, ...NATIONALITY_PHRASES]
-    .filter(t => RELIGION_TERMS.has(t));
+  // NOTE: Religion terms were removed from NATIONALITY_WORDS / NATIONALITY_PHRASES, so
+  // RELIGION_GAZETTEER_TERMS is sourced directly from RELIGION_TERMS (the canonical set).
+  const RELIGION_GAZETTEER_TERMS = [...RELIGION_TERMS];
   const NATIONALITY_GAZETTEER_WORDS = NATIONALITY_WORDS.filter(t => !RELIGION_TERMS.has(t));
   const NATIONALITY_GAZETTEER_PHRASES = NATIONALITY_PHRASES.filter(t => !RELIGION_TERMS.has(t));
 

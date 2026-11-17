@@ -144,6 +144,16 @@ const TrustLinguisticDetector = (() => {
     'existing', 'existing', 'pending', 'rising', 'falling', 'growing', 'declining',
     'increasing', 'decreasing', 'maintaining', 'controlling', 'monitoring', 'tracking',
     'measuring', 'assessing', 'evaluating', 'analyzing', 'designing', 'engineering',
+
+    // ★ Common gerunds that appear after self-intro anchors ("I am applying", "I am looking",
+    // "I'm trying", etc.). These must be in the static list so the ok2 guard in
+    // extractLowercaseSelfIntros rejects them without depending on Compromise tags.
+    'applying', 'looking', 'trying', 'hoping', 'wanting', 'waiting', 'entering',
+    'starting', 'finishing', 'joining', 'leaving', 'returning', 'traveling',
+    'visiting', 'attending', 'seeking', 'requesting', 'submitting', 'preparing',
+    'studying', 'teaching', 'learning', 'reading', 'writing', 'thinking', 'asking',
+    'speaking', 'listening', 'watching', 'playing', 'eating', 'drinking', 'sleeping',
+    'sending', 'receiving', 'checking', 'verifying', 'filling', 'signing', 'paying',
     
     // ★ NEW: Common verbs in past tense (avoid "Worked X", "Lived Y" → X, Y as names)
     'worked', 'lived', 'played', 'called', 'named', 'heard', 'seen', 'found', 'left',
@@ -929,12 +939,54 @@ const TrustLinguisticDetector = (() => {
   // word ("Bread and Butter Pudding", "Maria and Ben Santos") is left to the other passes. Pairs of ordinary nouns ("Salt and Pepper") fail on X.
   // Languages and nationalities (a small data list kept inside Path C; Path B's list in gazetteer.js is private and is not touched). A bare language
   // or nationality word is not a person in the directive pass ("translate to Tagalog", "for Spanish learners") or the pair pass ("English and Spanish").
-  const G_LANG_NAT = new Set(('english french spanish german italian portuguese dutch russian polish czech hungarian romanian greek turkish arabic hebrew persian farsi ' +
-    'hindi urdu bengali tamil telugu punjabi nepali sinhala thai lao khmer vietnamese burmese malay indonesian filipino tagalog pilipino cebuano bisaya ilocano ilokano ' +
-    'hiligaynon waray kapampangan pangasinan bicolano chavacano tausug maranao maguindanao mandarin cantonese hokkien chinese japanese korean mongolian swahili zulu xhosa ' +
-    'yoruba igbo hausa amharic somali afrikaans latin swedish norwegian danish finnish icelandic ukrainian serbian croatian bulgarian ' +
-    'american british canadian australian mexican brazilian argentine chilean colombian peruvian venezuelan cuban indian pakistani bangladeshi egyptian nigerian kenyan ghanaian ' +
-    'ethiopian moroccan iranian iraqi israeli saudi emirati qatari irish scottish welsh swiss austrian belgian singaporean taiwanese').split(' '));
+  // Nationality adjectives only — language names removed.
+  // Purpose: prevent these words from being treated as person names in name-pair,
+  // directive, and self-intro detection (extractNamePairsWithAnd, extractLowercaseSelfIntros,
+  // extractLowercaseCuedNames). Keep in sync with NATIONALITY_WORDS / NATIONALITY_PHRASES
+  // in gazetteer.js — if a word is there it should be here too.
+  // NOTE: Ethnic-group identifiers (ilocano, cebuano, kapampangan, waray, etc.) intentionally
+  // excluded — they are detected as ethnic-origin context indicators, not nationalities,
+  // and must not silently suppress name detection in unrelated prompts.
+  const G_LANG_NAT = new Set([
+    // ── Philippines ───────────────────────────────────────────────────────────
+    'filipino', 'filipina', 'pilipino', 'pilipina', 'philipino', 'philipina',
+    'fillipino', 'fillipina', 'philippino', 'pinoy', 'pinay',
+    // ── Southeast Asia ────────────────────────────────────────────────────────
+    'indonesian', 'malaysian', 'singaporean', 'vietnamese', 'burmese', 'myanmarese',
+    'cambodian', 'laotian', 'taiwanese', 'hongkonger', 'bruneian', 'timorese',
+    // ── East / South / Central Asia ───────────────────────────────────────────
+    'chinese', 'japanese', 'korean', 'mongolian', 'kazakhstani', 'uzbekistani',
+    'indian', 'pakistani', 'bangladeshi', 'nepali', 'nepalese',
+    // ── Oceania ───────────────────────────────────────────────────────────────
+    'australian', 'fijian', 'samoan',
+    // ── Americas ──────────────────────────────────────────────────────────────
+    'american', 'canadian', 'mexican', 'brazilian', 'colombian',
+    'argentinian', 'argentine', 'peruvian', 'chilean', 'venezuelan',
+    'bolivian', 'ecuadorian', 'paraguayan', 'uruguayan',
+    'guatemalan', 'honduran', 'salvadoran', 'nicaraguan',
+    'cuban', 'jamaican', 'haitian', 'trinidadian', 'guyanese', 'panamanian',
+    // ── Europe ────────────────────────────────────────────────────────────────
+    'british', 'scottish', 'welsh', 'irish',
+    'german', 'spanish', 'italian', 'portuguese',
+    'belgian', 'swiss', 'swedish', 'norwegian', 'danish', 'finnish',
+    'ukrainian', 'russian', 'greek', 'turkish',
+    'austrian', 'czech', 'slovak', 'croatian', 'serbian',
+    'slovenian', 'bulgarian', 'romanian', 'hungarian', 'latvian',
+    'lithuanian', 'estonian', 'macedonian', 'montenegrin',
+    'icelandic', 'maltese', 'cypriot',
+    'albanian', 'azerbaijani', 'armenian', 'georgian',
+    'belarusian', 'moldovan',
+    // ── Middle East ───────────────────────────────────────────────────────────
+    'emirati', 'qatari', 'kuwaiti', 'omani',
+    'iranian', 'iraqi', 'syrian', 'yemeni', 'lebanese',
+    'jordanian', 'palestinian', 'israeli', 'afghan',
+    // ── Africa ────────────────────────────────────────────────────────────────
+    'egyptian', 'libyan', 'tunisian', 'moroccan', 'algerian',
+    'sudanese', 'nigerian', 'kenyan', 'ghanaian', 'ethiopian',
+    'tanzanian', 'ugandan', 'rwandan', 'cameroonian', 'senegalese',
+    'zambian', 'zimbabwean', 'namibian', 'mozambican', 'angolan',
+    'congolese', 'somali',
+  ]);
   const G_AND_VERB_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\b/i;
   const G_AND_REL_RE = /\b(?:friends?|classmates?|schoolmates?|colleagues?|co-?workers?|teammates?|cousins?|sisters?|brothers?|siblings?|twins?|aunt|uncle|nephew|niece|mother|father|mom|dad|parents?|son|daughter|children|kids?|wife|husband|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|neighbou?rs?|roommates?|housemates?|grandparents?|grandmother|grandfather|godparents?|in-laws?|relatives?|family)\b/i;
   const G_AND_TRAIL_RE = /^\s*(?:(?:are|were)\s+both\b|both\b|(?:said|says|told|asked|replied|wrote|works?|worked|lives?|lived|went|came|arrived|joined|presented|attended|left|called|live|work)\b)/i;
@@ -981,6 +1033,9 @@ const TrustLinguisticDetector = (() => {
       let m;
       while ((m = re.exec(text)) !== null) {
         const t1 = m[1], t2 = m[2];
+        // Reject nationality / language / ethnic-group words (e.g. "ilocano", "cebuano", "filipino") as the name token.
+        // G_LANG_NAT is already used for this purpose in extractNamePairsWithAnd and extractLowercaseCuedNames; this closes the same gap here.
+        if (G_LANG_NAT.has(t1.toLowerCase())) continue;
         const ok1 = nameHasPersonTag(isolatedNameTags(t1)) || isKnownGivenName(t1) || (!strict && !isOrdinaryNonNameWord(t1) && !isPlaceOrOrgWord(t1));
         if (!ok1) continue;
         const ok2 = t2 && !isOrdinaryNonNameWord(t2) && !isPlaceOrOrgWord(t2) && t2.length >= 2;
@@ -1007,10 +1062,14 @@ const TrustLinguisticDetector = (() => {
   function extractLowercaseCuedNames(text, findings) {
     if (!NAMES_DICT_AVAILABLE || !text) return;
     // built per call: PERSON_DIRECTED_BEFORE_RE is declared later in this file (it is not yet initialised when the module loads)
+    // LC_REL_NOUN_CUE: catches relational-noun introductions like "my cousin [name]", "her husband [name]",
+    // "their son [name]". The relational noun sits directly before the name run, so the 50-char window ends at the noun.
+    const LC_REL_NOUN_CUE = /\b(?:my|our|his|her|their|the)\s+(?:cousin|husband|wife|brother|sister|son|daughter|mother|father|mom|dad|uncle|aunt|nephew|niece|grandfather|grandmother|grandma|grandpa|godfather|godmother|godson|goddaughter|partner|boyfriend|girlfriend|spouse|friend|classmate|colleague|co-worker|teammate|neighbor|neighbour|roommate|housemate|relative|sibling|twin)\s+$/iu;
     const LC_NAME_BEFORE_CUES = [
       G_B_BEFORE_CUE_RE, PERSON_DIRECTED_BEFORE_RE, G_B_PREP_CUE_RE,
       /\bthank(?:s|\s+you)\s+$/i,
-      /\b(?:my|our|his|her|their)\s+(?:[\p{L}'’-]+\s+){0,5}(?:is|was)\s+$/iu,
+      /\b(?:my|our|his|her|their)\s+(?:[\p{L}''-]+\s+){0,5}(?:is|was)\s+$/iu,
+      LC_REL_NOUN_CUE,
     ];
     const TOK = String.raw`\p{L}[\p{L}\p{M}]*(?:[-'’]\p{L}[\p{L}\p{M}]*)*`;
     const tokRe = new RegExp(TOK, 'gu');
@@ -6083,7 +6142,7 @@ const TrustLinguisticDetector = (() => {
         // (The path normalizer capitalises the first character of the prompt,
         // so a prompt that begins with this phrase always arrives as "My name is".)
         new RegExp(String.raw`\b[Mm]y\s+[Nn]ame\s+[Ii]s\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
-        new RegExp(String.raw`\b(?:i\s+)?(?:am|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gui'),
+        new RegExp(String.raw`\b(?:i\s+)?(?:am|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\b[Cc]all\s+me\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\bi['’]m\s+called\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         // Small item 3: "this is X" / "it's X" / "it is X" introduces the speaker. A bare first name is accepted only when the self-introduction
@@ -6109,9 +6168,31 @@ const TrustLinguisticDetector = (() => {
             name = tw.slice(0, -1).join(' ');
           }
 
+          // ★ FIX: Single-word evidence gate — applied AFTER trailing trim, same principle as Cause B in METHOD 4
+          // The trigger phrase "I am" is structural evidence for multi-word names but insufficient for
+          // a single word that might be any kind of noun. Single words like "Ilocano" (ethnolinguistic),
+          // "Away" (adverb), or plain Title-Case adjectives must be validated against the name dictionary
+          // or Compromise Person tag before being reported as person names.
+          if (!name.includes(' ')) {
+            const singleTags = isolatedNameTags(name);
+            if (!isKnownGivenName(name) && !nameHasPersonTag(singleTags)) {
+              console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - single word after trim, no name evidence: "${name}"`);
+              continue;
+            }
+          }
+
           // ★ FIX: Filter out non-name words (adjectives, verbs, descriptors, etc.)
           // Check if ANY word in the phrase is a known non-name word
           const words = name.split(/\s+/);
+          // Reject nationality / ethnolinguistic words used in self-identification
+          // ("I am Ilocano", "I'm Filipino") — these are not person names. G_LANG_NAT
+          // is already applied in extractLowercaseSelfIntros; this closes the same gap
+          // here for Title-Case words produced when the normalizer capitalises the
+          // first character of the prompt (e.g. "Ilocano" from "i am ilocano...").
+          if (words.some(w => G_LANG_NAT.has(w.toLowerCase()))) {
+            console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - nationality/ethnolinguistic word: "${name}"`);
+            continue;
+          }
           const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
           if (hasNonNameWord) {
             console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);

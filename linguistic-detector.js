@@ -6183,6 +6183,106 @@ const TrustLinguisticDetector = (() => {
   const G_VISA_CARD_RE = /\b(?:card|debit|credit|paid|pay|payment|charged?|checkout|swipe)\b/i;
   const G_MACHINE_WORD_RE = /^(?:home|web|file|mail|email|database|proxy|game|cloud|print|dns|vpn|backup|sql|app|application|ftp|local|remote|dedicated|virtual)$/i;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 8 (round 5): which job titles count as Low. A title is flagged `lowQualifying` when it stands in an actual statement about real
+  // people (a relative or friend, a work scenario, an affiliation) or in a first-person self-description (student, volunteer). It is NOT
+  // flagged in a job post / vacancy (third-party employer), a general, comparison or definition question, an instruction, a modal
+  // statement, a request ("I need a plumber") or a possessive service provider ("my doctor adjusted ..."). scanner.js lifts a prompt from
+  // "none" to "low" for such a title and never changes a prompt that is already Low or higher. Job-title scoring itself (`attributed`) is untouched.
+  // ═══════════════════════════════════════════════════════════════════════
+  const G9_KIN = 'mother|father|mom|dad|mama|papa|parents?|son|daughter|brother|sister|uncle|aunt|auntie|tito|tita|lolo|lola|grandfather|grandmother|grandpa|grandma|cousin|nephew|niece|husband|wife|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|in-laws?|stepfather|stepmother|friend|neighbou?r|classmate|roommate|boss|supervisor|coworker|co-worker|colleague|teammate|landlord|landlady|kuya|ate|ninong|ninang|kumpare|kumare|mentor|ex|child|children|kids?|baby|housemate|tenant|employee|employer|client|patient|student|teacher';
+  const G9_KIN_RE = new RegExp(String.raw`\b(?:my|our|his|her|their|your)\s+(?:[\w-]+\s+){0,1}(?:${G9_KIN})\b`, 'i');
+  const G9_SERVICE = new Set(['doctor', 'dentist', 'lawyer', 'attorney', 'accountant', 'mechanic', 'plumber', 'electrician', 'barber', 'hairdresser', 'therapist', 'pharmacist', 'vet', 'veterinarian', 'nurse', 'physician', 'surgeon', 'cardiologist', 'optometrist', 'counselor', 'counsellor', 'psychologist', 'psychiatrist', 'tutor', 'driver', 'dermatologist', 'pediatrician', 'obgyn', 'midwife', 'chiropractor', 'doctors', 'banker', 'agent', 'broker', 'landlord', 'contractor', 'carpenter', 'technician']);
+  const G9_GENERIC_START_RE = /^\s*(?:please\s+)?(?:write|draft|compose|explain|describe|compare|contrast|summari[sz]e|list|define|rank|rewrite|create|generate|give|tell\s+me|suggest|recommend|outline|translate|help|show|what|how|why|when|where|which|who|whom|can|could|does|do|did|is|are|should|would|will|if|imagine|suppose|make|fix|edit|improve|proofread|format|check)\b/i;
+  const G9_GENERIC_ANY_RE = /\b(?:should|must|can|could|may|might|typically|usually|generally|on\s+average|average|salary|salaries|earns?|how\s+much|responsible\s+for|duties|role\s+of|job\s+of|qualifications?|requirements?|skills?\s+(?:needed|required)|to\s+become|compared\s+to|versus|vs\.?)\b|\b(?:is|are)\s+(?:a|an|the)\s+(?:person|people|someone|somebody|professional|worker|specialist|individual)\b|\b(?:i|we)\s+(?:need|want|require|am\s+looking\s+for|are\s+looking\s+for|would\s+like|am\s+hiring|am\s+seeking|wish)\b|\blooking\s+for\b/i;
+  function g9Qualifies(text, s, e, sents, people, nJobs, strict) {
+    const se = g4SentenceOf(sents, s), sent = text.slice(se[0], se[1]);
+    if (G4_HYPO_RE.test(sent)) return false;
+    if (/\?\s*$/.test(sent.trim()) || G9_GENERIC_START_RE.test(sent) || G9_GENERIC_ANY_RE.test(sent) || JOB_GENERIC_SENTENCE_RE.test(sent)) return false;
+    const firstPersonOrg = G4_FIRST_PERSON_ORG_RE.test(text);
+    if (G4_HIRING_RE.test(sent) && !firstPersonOrg) return false;
+    const before = text.slice(se[0], s), pre = text.slice(Math.max(0, s - 14), s);
+    const last = text.slice(s, e).toLowerCase().split(/\s+/).pop();
+    // "my doctor adjusted my medication": a possessive service provider with no description is not a statement about a person
+    if (G9_SERVICE.has(last) && /\b(?:my|your|our|the)\s+(?:[\w-]+\s+)?$/i.test(pre) && !(nJobs >= 2 && /\bthe\s+$/i.test(pre)) && !/\b(?:is|was|as)\s+(?:an?\s+)?$/i.test(pre)) return false;
+    // (a) a relative or friend: "my uncle is a seaman", "her brother is a pilot"
+    // the relative must be the subject of the title: nothing but a copula / "works as" / an appositive comma between them
+    // ("my uncle is a seaman", "my aunt, a midwife"), not another clause ("my grandmother's notebook is full of notes, and a cashier ...")
+    {
+      const kinRe = new RegExp(G9_KIN_RE.source, 'gi'); let km, lastEnd = -1;
+      const win = before.slice(-90);
+      while ((km = kinRe.exec(win)) !== null) lastEnd = km.index + km[0].length;
+      if (lastEnd >= 0) {
+        const gap = win.slice(lastEnd).replace(/^\s*,\s*(?=(?:an?|the)\s)/i, ' ');
+        if (gap.length <= 45 && !/[,;:.]|['’]s\s|\b(?:and|but|when|while|once|because|who|which)\b/i.test(gap)) return true;
+      }
+    }
+    // a staff introduction: "Welcome our new cashier, Pilar, ..."
+    if (/\b(?:welcome|meet|introducing|congratulations\s+to)\s+(?:our|the|my)\s+new\s+(?:[\w-]+\s+)?$/i.test(before) || /^\s*,\s*\p{Lu}\p{Ll}+\s*[,.]/u.test(text.slice(e, e + 30)) && /\b(?:our|my|the)\s+(?:new\s+)?(?:[\w-]+\s+)?$/i.test(pre)) return true;
+    // (c) an affiliation: "our barangay needs a health worker"
+    if (firstPersonOrg && G4_FIRST_PERSON_ORG_RE.test(before)) return true;
+    // a named person in the same statement
+    if (!strict && people.some(p => jobOccurrences(text, p.rawMatch).some(([ps]) => ps >= se[0] && ps < se[1]))) return true;
+    // (b) a work scenario: two or more titles, an article in front of the title and a finite verb in the sentence
+    if (nJobs < 2) return false;
+    if (/\byou(?:r|rs)?\b/i.test(sent)) return false;       // addressed to "you": a service interaction, not a statement about people
+    if (/\b(?:the|a|an|our|their|his|her|new|another|one\s+of\s+the)\s+(?:[\w-]+\s+){0,2}$/i.test(pre) || /\b(?:and|,)\s+(?:the|a|an)\s+$/i.test(pre)) {
+      try { const d = window.nlp(sent); if (d.has('#PastTense') || d.has('#PresentTense') || d.has('#Copula') || d.has('#Verb')) return true; } catch (_) { /* no nlp */ }
+    }
+    return false;
+  }
+  // first-person self-description: "I'm a college student", "I am a student", "I volunteer at X", "I'm a volunteer"
+  function g9SelfDescribed(text) {
+    const out = [];
+    // "I'm a <role> and a <role>": every role in the first-person clause counts; the clause ends at punctuation or at another subject
+    const head = /\b(?:i|we)\s*(?:am|['’]m|was|were|are|['’]re)\s+(?:currently\s+|now\s+|still\s+)?(?=(?:a|an)\s)/giu;
+    const roleRe = /\b(?:a|an)\s+(?:[\p{L}-]+\s+){0,3}?(college student|senior high school student|high school student|graduate student|student|volunteer|intern)\b(?!\s+(?:council|discount|loan|loans|id|body|union|government|organization|organisation|housing|affairs|handbook|visa))/giu;
+    let h;
+    while ((h = head.exec(text)) !== null) {
+      const start = h.index + h[0].length;
+      let clause = text.slice(start, start + 140);
+      const stop = clause.search(/[.?!;\n]|\b(?:my|his|her|their|our|he|she|they|and\s+i|but)\b/i);
+      clause = clause.slice(0, stop > 0 ? stop : clause.length);
+      let m; roleRe.lastIndex = 0;
+      while ((m = roleRe.exec(clause)) !== null) { const at = start + m.index + m[0].toLowerCase().lastIndexOf(m[1].toLowerCase()); out.push(text.slice(at, at + m[1].length)); }
+    }
+    const reVol = /\b(?:i|we)\s+(?:also\s+|currently\s+|regularly\s+)?(volunteer)s?\s+(?:at|for|with|in)\b/giu;
+    let vm2;
+    while ((vm2 = reVol.exec(text)) !== null) { const at = vm2.index + vm2[0].toLowerCase().indexOf('volunteer'); out.push(text.slice(at, at + 9)); }
+    return out;
+  }
+  function applyJobLow(findings, text) {
+    const sents = g4Sentences(text);
+    const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    // titles the validation gate left out because they have no cue of their own, but that stand in a qualifying statement
+    let cands = [];
+    try { cands = findJobTitlesCSVFirst(text); } catch (_) { cands = []; }
+    // every title span in the text (existing findings and dictionary candidates), to count the titles in a sentence
+    const spans = [];
+    for (const f of findings) if (f.patternId === 'nlp_job_title' && f.rawMatch) for (const o of jobOccurrences(text, f.rawMatch)) spans.push(o);
+    for (const c of cands) { if (c.plural) continue; const r = String(c.rawMatch || c.name || '').trim(); if (r) for (const o of jobOccurrences(text, r)) spans.push(o); }
+    const nJobsAt = s => { const se = g4SentenceOf(sents, s); const inS = spans.filter(([a]) => a >= se[0] && a < se[1]).sort((x, y) => x[0] - y[0] || y[1] - x[1]); let n = 0, end = -1; for (const [a, b] of inS) { if (a >= end) { n++; end = b; } else if (b > end) end = b; } return n; };
+    for (const c of cands) {
+      if (c.plural || !(c.source === 'csv_exact_match' || c.source === 'csv_phrase_match') || c.confidence !== 'high') continue;
+      const raw = String(c.rawMatch || c.name || '').trim();
+      if (!raw || findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase().includes(raw.toLowerCase()))) continue;
+      if (G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor)$/i.test(raw)) continue;
+      const taken = findings.filter(f => (f.patternId === "nlp_person_name" || f.patternId === "nlp_organization") && f.rawMatch).flatMap(f => jobOccurrences(text, f.rawMatch));
+      const occ = jobOccurrences(text, raw).filter(([s, e]) => !taken.some(o => g7Overlap(o, [s, e])) && g9Qualifies(text, s, e, sents, people, nJobsAt(s), true));
+      if (!occ.length) continue;
+      const [s, e] = occ[0];
+      findings.push({ patternId: 'nlp_job_title', label: 'Job Title (statement)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: true, attributed: false, lowQualifying: true });
+    }
+    for (const f of findings) {
+      if (f.patternId !== 'nlp_job_title' || !f.rawMatch || f.lowQualifying) continue;
+      if (jobOccurrences(text, f.rawMatch).some(([s, e]) => g9Qualifies(text, s, e, sents, people, nJobsAt(s)))) f.lowQualifying = true;
+    }
+    for (const raw of g9SelfDescribed(text)) {
+      if (findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase() === raw.toLowerCase())) { findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch.toLowerCase() === raw.toLowerCase()).forEach(f => { f.lowQualifying = true; }); continue; }
+      findings.push({ patternId: 'nlp_job_title', label: 'Job Title (self-description)', risk: 'low', rawMatch: raw, safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: false, attributed: false, lowQualifying: true });
+    }
+  }
+
   function scan(textNLP) {
     G_SUPPRESSED = [];
     const prep = t => repairHyphenatedNameSplit(maskSalutationFragments(t));
@@ -6799,6 +6899,7 @@ const TrustLinguisticDetector = (() => {
       trimJobNationalityPrefix(findings);
       { const kept = smallVetoes(findings, textNLP); findings.length = 0; findings.push(...kept); }
       { const kept = contextLayer(findings, textNLP); findings.length = 0; findings.push(...kept); }
+      applyJobLow(findings, textNLP);
 
     } catch (error) {
       console.error('[TrustPrompt/PATH_C] Scan error:', error);

@@ -4257,7 +4257,17 @@ const TrustScanner = (() => {
       }
       
       console.log(`[TrustPrompt/scanner] ★★★ ABOUT TO SCORE: findings.length=${findings.length}, source_code count=${findings.filter(f => f.patternId === 'source_code').length}`);
-      const { score, riskLevel, governance } = computeRiskScore(findings, rawText);
+      let { score, riskLevel, governance } = computeRiskScore(findings, rawText);
+      // ── Job titles that stand in a statement about real people (detector flag lowQualifying) ─────────────────────────────────────
+      // Such a title may only lift a prompt from "none" to "low". A prompt that is already Low or higher is not changed at all: its score,
+      // its risk level and its governance rule stay as computed above. (isScorable and the attributed gate are untouched.)
+      {
+        const lowJobs = findings.filter(f => f.patternId === "nlp_job_title" && f.lowQualifying === true);
+        if (riskLevel === "none" && lowJobs.length > 0) {
+          riskLevel = "low"; score = BASE_SCORES.nlp_job_title; governance = "job_title_statement";
+          console.log("[TrustPrompt/scanner] job title in a statement about real people: none -> low (" + lowJobs.map(f => f.rawMatch).join(", ") + ")");
+        }
+      }
       console.log(`[TrustPrompt/scanner] ★★★ SCORING RESULT: score=${score}, riskLevel=${riskLevel}`);
 
       // Calculate final category counts from the deduplicated findings array
@@ -4298,7 +4308,7 @@ const TrustScanner = (() => {
       // returned list; if the merge step dropped one, the console says which and why.
       {
         const keyOf = f => f.patternId + ":" + String(f.rawMatch).trim().toLowerCase();
-        for (const f of findings) { if (!isScorable(f) && /^nlp_/.test(f.patternId)) f.noted = true; }
+        for (const f of findings) { if (!isScorable(f) && /^nlp_/.test(f.patternId) && f.lowQualifying !== true) f.noted = true; }
         const finalKeys = new Set(findings.map(keyOf));
         const lost = pathCFindings.filter(f => !finalKeys.has(keyOf(f)));
         if (lost.length > 0) {

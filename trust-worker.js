@@ -99,19 +99,11 @@ const BASE_SCORES = {
 
   // ── Philippine Government IDs (all score 10) ────────────────────────────
   ph_id_philid:              10,  // PhilID (PSA National ID)
-  ph_id_drivers_license:     10,  // Driver's License (LTO)
   ph_id_passport:            10,  // Passport (BI)
   ph_id_umid:                10,  // UMID (Unified Multi-Purpose ID)
   ph_id_sss:                 10,  // SSS (Social Security System)
-  ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
   ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
-  ph_id_tin:                 10,  // TIN (Taxpayer Identification Number)
   ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
-  ph_id_nbi_clearance:       10,  // NBI Clearance
-  ph_id_police_clearance:    10,  // Police Clearance (PNP)
-  ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
-  ph_id_barangay_clearance:  10,  // Barangay Clearance
-  ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
 
   email:            5,
   ph_mobile:        5,
@@ -152,19 +144,11 @@ const ENTITY_TIER = {
 
   // ── Philippine Government IDs (all critical tier) ────────────────────────
   ph_id_philid:              "critical",  // PhilID (PSA National ID)
-  ph_id_drivers_license:     "critical",  // Driver's License (LTO)
   ph_id_passport:            "critical",  // Passport (BI)
   ph_id_umid:                "critical",  // UMID (Unified Multi-Purpose ID)
   ph_id_sss:                 "critical",  // SSS (Social Security System)
-  ph_id_gsis:                "critical",  // GSIS (Government Service Insurance System)
   ph_id_prc:                 "critical",  // PRC (Professional Regulation Commission)
-  ph_id_tin:                 "critical",  // TIN (Taxpayer Identification Number)
   ph_id_philhealth:          "critical",  // PhilHealth (Health Insurance)
-  ph_id_nbi_clearance:       "critical",  // NBI Clearance
-  ph_id_police_clearance:    "critical",  // Police Clearance (PNP)
-  ph_id_psa_certificate:     "critical",  // PSA Certificate (Vital Records)
-  ph_id_barangay_clearance:  "critical",  // Barangay Clearance
-  ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
 
   email:            "significant",  // FIXED: Should be "significant", not "direct"
   ph_mobile:        "significant",  // FIXED: Should be "significant", not "direct"
@@ -665,6 +649,12 @@ function runPathA(normalisedText) {
 
 // ── Merge + deduplicate ───────────────────────────────────────────────────────
 
+// Credential types where one secret can be matched by several regex alternatives
+// with different spans (bare value vs. labelled assignment). Same set as scanner.js.
+const CREDENTIAL_CONTAINMENT_IDS = new Set([
+  'api_key', 'aws_key', 'github_token', 'jwt', 'connection_string', 'private_key'
+]);
+
 function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings = []) {
   // ── Deduplicate per (patternId × rawMatch) pair ──────────────────────────────
   //
@@ -693,6 +683,20 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
   // organization name.
   const merged = [...seen.values()];
   return merged.filter(f => {
+    // ── Credential containment: one secret, two matches ─────────────────────
+    // Same rule as scanner.js: keep only the widest span per credential type when
+    // a bare vendor-prefix match is a substring of a labelled match for one secret.
+    if (CREDENTIAL_CONTAINMENT_IDS.has(f.patternId)) {
+      const selfText = f.rawMatch.trim();
+      const hasWiderSpan = merged.some(other =>
+        other !== f &&
+        other.patternId === f.patternId &&
+        other.rawMatch.trim() !== selfText &&
+        other.rawMatch.trim().includes(selfText)
+      );
+      if (hasWiderSpan) return false;
+    }
+
     if (f.patternId === 'ph_address') {
       const self = f.rawMatch.trim().toLowerCase();
       const hasLongerAddress = merged.some(other =>

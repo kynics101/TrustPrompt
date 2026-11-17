@@ -175,35 +175,37 @@ function structuralValidatePHID_DriverLicense(raw) {
 }
 ```
 
-#### PhilSys / Unified ID
+#### PhilID (PhilSys / Unified ID)
 
-- **Format**: 12 digits (PSA-issued, linkage to all ID types)
-- **Regex Pattern**: `/(?:philsys|unified\s?id|phil\s?sys|psa|national\s?registry)\s*:?\s*["']?(\d{12})["']?/gi`
-- **Validator**: `structuralValidatePHID_PhilSys`
-- **Checksum**: No published algorithm; 12 digits only
-- **Sanitization**: `XXXX-XXXX-XXXX` (show first 4, redact middle, show last 4)
+- **Format**: 16 digits in 4-4-4-4 groups: `XXXX-XXXX-XXXX-XXXX`
+- **Regex Pattern**: `/\b\d{4}-\d{4}-\d{4}-\d{4}\b/g` (same format as `ph_id_philid` in `patterns.js`)
+- **Validator**: `structuralValidatePHID_PhilID`
+- **Checksum**: No published algorithm; 16 digits only
+- **Sanitization**: `XXXX-****-****-XXXX` (show first 4, redact middle 8, show last 4)
 - **Risk**: high / critical
 
 ```javascript
-function structuralValidatePHID_PhilSys(raw) {
+function structuralValidatePHID_PhilID(raw) {
   const value = raw.replace(/\D/g, "");
-  return /^\d{12}$/.test(value);
+  return /^\d{16}$/.test(value);
 }
 ```
 
 #### Postal ID
 
-- **Format**: Typically letter prefix + 8 digits, e.g., `P87654321`
-- **Regex Pattern**: `/(?:postal\s?id|post\s?office)\s*:?\s*["']?([A-Z]\d{8})["']?/gi`
+- **Format**: 1 letter, 7 digits, 4 digits, 1 letter, separated by dashes: `XNNNNNNN-NNNN-X` (13 characters)
+- **Regex Pattern**: `/\b[A-Z]\d{7}-\d{4}-[A-Z]\b/gi` (same format as `ph_id_postal` in `patterns.js`)
 - **Validator**: `structuralValidatePHID_PostalID`
-- **Checksum**: No checksum; format letter + 8 digits
-- **Sanitization**: `P****4321` (show prefix and last 4)
+- **Checksum**: No checksum; format only
+- **Sanitization**: `X*******-****-X` (show first and last letter, redact the rest)
 - **Risk**: high / critical
+
+This format replaces the earlier letter + 8 digits layout and the 14-character description. The regex is the source of truth.
 
 ```javascript
 function structuralValidatePHID_PostalID(raw) {
   const value = raw.replace(/\s/g, "");
-  return /^[A-Z]\d{8}$/.test(value);
+  return /^[A-Z]\d{7}-\d{4}-[A-Z]$/i.test(value);
 }
 ```
 
@@ -633,8 +635,8 @@ These properties must hold across all scans:
 | TIN | tin, tax id | `XXX-XXX-XXX-XXXXX` | 12 digits |
 | Passport | passport | `[A-Z]XXXXXXXX` | 9 chars |
 | Driver's License | driver's license, dl | `XX-XX-XXXXXX` | 8–15 chars |
-| PhilSys | philsys, unified id | `XXXXXXXXXXXX` | 12 digits |
-| Postal ID | postal id | `PXXXXXXXX` | 9 chars |
+| PhilID (PhilSys) | philid, philsys, unified id | `XXXX-XXXX-XXXX-XXXX` | 16 digits |
+| Postal ID | postal id | `XNNNNNNN-NNNN-X` | 13 chars |
 | Voter's ID | voter's id, comelec | `XXXX-XXXXXXXXX` | 13 chars |
 | National ID | national id, nid | `NXXXXXXXX` | 9 chars |
 | NBI Clearance | nbi, clearance | `XXXXXXXXXXXX` | 12–16 digits |

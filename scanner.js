@@ -922,14 +922,6 @@ const TrustScanner = (() => {
       /github_pat_[A-Za-z0-9_]{36,}/g           // Alternative GitHub PAT pattern
     ],
 
-    // ── Sub-category: OpenAI / AI API Keys ──────────────────────────────────
-    // Detects OpenAI, Anthropic, and other AI service API keys
-    openai_keys: [
-      /sk-[A-Za-z0-9]{20,}/g,                   // OpenAI API key (sk-proj-...)
-      /sk-proj-[A-Za-z0-9_\-]{20,}/g,          // OpenAI project-based key
-      /(?:openai|anthropic)[_-]?(?:api[_-]?)?key\s*[:=]\s*["']?([A-Za-z0-9_\-]{20,})["']?/gi
-    ],
-
     // ── Sub-category: JWT Patterns ──────────────────────────────────────────
     // Detects JSON Web Tokens (JWT format: header.payload.signature)
     jwt_tokens: [
@@ -973,11 +965,7 @@ const TrustScanner = (() => {
       // PhilID (PSA National ID): XXXX-XXXX-XXXX-XXXX format (4 groups of 4)
       /\d{4}-\d{4}-\d{4}-\d{4}/g,
       
-      // TIN (Tax Identification Number): XXX-XXX-XXX format (exact)
-      /\d{3}-\d{3}-\d{3}/g,
       
-      // Driver's License: 1-3 digits, hyphen, 2 digits, hyphen, 6-7 digits
-      /\d{1,3}-\d{2}-\d{6,7}/g
     ],
 
     // ── Sub-category: Variable Names Suggesting Secrets ──────────────────────
@@ -994,7 +982,7 @@ const TrustScanner = (() => {
       "github_token", "gitlab_token", "bitbucket_token",
       "client_secret", "oauth_secret", "client_id",
       "jwt", "jwttoken", "jwt-token",
-      "sss", "umid", "prc", "philid", "tin", "gsis", "philhealth", "postal_id", "pwd_id", "voter_id"
+      "sss", "umid", "prc", "philid", "philhealth", "postal_id", "pwd_id"
     ],
 
     // ── Sub-category: Sensitive Keywords ────────────────────────────────────
@@ -1004,7 +992,7 @@ const TrustScanner = (() => {
       "database_url", "credential", "auth", "oauth", "jwt",
       "sensitive", "confidential", "encrypted", "decrypted",
       "apikey", "access_key", "secret_key", "bearer",
-      "sss", "umid", "prc", "philid", "tin", "gsis", "philhealth", "postal_id", "pwd_id", "voter_id"
+      "sss", "umid", "prc", "philid", "philhealth", "postal_id", "pwd_id"
     ]
   };
 
@@ -1067,17 +1055,14 @@ const TrustScanner = (() => {
     // ── Philippine Government IDs — all score 10 (Table 10) ──────────────
     // NOTE: pattern IDs below must match the `id` fields defined in patterns.js.
     ph_id_philid:              10,  // PhilID (PSA National ID)
-    ph_id_drivers_license:     10,  // Driver's License (LTO)
     ph_id_passport:            10,  // Passport (BI)
     ph_id_umid:                10,  // UMID (Unified Multi-Purpose ID)
     ph_id_sss:                 10,  // SSS (Social Security System)
-    ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
     ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
     ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
     ph_id_postal:              10,  // Postal ID (PHLPost)
     ph_id_pwd:                 10,  // PWD ID (Persons with Disability)
     ph_id_senior_citizen:      10,  // Digital National Senior Citizen ID
-    ph_id_voters:              10,  // COMELEC Voter's ID
 
     // ── Moderate (Significant) — score 5 (Table 10) ──────────────────────
     email:       5,
@@ -1129,17 +1114,14 @@ const TrustScanner = (() => {
     id_label:         "critical",
 
     ph_id_philid:              "critical",
-    ph_id_drivers_license:     "critical",
     ph_id_passport:            "critical",
     ph_id_umid:                "critical",
     ph_id_sss:                 "critical",
-    ph_id_gsis:                "critical",
     ph_id_prc:                 "critical",
     ph_id_philhealth:          "critical",
     ph_id_postal:              "critical",
     ph_id_pwd:                 "critical",
     ph_id_senior_citizen:      "critical",
-    ph_id_voters:              "critical",
 
     // ── Significant (score 5) ─────────────────────────────────────────────
     email:       "significant",
@@ -2476,7 +2458,7 @@ const TrustScanner = (() => {
         /\d{3}-\d{4}-\d{3}-\d{5}/,  // PWD ID
       ];
       
-      const looksLikeIdMention = /(?:id|number|identifier|umid|sss|gsis|crn|number|employee|govt?|government)/i.test(line);
+      const looksLikeIdMention = /(?:id|number|identifier|umid|sss|crn|number|employee|govt?|government)/i.test(line);
       const hasIdPattern = idPatterns.some(pattern => pattern.test(line));
       
       if (looksLikeIdMention && hasIdPattern) {
@@ -3913,6 +3895,12 @@ const TrustScanner = (() => {
   // finding with the highest risk level is preserved (RISK_ORDER wins).
   // Special handling: UMID takes precedence over SSS for overlapping matches.
 
+  // Credential types where one secret can be matched by several regex alternatives
+  // with different spans (bare value vs. labelled assignment). See containment rule below.
+  const CREDENTIAL_CONTAINMENT_IDS = new Set([
+    'api_key', 'aws_key', 'github_token', 'jwt', 'connection_string', 'private_key'
+  ]);
+
   function mergeAndDedupe(pathA, pathB, pathC, sourceCode = []) {
     const allFindings = [...pathA, ...pathB, ...pathC, ...sourceCode];
 
@@ -3973,6 +3961,22 @@ const TrustScanner = (() => {
     // e.g. "10-5002134-6" (SSS match) is part of "4310-5002134-6" (UMID).
     const result = [...seen.values()];
     return result.filter(f => {
+      // ── Credential containment: one secret, two matches ─────────────────────
+      // The api_key regex has a bare vendor-prefix alternative (sk-proj-...) and a
+      // labelled alternative (apiKey = '...'). Both match the same secret, so the
+      // bare match is a substring of the labelled one. Keep only the widest span
+      // per credential type so the secret is reported once.
+      if (CREDENTIAL_CONTAINMENT_IDS.has(f.patternId)) {
+        const selfText = f.rawMatch.trim();
+        const hasWiderSpan = result.some(other =>
+          other !== f &&
+          other.patternId === f.patternId &&
+          other.rawMatch.trim() !== selfText &&
+          other.rawMatch.trim().includes(selfText)
+        );
+        if (hasWiderSpan) return false;
+      }
+
       if (f.patternId === 'ph_id_sss') {
         const sssMatch = f.rawMatch.trim();
         const hasUmidParent = result.some(
@@ -4071,22 +4075,13 @@ const TrustScanner = (() => {
     const idPatternsInCode = {
       'ph_id_umid': 'UMID (Unified Multi-Purpose ID)',
       'ph_id_sss': 'SSS (Social Security System)',
-      'ph_id_gsis': 'GSIS (Government Service Insurance)',
       'ph_id_umid_variable_assignment': 'UMID in Code Variable Assignment',
       'ph_id_sss_variable_assignment': 'SSS in Code Variable Assignment',
-      'ph_id_gsis_variable_assignment': 'GSIS in Code Variable Assignment',
       'ph_id_object_literal': 'Government ID in Object Literal',
       'ph_id_function_argument': 'Government ID in Function Argument',
       'ph_id_passport': 'Philippine Passport',
       'ph_id_prc': 'PRC (Professional Regulation Commission)',
-      'ph_id_tin': 'TIN (Tax Identification Number)',
-      'ph_id_drivers_license': "Driver's License (LTO)",
-      'ph_id_voters': "Voter's ID (COMELEC)",
       'ph_id_philhealth': 'PhilHealth (Health Insurance)',
-      'ph_id_pagibig': 'PagIBIG (Home Savings Bank)',
-      'ph_id_psa_certificate': 'PSA Birth Certificate',
-      'ph_id_police_clearance': 'Police Clearance',
-      'ph_id_barangay_clearance': 'Barangay Clearance'
     };
 
     // Enhance findings: for standalone ID patterns found alongside source_code,
@@ -5336,7 +5331,6 @@ function computeTokenPattern(text) {
 //       connection_strings: number,
 //       aws_keys: number,
 //       github_tokens: number,
-//       openai_keys: number,
 //       jwt_tokens: number,
 //       base64_data: number,
 //       private_keys: number,
@@ -5774,7 +5768,6 @@ function computeEntropyDistribution(text) {
 //   - connection_strings: Database/service URLs (mongodb://, postgresql://, etc.)
 //   - aws_keys: AWS access key patterns (AKIA...)
 //   - github_tokens: GitHub token patterns (ghp_*, gho_*, github_pat_*)
-//   - openai_keys: OpenAI API key patterns (sk-...)
 //   - jwt_patterns: JWT token patterns (eyJ...eyJ...eyJ...)
 //   - base64_data: Long base64-encoded data sequences
 //   - private_keys: Private key file markers (-----BEGIN...PRIVATE KEY-----)

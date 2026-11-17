@@ -619,12 +619,15 @@ const TrustGazetteer = (() => {
     // Religion / belief
     { phrase: "i am a",               category: "religion",     risk: "low",   requireGazetteer: "religion" },
     { phrase: "i believe in",         category: "religion",     risk: "low",   requireGazetteer: "religion" },
-    // Financial
-    { phrase: "my salary is",         category: "financial",    risk: "low" },
-    { phrase: "i earn",               category: "financial",    risk: "low" },
-    { phrase: "my income is",         category: "financial",    risk: "low" },
-    { phrase: "my account number is", category: "financial",    risk: "high"   },
-    { phrase: "my card number is",    category: "financial",    risk: "high"   },
+    // Financial — the value after the phrase must contain a financial gazetteer
+    // term. Bare numbers (card/account numbers, amounts) never produce a
+    // trigger_financial finding; card/account numbers are handled by their own
+    // validated detectors (e.g. credit_card with Luhn check).
+    { phrase: "my salary is",         category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "i earn",               category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "my income is",         category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "my account number is", category: "financial",    risk: "high",  requireGazetteer: "financial" },
+    { phrase: "my card number is",    category: "financial",    risk: "high",  requireGazetteer: "financial" },
     // Physical Descriptors — eye color and sex/gender
     { phrase: "my eye color is",      category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },
     { phrase: "my eyes are",          category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },

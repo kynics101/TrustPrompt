@@ -4343,7 +4343,7 @@ const TrustLinguisticDetector = (() => {
     otherservices: 'laundry laundries laundromat upholstery funeral funerals mortuary crematorium parlor parlour beauty nails tattoo tattoos massage cosmetology aesthetics skincare haircare grooming kennels locksmith locksmiths ministries fellowship parish congregation federation federations foundation foundations charities orphanage shelters',
     agents: 'agents professionals artisans craftsmen fishermen tradesmen handymen seamen',
     // small additions after the head-list audit (a diagnosed gap: these were absent). Kitchen / Company / Union are also in CA_WEAK_HEADS.
-    additions: 'center centre church mill lines kitchen company union works storage marketing hardware press terminal forwarders trading insurance'
+    additions: 'center centre church mill lines kitchen company union works storage marketing hardware press terminal forwarders trading insurance colleges schools universities institutes academies'
   };
   const CA_STRONG_HEADS = new Set(Object.values(CA_HEADS_BY_CATEGORY).join(' ').split(' '));
   // heads that are also surnames or ordinary words: a person finding is dropped only if no word carries name evidence
@@ -4457,9 +4457,18 @@ const TrustLinguisticDetector = (() => {
       if (g7InHeadingLine(text, start, he) && !hasOrgAffiliationCue(text, start)) continue;
       // an institution head followed by "of <Place>" keeps the place ("Technological Institute of Southern Luzon")
       let end = he;
-      if (/^(?:institute|college|academy|school|hospital|center|centre|university|foundation)$/i.test(head)) {
+      if (/^(?:institutes?|colleges?|academy|academies|schools?|hospital|center|centre|universit(?:y|ies)|foundation)$/i.test(head)) {
         const em = text.slice(he).match(/^\s+of\s+(?:the\s+)?([A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*){0,2})/);
         if (em) end = he + em[0].replace(/\s+$/, '').length;   // the evidence frame is required anyway (caHasEvidence below)
+        else {
+          // a trailing campus or place word ("Mapua Malayan Colleges Laguna"): one or two capitalised words that are known places
+          const rest = text.slice(he), pm = rest.match(/^(\s+[A-Z][\w'’-]*)(\s+[A-Z][\w'’-]*)?(?![\w'’-])/);
+          if (pm) {
+            const isPl = w => isKnownPlaceWord(w.trim()) || g2TypeOf(w.trim()) === 'place';
+            if (pm[2] && isPl(pm[1]) && isPl(pm[2])) end = he + pm[0].length;
+            else if (isPl(pm[1])) end = he + pm[1].length;
+          }
+        }
       }
       push(text.slice(start, end).replace(/\s+/g, ' '), 'Business-head organization');
     }
@@ -4563,6 +4572,9 @@ const TrustLinguisticDetector = (() => {
     if (nm) {
       const w = nm[1];
       if (/^\d/.test(w) || /^[A-Z]$/.test(w) || /^[IVX]+$/.test(w)) return true;                              // Unit 4, Section A, Division II
+      // an institution head followed by a campus / place word ("Mapua Malayan Colleges Laguna") is the whole name, not a longer phrase
+      const instHead = /(?:institutes?|colleges?|academy|academies|schools?|hospital|center|centre|universit(?:y|ies)|foundation)\s*$/i.test(text.slice(Math.max(0, he - 14), he));
+      if (instHead && /^[A-Z]/.test(w) && (isKnownPlaceWord(w) || g2TypeOf(w) === 'place')) return false;
       if (/^[A-Z]/.test(w) && !G7_ORG_AFTER_OK.test(w) && !G7_STOP_RE.test(w)) return true;                   // another capitalised word: a longer phrase
       if (G7_HEADING_ENDINGS.has(w.toLowerCase())) return true;
       if (G7_NEXT_LOWER_BLOCK.has(w.toLowerCase())) return true;
@@ -4902,6 +4914,7 @@ const TrustLinguisticDetector = (() => {
   function hasOrgAffiliationCue(text, s) {
     const before = text.slice(Math.max(0, s - 80), s);
     // "works at / worked for / employed by / interning with / formerly with / now at / joined / left ..."
+    if (/\b(?:student|study|studies|studied|studying|graduat(?:e|ed|es|ing)|enrolled)\s+(?:at|in|from|of)\s+(?:the\s+)?$/i.test(before)) return true;
     if (/\b(?:work(?:s|ed|ing)?|employed|hired|intern(?:s|ed|ing)?|joined|left|resigned|formerly|previously|currently|now|staff|seaman)\s+(?:\w+\s+){0,2}?(?:at|for|with|by|from|of|in)\s+(?:the\s+)?$/i.test(before)) return true;
     // "applied to X", "applying to X", "transferred to X"
     if (/\b(?:appl(?:y|ied|ies|ying)|transfer(?:red|ring)?|reported|belongs?)\s+to\s+(?:the\s+)?$/i.test(before)) return true;
@@ -5938,7 +5951,10 @@ const TrustLinguisticDetector = (() => {
     'philippine daily inquirer|the manila times|manila times|philippine star|gma network|abs-cbn|rappler|' +
     'university of the philippines|up diliman|ateneo de manila university|de la salle university|university of santo tomas|ust|polytechnic university of the philippines|tarlac state university|' +
     'philippine general hospital|st. luke\'s medical center|makati medical center|the medical city|asian hospital');
-  const G4_PUBLIC_ORG_PREFIX_RE = /^(?:department of|bureau of|commission on|office of the|national [a-z ]+ (?:authority|commission|council|agency)|philippine [a-z ]+ (?:authority|commission|council)|university of the philippines)\b/i;
+  // a writing / summarising task anywhere in the prompt (news brief, report, article, essay, newsletter, summary ...)
+  const G4_WRITING_RE = /\b(?:news|newsletter|bulletin|report|article|summary|summari[sz]e|brief|press\s+release|essay|story|blog|headline|write|writing|draft|compose|rewrite|compile|combine|merge|paraphrase|outline|memo\s+about)\b/i;
+  const G4_INTERROG_START_RE = /^\s*(?:does|do|did|is|are|was|were|can|could|should|would|will|which|what|how|why|who|whom|when|where)\b/i;
+  const G4_PUBLIC_ORG_PREFIX_RE =/^(?:department of|bureau of|commission on|office of the|national [a-z ]+ (?:authority|commission|council|agency)|philippine [a-z ]+ (?:authority|commission|council|association|society|institute|foundation|federation|agency|service|bureau|navy|army|air force|coast guard|red cross)|philippine (?:navy|army|air force|coast guard|red cross)|university of the philippines)\b/i;
   function g4IsPublicOrg(raw) {
     const k = g2Key(raw).replace(/^the\s+/, '');
     return G4_PUBLIC_ORG_KEYS.has(k) || G4_PUBLIC_ORG_PREFIX_RE.test(k);
@@ -5960,10 +5976,11 @@ const TrustLinguisticDetector = (() => {
       if (f.patternId === 'nlp_job_title' && G_NOT_JOB.has(raw.toLowerCase())) { drop.set(idx, 'not_a_job:' + raw.toLowerCase()); return; }
       // "home server", "web server", "file server": a machine, not a waiter
       if (f.patternId === 'nlp_job_title' && raw.toLowerCase() === 'server' && occs.length && occs.every(([s]) => G_MACHINE_WORD_RE.test((text.slice(Math.max(0, s - 14), s).match(/([\p{L}]+)\s+$/u) || ['', ''])[1]))) { drop.set(idx, 'not_a_job:machine_server'); return; }
-      // "visa" is a travel document: lower case never, "Visa" only with a card context or an affiliation
-      if (f.patternId === 'nlp_organization' && raw.toLowerCase() === 'visa') {
-        const okV = occs.some(([s, e]) => /^(?:Visa|VISA)$/.test(text.slice(s, e)) && (G_VISA_CARD_RE.test(text.slice(Math.max(0, s - 40), e + 40)) || G4_AFFIL_RE.some(re => re.test(text.slice(Math.max(0, s - 60), s)))));
-        if (!okV) { drop.set(idx, 'visa_not_organization'); return; }
+      // payment brands (Visa, Mastercard, Amex, JCB) are card types, never organizations, unless the writer says they work there ("I work at Visa").
+      // "visa" in lower case is a travel document.
+      if (f.patternId === 'nlp_organization' && /^(?:visa|master\s?card|amex|american\s+express|jcb|discover(?:\s+card)?|visa\s+card|master\s?card\s+card)$/i.test(raw)) {
+        const affil = occs.some(([s]) => /\b(?:i|we)\s*(?:work|worked|am\s+employed|['’]m\s+employed|am\s+a\s+\w+|['’]m\s+a\s+\w+)\s+(?:\w+\s+){0,2}?(?:at|for|with)\s+(?:the\s+)?$/i.test(text.slice(Math.max(0, s - 40), s)));
+        if (!affil || (raw === raw.toLowerCase() && /^visa$/.test(raw))) { drop.set(idx, 'payment_brand_not_organization'); return; }
       }
       if (f.patternId === 'nlp_organization' && lw.some(w => G_PLACEHOLDER_ONLY.has(w))) { drop.set(idx, 'placeholder_organization'); return; }
       if (f.patternId !== 'nlp_person_name' || !occs.length) return;
@@ -5996,6 +6013,9 @@ const TrustLinguisticDetector = (() => {
       if (!/^nlp_(?:person_name|job_title|organization)$/.test(f.patternId) || !f.rawMatch) return;
       const occs = occsOf(f);
       if (!occs.length) return;
+      // a general or comparison question: an interrogative sentence with no first-person affiliation and no person in the prompt gives no job and no organization
+      if (R.hiring && f.patternId !== 'nlp_person_name' && !people.length && !G4_FIRST_PERSON_ORG_RE.test(text) && !G4_AFFIL_RE.some(re => re.test(text)) &&
+          occs.every(([s]) => { const se = g4SentenceOf(sents, s), st = text.slice(se[0], se[1]); return /\?\s*$/.test(st.trim()) || G4_INTERROG_START_RE.test(st); })) { drop.set(idx, 'general_question'); return; }
       if (R.hiring && f.patternId !== 'nlp_person_name' && !G4_FIRST_PERSON_ORG_RE.test(text) && occs.every(([s]) => { const se = g4SentenceOf(sents, s); return G4_HIRING_RE.test(text.slice(se[0], se[1])); })) { drop.set(idx, 'hiring_frame'); return; }
       if (R.hypo && occs.every(([s]) => { const se = g4SentenceOf(sents, s); return G4_HYPO_RE.test(text.slice(se[0], se[1])); })) { drop.set(idx, 'hypothetical_marker'); return; }
       if (R.hypo && f.patternId === 'nlp_person_name' && occs.every(([s]) => G4_WORK_TITLE_BEFORE_RE.test(text.slice(Math.max(0, s - 60), s)))) { drop.set(idx, 'work_title_in_quotes'); return; }
@@ -6014,7 +6034,7 @@ const TrustLinguisticDetector = (() => {
           // a question word or request verb opens a general question only when the organization is near it: in a run-on stretch of text
           // without punctuation ("How To Cook ... A nurse at X told me ...") the opening words belong to something else
           const near = (s - se[0]) <= 140;
-          if (!(promptQuestion || /\?\s*$/.test(sentText.trim()) || (near && (JOB_GENERIC_SENTENCE_RE.test(sentText) || /^\s*(?:summari[sz]e|compare|contrast|explain|describe|define|list|rank|review|analy[sz]e|tell\s+me|combine|merge|compile|draft|write|compose|rewrite|paraphrase|outline)\b/i.test(sentText))))) return true;
+          if (!(promptQuestion || (G4_WRITING_RE.test(text) && !people.length && !jobsF.length) || /\?\s*$/.test(sentText.trim()) || (near && (JOB_GENERIC_SENTENCE_RE.test(sentText) || /^\s*(?:summari[sz]e|compare|contrast|explain|describe|define|list|rank|review|analy[sz]e|tell\s+me|combine|merge|compile|draft|write|compose|rewrite|paraphrase|outline)\b/i.test(sentText))))) return true;
           if (G4_AFFIL_RE.some(re => re.test(text.slice(se[0], s)))) return true;
           if (sentHas(people, se, f) || sentHas(jobsF, se, f)) return true;
           return false;
@@ -6154,7 +6174,16 @@ const TrustLinguisticDetector = (() => {
       const tail = m[0].slice(m[1].length);
       const lead = m[1].trimEnd().length - keep.join(' ').length;
       const s = m.index + lead, raw = text.slice(s, m.index + m[1].trimEnd().length) + text.slice(m.index + m[1].trimEnd().length, m.index + m[0].length).replace(/\.$/, '');
-      if (covered(s, s + raw.length) || /[@\/]/.test(text.slice(Math.max(0, s - 1), s))) continue;
+      if (/[@\/]/.test(text.slice(Math.max(0, s - 1), s))) continue;
+      // the longest span wins: a shorter organization finding inside the firm name ("sgv" in "sgv and co") is replaced by it
+      const span = [s, s + raw.replace(/\s+$/, '').length];
+      for (let q = findings.length - 1; q >= 0; q--) {
+        const g = findings[q];
+        if (g.patternId !== 'nlp_organization' || !g.rawMatch) continue;
+        const oc = jobOccurrences(text, g.rawMatch);
+        if (oc.length && oc.every(o => o[0] >= span[0] && o[1] <= span[1]) && g.rawMatch.length < span[1] - span[0]) findings.splice(q, 1);
+      }
+      if (covered(span[0], span[1])) continue;
       findings.push(g7Org(raw.replace(/\s+$/, ''), 'and_co_firm'));
     }
   }
@@ -6192,12 +6221,14 @@ const TrustLinguisticDetector = (() => {
   // ═══════════════════════════════════════════════════════════════════════
   const G9_KIN = 'mother|father|mom|dad|mama|papa|parents?|son|daughter|brother|sister|uncle|aunt|auntie|tito|tita|lolo|lola|grandfather|grandmother|grandpa|grandma|cousin|nephew|niece|husband|wife|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|in-laws?|stepfather|stepmother|friend|neighbou?r|classmate|roommate|boss|supervisor|coworker|co-worker|colleague|teammate|landlord|landlady|kuya|ate|ninong|ninang|kumpare|kumare|mentor|ex|child|children|kids?|baby|housemate|tenant|employee|employer|client|patient|student|teacher';
   const G9_KIN_RE = new RegExp(String.raw`\b(?:my|our|his|her|their|your)\s+(?:[\w-]+\s+){0,1}(?:${G9_KIN})\b`, 'i');
-  const G9_SERVICE = new Set(['doctor', 'dentist', 'lawyer', 'attorney', 'accountant', 'mechanic', 'plumber', 'electrician', 'barber', 'hairdresser', 'therapist', 'pharmacist', 'vet', 'veterinarian', 'nurse', 'physician', 'surgeon', 'cardiologist', 'optometrist', 'counselor', 'counsellor', 'psychologist', 'psychiatrist', 'tutor', 'driver', 'dermatologist', 'pediatrician', 'obgyn', 'midwife', 'chiropractor', 'doctors', 'banker', 'agent', 'broker', 'landlord', 'contractor', 'carpenter', 'technician']);
+  const G9_SERVICE = new Set(['doctor', 'dentist', 'lawyer', 'attorney', 'accountant', 'mechanic', 'plumber', 'electrician', 'barber', 'hairdresser', 'therapist', 'pharmacist', 'vet', 'veterinarian', 'nurse', 'physician', 'surgeon', 'cardiologist', 'optometrist', 'counselor', 'counsellor', 'psychologist', 'psychiatrist', 'tutor', 'driver', 'dermatologist', 'pediatrician', 'obgyn', 'midwife', 'chiropractor', 'doctors', 'banker', 'agent', 'broker', 'landlord', 'contractor', 'carpenter', 'technician', 'professor', 'teacher', 'instructor', 'coach', 'trainer', 'adviser', 'advisor', 'mentor', 'principal', 'counselor']);
   const G9_GENERIC_START_RE = /^\s*(?:please\s+)?(?:write|draft|compose|explain|describe|compare|contrast|summari[sz]e|list|define|rank|rewrite|create|generate|give|tell\s+me|suggest|recommend|outline|translate|help|show|what|how|why|when|where|which|who|whom|can|could|does|do|did|is|are|should|would|will|if|imagine|suppose|make|fix|edit|improve|proofread|format|check)\b/i;
   const G9_GENERIC_ANY_RE = /\b(?:should|must|can|could|may|might|typically|usually|generally|on\s+average|average|salary|salaries|earns?|how\s+much|responsible\s+for|duties|role\s+of|job\s+of|qualifications?|requirements?|skills?\s+(?:needed|required)|to\s+become|compared\s+to|versus|vs\.?)\b|\b(?:is|are)\s+(?:a|an|the)\s+(?:person|people|someone|somebody|professional|worker|specialist|individual)\b|\b(?:i|we)\s+(?:need|want|require|am\s+looking\s+for|are\s+looking\s+for|would\s+like|am\s+hiring|am\s+seeking|wish)\b|\blooking\s+for\b/i;
   function g9Qualifies(text, s, e, sents, people, nJobs, strict) {
     const se = g4SentenceOf(sents, s), sent = text.slice(se[0], se[1]);
     if (G4_HYPO_RE.test(sent)) return false;
+    // first-person self-description: "I'm the barangay captain of ...", "I am a kagawad in ..." (a request or question later in the sentence does not cancel it)
+    if (/\b(?:i|we)\s*(?:am|['’]m|was|were|are|['’]re)\s+(?:currently\s+|now\s+|still\s+)?(?:the|a|an)\s+(?:[\w-]+\s+){0,2}$/i.test(text.slice(Math.max(0, s - 50), s))) return true;
     if (/\?\s*$/.test(sent.trim()) || G9_GENERIC_START_RE.test(sent) || G9_GENERIC_ANY_RE.test(sent) || JOB_GENERIC_SENTENCE_RE.test(sent)) return false;
     const firstPersonOrg = G4_FIRST_PERSON_ORG_RE.test(text);
     if (G4_HIRING_RE.test(sent) && !firstPersonOrg) return false;
@@ -6223,10 +6254,10 @@ const TrustLinguisticDetector = (() => {
     if (firstPersonOrg && G4_FIRST_PERSON_ORG_RE.test(before)) return true;
     // a named person in the same statement
     if (!strict && people.some(p => jobOccurrences(text, p.rawMatch).some(([ps]) => ps >= se[0] && ps < se[1]))) return true;
-    // (b) a work scenario: two or more titles, an article in front of the title and a finite verb in the sentence
+    // (b) a work scenario: two or more titles, a finite verb in the sentence
     if (nJobs < 2) return false;
     if (/\byou(?:r|rs)?\b/i.test(sent)) return false;       // addressed to "you": a service interaction, not a statement about people
-    if (/\b(?:the|a|an|our|their|his|her|new|another|one\s+of\s+the)\s+(?:[\w-]+\s+){0,2}$/i.test(pre) || /\b(?:and|,)\s+(?:the|a|an)\s+$/i.test(pre)) {
+    {   // two or more titles in a declarative sentence: every title is part of the scenario (an article or a possessive in front of each is not required)
       try { const d = window.nlp(sent); if (d.has('#PastTense') || d.has('#PresentTense') || d.has('#Copula') || d.has('#Verb')) return true; } catch (_) { /* no nlp */ }
     }
     return false;
@@ -6266,7 +6297,8 @@ const TrustLinguisticDetector = (() => {
       if (c.plural || !(c.source === 'csv_exact_match' || c.source === 'csv_phrase_match') || c.confidence !== 'high') continue;
       const raw = String(c.rawMatch || c.name || '').trim();
       if (!raw || findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase().includes(raw.toLowerCase()))) continue;
-      if (G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor)$/i.test(raw)) continue;
+      if (G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
+      if (!/[\s-]/.test(raw)) { try { const d = window.nlp(raw); if (d.has('#Adjective') && !d.has('#Noun')) continue; } catch (_) { /* no nlp */ } }
       const taken = findings.filter(f => (f.patternId === "nlp_person_name" || f.patternId === "nlp_organization") && f.rawMatch).flatMap(f => jobOccurrences(text, f.rawMatch));
       const occ = jobOccurrences(text, raw).filter(([s, e]) => !taken.some(o => g7Overlap(o, [s, e])) && g9Qualifies(text, s, e, sents, people, nJobsAt(s), true));
       if (!occ.length) continue;
@@ -6280,6 +6312,67 @@ const TrustLinguisticDetector = (() => {
     for (const raw of g9SelfDescribed(text)) {
       if (findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase() === raw.toLowerCase())) { findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch.toLowerCase() === raw.toLowerCase()).forEach(f => { f.lowQualifying = true; }); continue; }
       findings.push({ patternId: 'nlp_job_title', label: 'Job Title (self-description)', risk: 'low', rawMatch: raw, safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: false, attributed: false, lowQualifying: true });
+    }
+  }
+
+  // PHASE 9 (round 6): a role noun in front of a name is not part of the name; a job after "<person>," ("jenny lim, teacher at ateneo"); a Saint-name organization
+  const G9_LEAD_ROLE_RE = /^(customer|client|patient|employee|member|user|guest|visitor|buyer|seller|owner|resident|tenant|applicant|candidate|passenger|caller)\s+(.+)$/i;
+  function trimLeadingRoleNoun(findings) {
+    for (const f of findings) {
+      if (f.patternId !== 'nlp_person_name' || !f.rawMatch) continue;
+      const m = f.rawMatch.trim().match(G9_LEAD_ROLE_RE);
+      if (!m) continue;
+      const rest = m[2].trim(), first = rest.split(/\s+/)[0];
+      if (rest.split(/\s+/).length >= 2 || isKnownGivenName(first)) { g2Log('lead_role_noun_trim', { patternId: f.patternId, rawMatch: f.rawMatch + ' -> ' + rest }); f.rawMatch = rest; }
+    }
+  }
+  // "<person>, <job>[ at <org>]": a title right after a person and a comma is that person's title, also in lower case and with a one-edit typo ("secuity guard")
+  function addAppositiveJobs(findings, text) {
+    const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+    if (!people.length || !text.includes(',')) return;
+    let cands = [];
+    try { cands = findJobTitlesCSVFirst(text); } catch (_) { cands = []; }
+    for (const c of cands) {
+      if (c.plural) continue;
+      const raw = String(c.rawMatch || c.name || '').trim();
+      if (!raw || G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
+      if (!/[\s-]/.test(raw)) { try { const d = window.nlp(raw); if (d.has('#Adjective') && !d.has('#Noun')) continue; } catch (_) { /* no nlp */ } }
+      for (const [s, e] of jobOccurrences(text, raw)) {
+        const pb = text.slice(Math.max(0, s - 100), s);
+        if (!/,\s*$/.test(pb)) continue;
+        const before = pb.replace(/,\s*$/, '').toLowerCase();
+        if (!people.some(p => before.endsWith(p.rawMatch.toLowerCase()))) continue;
+        if (findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && jobOccurrences(text, f.rawMatch).some(o => g7Overlap(o, [s, e])))) continue;
+        findings.push({ patternId: 'nlp_job_title', label: 'Job Title (after a person)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: true, attributed: false, lowQualifying: true });
+        break;
+      }
+    }
+  }
+  // "nurse at ST. LUKE'S": a Saint name after at / from / of / with, after a job or a first-person affiliation, is an organization ("St. Luke's Street" and "the feast of St. Joseph" are not)
+  const G9_SAINT_TAIL = new Set(['medical', 'general', 'memorial', 'regional', 'hospital', 'center', 'centre', 'school', 'college', 'academy', 'university', 'institute', 'foundation', 'clinic', 'parish', 'church']);
+  const G9_STREET_AFTER_RE = /^(?:street|st|ave|avenue|road|rd|lane|ln|drive|dr|boulevard|blvd|subdivision|village|heights|plaza|bridge|park)\b/i;
+  function addSaintOrganizations(findings, text) {
+    if (!/\b(?:st|sta|sto|saint|santa|santo)\b/i.test(text)) return;
+    const re = /\b(?:at|from|of|with)\s+((?:st|sta|sto|saint|santa|santo)\.?\s+[\p{L}][\p{L}'’-]*)/giu;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const sIdx = m.index + m[0].length - m[1].length;
+      let end = sIdx + m[1].length;
+      // head words after the name ("St. Luke's Medical Center"), up to three
+      for (let q = 0; q < 3; q++) {
+        const nm = text.slice(end).match(/^\s+([\p{L}][\p{L}'’-]*)/u);
+        if (!nm) break;
+        const w = nm[1].toLowerCase();
+        if (G9_STREET_AFTER_RE.test(w)) return;
+        if (!(G9_SAINT_TAIL.has(w) || (caHeadKind(w) !== '' && !G3_NAME_STOP.has(w)))) break;
+        end += nm[0].length;
+      }
+      if (G9_STREET_AFTER_RE.test(text.slice(end).replace(/^\s+/, ''))) continue;
+      const se = g4SentenceOf(g4Sentences(text), sIdx), before = text.slice(se[0], sIdx);
+      if (!(hasOrgAffiliationCue(text, sIdx) || G4_AFFIL_RE.some(r => r.test(before)))) continue;
+      const span = [sIdx, end];
+      if (findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && jobOccurrences(text, f.rawMatch).some(o => g7Overlap(o, span)))) continue;
+      findings.push(g7Org(text.slice(sIdx, end), 'saint_name_org'));
     }
   }
 
@@ -6301,6 +6394,8 @@ const TrustLinguisticDetector = (() => {
     // a prompt entirely in capitals folds to ordinary sentence case, not to a Title Case run, so its job titles are read from the folded text as well
     const out = fold.filter(isNO).concat(orig.filter(f => f.patternId === 'nlp_job_title'));
     if (wholeCaps) for (const f of fold) if (f.patternId === 'nlp_job_title' && !out.some(g => g.patternId === f.patternId && low(g) === low(f))) out.push(f);
+    // a title found only next to a person that the case fold recovered ("jenny lim, teacher at ateneo") is kept too
+    for (const f of fold) if (f.patternId === 'nlp_job_title' && f.lowQualifying && !out.some(g => g.patternId === f.patternId && (low(g) === low(f) || low(g).includes(low(f))))) out.push(f);
     for (const f of orig) {
       if (!isNO(f)) continue;
       if (fold.some(g => g.patternId === f.patternId && low(g).includes(low(f)))) continue;
@@ -6886,11 +6981,13 @@ const TrustLinguisticDetector = (() => {
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
       addAppositiveOrganizations(findings, textNLP);
       addFramedSingleBrands(findings, textNLP);
+      trimLeadingRoleNoun(findings);
       addSurnameFirstNames(findings, textNLP);
       addAndNeighborNames(findings, textNLP);
       addLowercaseOrganizations(findings, textNLP);
+      addAppositiveJobs(findings, textNLP);
       addRecordOrganizations(findings, textNLP);
-      addVisaCard(findings, textNLP);
+      addSaintOrganizations(findings, textNLP);
       { const kept = stripLeadingImperativeFromOrganizations(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }

@@ -4284,31 +4284,27 @@ const TrustScanner = (() => {
         console.log("[TrustPrompt/scanner] Findings detail:", findings.map(f => `${f.patternId}:${f.rawMatch}`).join(", "));
       }
 
-      // ── Phase 1: say why findings are not visible in the in-page panel ──────────
-      // The injected panel (ui.js TrustUI.update) removes the bar and the panel when riskLevel is "none", so every finding
-      // that is listed above but did not raise the risk (a job title that is not first-person, a context-only term) is
-      // detected and returned, but not drawn. The side-panel page (sidepanel.js) draws every returned finding.
-      if (findings.length > 0 && riskLevel === "none") {
-        const why = f => !isScorable(f)
-          ? (f.patternId === "nlp_job_title" && f.attributed !== true
-              ? "job title is not first-person (scored only when attributed, see isScorable)"
-              : ((BASE_SCORES[f.patternId] ?? 0) <= 0 ? "context-only pattern with no score of its own" : "not scorable"))
-          : "scored, but the final risk level is none";
-        console.log("[TrustPrompt/scanner] PANEL HIDDEN: riskLevel=none so the in-page panel is cleared although " + findings.length +
-          " finding(s) were detected: " + findings.map(f => `${f.patternId}:${f.rawMatch} (${why(f)})`).join("; "));
-      }
 
       // ── TASK 12.4: Label Enhancement for Code+ID Context ────────────────────
       // When source_code and government ID patterns are detected together,
       // update the ID pattern labels to explicitly show "[Source Code]" context
       // This helps users understand their ID was found within code, not just prose.
+      // ── Console-only findings ───────────────────────────────────────────────────────────────────────────────────────
+      // A job title that is not scored (not first-person, see isScorable) and that does not qualify for the Low rule (detector flag
+      // lowQualifying) is NOT listed in the in-page panel or the side panel; it stays in the console with the reason. A title that qualifies
+      // is listed as a normal Low finding, also when the prompt is already Low or higher. The score and risk level were computed above and
+      // are not touched by this filter.
+      const consoleOnly = findings.filter(f => f.patternId === "nlp_job_title" && !isScorable(f) && f.lowQualifying !== true);
+      if (consoleOnly.length > 0) {
+        console.log("[TrustPrompt/scanner] CONSOLE ONLY (not listed in the panel): " + consoleOnly.map(f =>
+          `${f.patternId}:${f.rawMatch} (job title is not first-person and not in a statement about real people)`).join("; "));
+      }
+      const panelFindings = findings.filter(f => !consoleOnly.includes(f));
+
       // ── Console / panel parity ────────────────────────────────────────────────────
-      // Findings that did not raise the score (a job title that is not first-person, a context-only term) are still listed in the panel,
-      // marked "noted" (f.noted). The score and the risk level were computed above and are not touched. Every Path C finding must be in the
-      // returned list; if the merge step dropped one, the console says which and why.
+      // Every Path C finding is either in the returned list or in the console-only list above; if the merge step dropped one, the console says which and why.
       {
         const keyOf = f => f.patternId + ":" + String(f.rawMatch).trim().toLowerCase();
-        for (const f of findings) { if (!isScorable(f) && /^nlp_/.test(f.patternId) && f.lowQualifying !== true) f.noted = true; }
         const finalKeys = new Set(findings.map(keyOf));
         const lost = pathCFindings.filter(f => !finalKeys.has(keyOf(f)));
         if (lost.length > 0) {
@@ -4321,11 +4317,10 @@ const TrustScanner = (() => {
             return `${f.patternId}:${f.rawMatch} (${why})`;
           }).join("; "));
         }
-        const notedN = findings.filter(f => f.noted).length;
-        console.log("[TrustPrompt/scanner] PANEL LIST: " + findings.length + " finding(s), " + findings.filter(f => /^nlp_/.test(f.patternId)).length + " from Path C, " + notedN + " noted (listed, not scored)");
+        console.log("[TrustPrompt/scanner] PANEL LIST: " + panelFindings.length + " finding(s) listed, " + consoleOnly.length + " console-only");
       }
 
-      const enhancedFindings = enhanceFindingsWithCodeContext(findings);
+      const enhancedFindings = enhanceFindingsWithCodeContext(panelFindings);
 
       return { findings: enhancedFindings, riskLevel, score, governance, normalisedText: masked, wasCapsConverted: false };
     } catch (scanError) {

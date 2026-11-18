@@ -343,15 +343,13 @@ const TrustUI = (() => {
     const contextTag = CONTEXT_INDICATOR_LABELS[f.patternId];  // undefined if not a context indicator
     const isContextIndicator = Boolean(contextTag);
     const CONTEXT_BLUE = "#3b82f6";
-    // "noted": detected and listed, but not scored (the scanner sets f.noted); the score and the risk level are unchanged
-    const isNoted = f.noted === true && !isContextIndicator;
-    const dotColor = isNoted ? "#9ca3af" : isContextIndicator ? CONTEXT_BLUE
+    const dotColor = isContextIndicator ? CONTEXT_BLUE
                    : f.risk === "high" ? "#ef4444"
                    : f.risk === "moderate" ? "#f97316"
                    : "#eab308";
-    const riskTag  = isNoted ? "NOTED" : isContextIndicator ? contextTag : f.risk.toUpperCase();
-    const why      = (WHY[f.patternId] || "Matched a known sensitive data pattern.") + (isNoted ? "\nNoted only: this was detected but is not scored, so it does not change the risk level." : "");
-    const showSafe = (tier === "high" || tier === "moderate") && !isContextIndicator && !isNoted;
+    const riskTag  = isContextIndicator ? contextTag : f.risk.toUpperCase();
+    const why      = WHY[f.patternId] || "Matched a known sensitive data pattern.";
+    const showSafe = (tier === "high" || tier === "moderate") && !isContextIndicator;
 
     const card = document.createElement("div");
     card.style.cssText = [

@@ -635,7 +635,7 @@ const TrustLinguisticDetector = (() => {
       'my ', 'your ', 'their ', 'her ', 'his ', 'our ',
       'be a ', 'become a ', 'hired as ',
       ...JOB_BECAME_TRIGGERS,
-      "i'm a ", "i'm an ",                   // ★ FIX: Added "i'm an" variant
+      "i'm a ", "i'm an ", "i'm the ",       // ★ FIX: Added "i'm an" variant; "i'm the" mirrors "am the"
       "you're a ", "you're an ",             // ★ FIX: Added "you're an" variant
       "they're a ", "they're an ",           // ★ FIX: Added "they're an" variant
       "he's a ", "she's a ", "she's an "     // ★ FIX: Added he/she contractions
@@ -3894,7 +3894,7 @@ const TrustLinguisticDetector = (() => {
   // does not score "manager".
   const FIRST_PERSON_JOB_ATTRIBUTION = [
     // "I am a/an [title]" / "I'm a/an [title]" (with optional adverb hedges)
-    /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an)\s+/i,
+    /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an|the)\s+/i,
     // "I work/working/worked as a/an [title]" / "I serve as a/an/the [title]"
     /\bi\s+(?:work(?:ing|ed)?|serv(?:e|ing))\s+as\s+(?:a|an|the)\s+/i,
     // "I am/was employed as a/an [title]"

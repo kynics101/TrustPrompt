@@ -1285,6 +1285,10 @@ const TrustScanner = (() => {
           /\bi\s+(?:earn|owe|make)\b/i,
           /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
           /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
+          // Contraction forms of the "I am" anchors above ("I'm" = "I am").
+          /\bi['’]m\s+diagnosed\b/i,
+          /\bi['’]m\s+(?:taking|on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
+          /\bi['’]m\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
         ];
 
   // ── Rule 2 — Sentence-level co-occurrence (context-attribution.js) ───────

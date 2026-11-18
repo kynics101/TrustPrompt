@@ -1,4 +1,4 @@
-# TrustPrompt Governance Rules
+﻿# TrustPrompt Governance Rules
 
 ## Source
 Defined in Capstone Manuscript Chapter 3 — Risk Scoring and Data Masking Implementation (pp. 99–103).  

@@ -3908,6 +3908,50 @@ const TrustLinguisticDetector = (() => {
     /^\s*as\s+(?:a|an|the)\s+.*\bi\b/i,
   ];
 
+  // Self-introduction with an appositive title: "I'm Maria Santos, a 25 year old
+  // nurse", "I am Dr. Maria Santos, the head nurse", "My name is Maria Santos, a
+  // nurse". The patterns above need "I'm/I am" directly before the article, so a
+  // name in between hid the attribution. This is a SEPARATE, narrower check, so
+  // the patterns above are unchanged. It requires:
+  //   - "I'm / I am / My name is" + a 1-4 word CAPITALIZED name + comma + a/an/the;
+  //   - none of the name words is an ordinary word ("I'm Sorry, the manager ...");
+  //   - the title sits within APPOSITIVE_MAX_WORDS_BEFORE_TITLE words after the
+  //     article, with no comma/period between and no third-person word, so a
+  //     later "... and my boss is a manager" is not attributed.
+  // "I'm helping Maria Santos, a nurse" does not match (lowercase "helping").
+  const FIRST_PERSON_NAME_APPOSITIVE = [
+    /\b[Ii](?:['\u2019]m|\s+am)\s+((?:[A-Z][A-Za-z'\u2019.-]*\s+){0,3}[A-Z][A-Za-z'\u2019.-]*)\s*,\s*(?:a|an|the)\s+/,
+    /\b[Mm]y\s+name\s+is\s+((?:[A-Z][A-Za-z'\u2019.-]*\s+){0,3}[A-Z][A-Za-z'\u2019.-]*)\s*,\s*(?:a|an|the)\s+/,
+  ];
+  const APPOSITIVE_MAX_WORDS_BEFORE_TITLE = 5;
+  const APPOSITIVE_NOT_A_NAME = new Set([
+    'sorry', 'glad', 'happy', 'sad', 'sure', 'fine', 'good', 'great', 'here', 'there', 'back',
+    'not', 'also', 'just', 'still', 'now', 'very', 'really', 'honestly', 'currently', 'proud',
+    'excited', 'hoping', 'looking', 'trying', 'going', 'working', 'helping', 'asking', 'writing',
+    'new', 'so', 'too', 'then',
+  ]);
+  const APPOSITIVE_THIRD_PERSON_RE = /\b(?:my|his|her|their|our|your|he|she|they|we|you|who|whom|whose|which)\b/i;
+
+  function isNameAppositiveJobTitle(sentence, lowTitle) {
+    for (const re of FIRST_PERSON_NAME_APPOSITIVE) {
+      const m = re.exec(sentence);
+      if (!m) continue;
+      const nameWords = m[1].split(/\s+/).map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
+      if (nameWords.some(w => APPOSITIVE_NOT_A_NAME.has(w))) continue;
+      const tail = sentence.slice(m.index + m[0].length);
+      const lowTail = tail.toLowerCase();
+      for (let i = lowTail.indexOf(lowTitle); i !== -1; i = lowTail.indexOf(lowTitle, i + 1)) {
+        if (/[a-z]/.test(lowTail[i + lowTitle.length] || '')) continue;   // whole word only
+        const before = tail.slice(0, i);
+        if (/[,;:.!?]/.test(before)) continue;
+        if (APPOSITIVE_THIRD_PERSON_RE.test(before)) continue;
+        const words = before.trim() ? before.trim().split(/\s+/) : [];
+        if (words.length <= APPOSITIVE_MAX_WORDS_BEFORE_TITLE) return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Decide whether a detected job title is self-attributed in first person.
    * Sentence-scoped: the attribution phrase must occur in the same sentence as
@@ -3927,6 +3971,7 @@ const TrustLinguisticDetector = (() => {
       for (const sentence of sentences) {
         if (!sentence.toLowerCase().includes(low)) continue;
         if (FIRST_PERSON_JOB_ATTRIBUTION.some(re => re.test(sentence))) return true;
+        if (isNameAppositiveJobTitle(sentence, low)) return true;
       }
     } catch (error) {
       console.debug('[TrustPrompt/PATH_C] Job attribution check failed:', error.message);

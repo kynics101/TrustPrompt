@@ -1534,10 +1534,89 @@ const TrustScanner = (() => {
     return false;
   }
 
+  // ── Personal attributes (scoring gate) ────────────────────────────────────
+  // Age, height, weight, eye color, blood type and sex are scored only when the
+  // sentence ties the value to the writer. A third-person or generic mention
+  // ("My son is 12 years old", "The patient is 45", "the table weighs 70 kg",
+  // "He is male") is still detected and shown, but adds no score and no unit.
+  // Same idea as the job-title and organization gates above. A finding is
+  // self-attributed when ONE of these holds:
+  //   1. A first-person lead ("I'm", "I am", "I was", "I weigh", "I turned")
+  //      precedes the value. At most ATTR_MAX_TAIL_WORDS words may separate the
+  //      lead from the end of the value, and none may be a third-person word.
+  //      "I have / I've got" counts only for eye color and blood type
+  //      ("I have a 25 year old son" must not attribute the age).
+  //   2. A first-person possessive attribute noun precedes the value
+  //      ("my age is", "my height is", "my blood type is", "my eyes are").
+  //   3. The value belongs to a labeled record field ("Age: 25", "Blood type:
+  //      O+"), under the same record guards as the job/organization gates.
+  // Known limits: a name used instead of "I" ("Maria is 25") is not attributed;
+  // "I am helping Maria, who is 45" is rejected by the "who" and word-count guards.
+  const PERSONAL_ATTRIBUTE_IDS = new Set([
+    "age_value",
+    "height_mention",
+    "weight_mention",
+    "eye_color_mention",
+    "blood_type_mention",
+    "sex_mention",
+  ]);
+  const ATTR_MAX_TAIL_WORDS = 6;
+  const ATTR_LEAD_RE = /\b(?:i['’]?m|i\s+am|i\s+was|i['’]ll\s+be|i\s+will\s+be|i\s+(?:just\s+)?turn(?:ed|ing|s)?|i['’]ll\s+turn|i\s+will\s+turn|i\s+weigh(?:ed)?|i\s+stand|i\s+measure[ds]?)\b/gi;
+  const ATTR_LEAD_HAVE_RE = /\b(?:i\s+have|i['’]ve(?:\s+got)?|i\s+had|i\s+got)\b/gi;
+  const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?|sex|gender)\b/gi;
+  const ATTR_NON_SELF_WORDS = new Set([
+    "my", "his", "her", "hers", "their", "our", "your", "he", "she", "they", "we", "you",
+    "the", "this", "that", "these", "those", "its", "it", "who", "whom", "whose", "which",
+  ]);
+  const RECORD_ATTR_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:age|sex|gender|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?)\s*[:=]\s*(?:[^\n;|.]|\.(?=\d)){0,24}$/i;
+
+  // True when `prefix` (the sentence text up to the end of the value) contains a
+  // lead matched by `re` that is followed by a short, first-person-only tail.
+  function attrTailIsSelf(prefix, re) {
+    const rx = new RegExp(re.source, re.flags);
+    let m;
+    while ((m = rx.exec(prefix)) !== null) {
+      if (m[0] === "") { rx.lastIndex++; continue; }
+      const tail = prefix.slice(m.index + m[0].length).trim();
+      const words = tail ? tail.split(/\s+/) : [];
+      if (words.length > ATTR_MAX_TAIL_WORDS) continue;
+      if (words.some(w => ATTR_NON_SELF_WORDS.has(w.toLowerCase().replace(/[^a-z']/g, "")))) continue;
+      return true;
+    }
+    return false;
+  }
+
+  function isAttributeRecordValue(fullText, end) {
+    if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+    if (RECORD_HIRING_RE.test(fullText)) return false;
+    return RECORD_ATTR_LABEL_RE.test(fullText.slice(Math.max(0, end - 60), end));
+  }
+
+  function isAttributedPersonalAttribute(fullText, f) {
+    const name = f && f.rawMatch;
+    if (!fullText || !name) return false;
+    const lower = fullText.toLowerCase();
+    const needle = String(name).trim().toLowerCase();
+    if (!needle) return false;
+    const allowHave = f.patternId === "eye_color_mention" || f.patternId === "blood_type_mention";
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      const end = i + needle.length;
+      const upto = fullText.slice(0, end);
+      const boundary = /[\s\S]*(?:[.!?]+\s+|\n)/.exec(upto);
+      const prefix = boundary ? upto.slice(boundary[0].length) : upto;
+      if (attrTailIsSelf(prefix, ATTR_LEAD_RE)) return true;
+      if (attrTailIsSelf(prefix, ATTR_POSSESSIVE_RE)) return true;
+      if (allowHave && attrTailIsSelf(prefix, ATTR_LEAD_HAVE_RE)) return true;
+      if (isAttributeRecordValue(fullText, end)) return true;
+    }
+    return false;
+  }
+
   function isScorable(f, fullText) {
     if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
     if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE);
     if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+    if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
     return true;
   }
 

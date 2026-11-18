@@ -94,6 +94,17 @@ Important consequences:
 - Multiple grouped `patternId`s count once for their shared unit.
 - Keep the individual findings available for display, explanation, and masking even when they share one scoring unit.
 
+### Scoring-eligibility gates
+
+A scoring unit contributes its base score only when at least one of its findings is eligible. An ineligible finding is still detected, displayed, explained, and masked, but it adds no base score and no scoring unit, so it does not change the multiplier.
+
+- `nlp_job_title` is eligible with a first-person self-attribution in the same sentence, or as the value of a labeled record field.
+- `nlp_organization` is eligible when the sentence ties the name to the writer, or as the value of a labeled record field.
+- Personal attributes (`age_value`, `height_mention`, `weight_mention`, `eye_color_mention`, `blood_type_mention`, `sex_mention`) are eligible with a first-person lead ("I'm", "I am", "I weigh", ...) or a first-person possessive ("my height", "my blood type", ...) before the value, or as the value of a labeled record field. The full rules, examples, and limits are in `governance-rules.md`, section "Scoring-eligibility gates (first-person attribution)".
+
+A labeled record needs at least two "Label: value" fields and must not be a hiring or vacancy notice. These gates are implementation-level eligibility rules. Manuscript Table 10 does not state them, so the manuscript owner needs to confirm them.
+
+Source discrepancy: Table 10 and the grouping table in this file do not list the personal-attribute fields or a Personal Attributes unit. `governance-rules.md` (Table 11) and `scanner.js` do. This file does not resolve that. Until the manuscript owner decides, the gate applies only to the six fields above as implemented.
 ### Implementation contract
 
 The grouping is implemented through:
@@ -300,4 +311,5 @@ Before changing the scoring engine, verify:
 - [ ] Final UI response uses the post-governance classification.
 - [ ] Main-thread and worker calculations remain equivalent.
 - [ ] Tests cover grouped-field combinations, repeated occurrences, boundary scores, and context-only prompts.
+- [ ] Scoring-eligibility gates (job title, organization, personal attributes) are unchanged, or the change is approved, and are mirrored in `scanner.js` and `trust-worker.js`.
 - [ ] Any discrepancy with the approved manuscript is documented and explicitly resolved rather than silently patched.

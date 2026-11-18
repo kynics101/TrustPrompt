@@ -435,9 +435,73 @@ function isRecordFieldValue(fullText, name, labelRe) {
   }
   return false;
 }
+// ── Personal attributes (scoring gate; mirrors scanner.js) ───────────────────
+// Age, height, weight, eye color, blood type and sex are scored only when the
+// sentence ties the value to the writer ("I'm 25", "I weigh 70 kg", "my height
+// is 170 cm") or the value belongs to a labeled record field ("Age: 25" in a
+// record with at least two labeled fields that is not a hiring notice).
+// Third-person / generic mentions are detected and shown but add no score.
+// Only age_value currently has a base score in this file's BASE_SCORES.
+const PERSONAL_ATTRIBUTE_IDS = new Set([
+  "age_value",
+  "height_mention",
+  "weight_mention",
+  "eye_color_mention",
+  "blood_type_mention",
+  "sex_mention",
+]);
+const ATTR_MAX_TAIL_WORDS = 6;
+const ATTR_LEAD_RE = /\b(?:i['’]?m|i\s+am|i\s+was|i['’]ll\s+be|i\s+will\s+be|i\s+(?:just\s+)?turn(?:ed|ing|s)?|i['’]ll\s+turn|i\s+will\s+turn|i\s+weigh(?:ed)?|i\s+stand|i\s+measure[ds]?)\b/gi;
+const ATTR_LEAD_HAVE_RE = /\b(?:i\s+have|i['’]ve(?:\s+got)?|i\s+had|i\s+got)\b/gi;
+const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?|sex|gender)\b/gi;
+const ATTR_NON_SELF_WORDS = new Set([
+  "my", "his", "her", "hers", "their", "our", "your", "he", "she", "they", "we", "you",
+  "the", "this", "that", "these", "those", "its", "it", "who", "whom", "whose", "which",
+]);
+const RECORD_ATTR_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:age|sex|gender|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?)\s*[:=]\s*(?:[^\n;|.]|\.(?=\d)){0,24}$/i;
+
+function attrTailIsSelf(prefix, re) {
+  const rx = new RegExp(re.source, re.flags);
+  let m;
+  while ((m = rx.exec(prefix)) !== null) {
+    if (m[0] === "") { rx.lastIndex++; continue; }
+    const tail = prefix.slice(m.index + m[0].length).trim();
+    const words = tail ? tail.split(/\s+/) : [];
+    if (words.length > ATTR_MAX_TAIL_WORDS) continue;
+    if (words.some(w => ATTR_NON_SELF_WORDS.has(w.toLowerCase().replace(/[^a-z']/g, "")))) continue;
+    return true;
+  }
+  return false;
+}
+function isAttributeRecordValue(fullText, end) {
+  if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+  if (RECORD_HIRING_RE.test(fullText)) return false;
+  return RECORD_ATTR_LABEL_RE.test(fullText.slice(Math.max(0, end - 60), end));
+}
+function isAttributedPersonalAttribute(fullText, f) {
+  const name = f && f.rawMatch;
+  if (!fullText || !name) return false;
+  const lower = fullText.toLowerCase();
+  const needle = String(name).trim().toLowerCase();
+  if (!needle) return false;
+  const allowHave = f.patternId === "eye_color_mention" || f.patternId === "blood_type_mention";
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const end = i + needle.length;
+    const upto = fullText.slice(0, end);
+    const boundary = /[\s\S]*(?:[.!?]+\s+|\n)/.exec(upto);
+    const prefix = boundary ? upto.slice(boundary[0].length) : upto;
+    if (attrTailIsSelf(prefix, ATTR_LEAD_RE)) return true;
+    if (attrTailIsSelf(prefix, ATTR_POSSESSIVE_RE)) return true;
+    if (allowHave && attrTailIsSelf(prefix, ATTR_LEAD_HAVE_RE)) return true;
+    if (isAttributeRecordValue(fullText, end)) return true;
+  }
+  return false;
+}
+
 function isScorableFinding(f, fullText) {
   if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
   if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+  if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
   return true;
 }
 

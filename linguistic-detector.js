@@ -6229,7 +6229,14 @@ const TrustLinguisticDetector = (() => {
     if (G4_HYPO_RE.test(sent)) return false;
     // first-person self-description: "I'm the barangay captain of ...", "I am a kagawad in ..." (a request or question later in the sentence does not cancel it)
     if (/\b(?:i|we)\s*(?:am|['’]m|was|were|are|['’]re)\s+(?:currently\s+|now\s+|still\s+)?(?:the|a|an)\s+(?:[\w-]+\s+){0,2}$/i.test(text.slice(Math.max(0, s - 50), s))) return true;
-    if (/\?\s*$/.test(sent.trim()) || G9_GENERIC_START_RE.test(sent) || G9_GENERIC_ANY_RE.test(sent) || JOB_GENERIC_SENTENCE_RE.test(sent)) return false;
+    // "our barangay needs a ...", "my company is hiring a ...": a first-person organization that needs a title overrides the job-post / job-description wording
+    if (/\b(?:our|my)\s+(?:[\w-]+\s+){0,2}?(?:barangay|school|office|company|firm|business|team|department|city\s+hall|hospital|church|community|lgu|village|town|city|municipality|parish|agency|cooperative|association|club|council|clinic|store|shop|factory|farm|bakery|restaurant|startup|organi[sz]ation)\s+(?:\w+\s+){0,2}?(?:needs?|is\s+hiring|are\s+hiring|hires?|is\s+looking\s+for|are\s+looking\s+for|wants?|requires?|is\s+seeking|is\s+recruiting)\b/i.test(text.slice(se[0], s))) return true;
+    // an instruction opener ends at its colon: "summarize this ticket in two sentences: customer jenny lim, teacher at ateneo, says ..." (the statement after the colon is judged on its own)
+    const colonAt = sent.slice(0, Math.max(0, s - se[0])).lastIndexOf(':');
+    const sentR = colonAt >= 0 && colonAt < 90 && !/\d\s*:\s*\d/.test(sent.slice(Math.max(0, colonAt - 2), colonAt + 3)) ? sent.slice(colonAt + 1) : sent;
+    // a title right after a named person and a comma ("jenny lim, teacher at ateneo") is that person's title, also under an imperative opener
+    const apposOfPerson = people.some(p => jobOccurrences(text, p.rawMatch).some(([ps, pe]) => pe <= s && /^\s*,\s*(?:(?:an?|the)\s+)?(?:[\w-]+\s+){0,3}$/i.test(text.slice(pe, s))));
+    if (/\?\s*$/.test(sentR.trim()) || (!apposOfPerson && G9_GENERIC_START_RE.test(sentR)) || G9_GENERIC_ANY_RE.test(sentR) || JOB_GENERIC_SENTENCE_RE.test(sentR)) return false;
     const firstPersonOrg = G4_FIRST_PERSON_ORG_RE.test(text);
     if (G4_HIRING_RE.test(sent) && !firstPersonOrg) return false;
     const before = text.slice(se[0], s), pre = text.slice(Math.max(0, s - 14), s);
@@ -6282,6 +6289,31 @@ const TrustLinguisticDetector = (() => {
     while ((vm2 = reVol.exec(text)) !== null) { const at = vm2.index + vm2[0].toLowerCase().indexOf('volunteer'); out.push(text.slice(at, at + 9)); }
     return out;
   }
+  // a coordination "a X, a Y, and a Z": when two or more items are job titles, the other items are job titles too ("a barangay health worker, a tanod, and a secretary")
+  const G11_ITEM_RE = /\b(?:an?|the)\s+([\p{L}-]+(?:\s+[\p{L}-]+){0,2}?)(?=\s*(?:,|\s+and\s+|\s+or\s+|[.;:?!]|$|\s+(?:for|to|of|in|at|on|who|that|with|from|so|because|which|when)\b))/giu;
+  const G11_NOT_TITLE = new Set(['lot', 'time', 'thing', 'things', 'way', 'bit', 'few', 'day', 'week', 'month', 'year', 'plan', 'idea', 'budget', 'schedule', 'list', 'place', 'home', 'house', 'car', 'phone', 'story', 'problem', 'question', 'gift', 'cake', 'pet', 'dog', 'cat']);
+  function g11CoordinatedTitles(text, spans) {
+    const items = []; let m; G11_ITEM_RE.lastIndex = 0;
+    while ((m = G11_ITEM_RE.exec(text)) !== null) { const s = m.index + m[0].length - m[1].length; items.push([s, s + m[1].length]); }
+    const out = []; let i = 0;
+    while (i < items.length) {
+      let j = i;
+      while (j + 1 < items.length && /^\s*(?:,\s*(?:(?:and|or)\s+)?|(?:and|or)\s+)$/i.test(text.slice(items[j][1], items[j + 1][0]).replace(/\b(?:an?|the)\s*$/i, ''))) j++;
+      const grp = items.slice(i, j + 1); i = j + 1;
+      if (grp.length < 3) continue;
+      const isTitle = it => spans.some(([a, b]) => a >= it[0] && b === it[1] || (a <= it[0] && b >= it[1] && b - a <= (it[1] - it[0]) + 12 && b === it[1]));
+      const flags = grp.map(isTitle), n = flags.filter(Boolean).length;
+      if (n < 2 || n === grp.length) continue;
+      grp.forEach((it, k) => {
+        if (flags[k]) return;
+        const word = text.slice(it[0], it[1]).trim(), last = word.toLowerCase().split(/\s+/).pop();
+        if (G11_NOT_TITLE.has(last) || G_NOT_JOB.has(last)) return;
+        try { const d = window.nlp(word); if (!d.has('#Noun') || (d.has('#Adjective') && !d.has('#Noun'))) return; } catch (_) { /* no nlp */ }
+        out.push(it);
+      });
+    }
+    return out;
+  }
   function applyJobLow(findings, text) {
     const sents = g4Sentences(text);
     const people = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
@@ -6292,6 +6324,8 @@ const TrustLinguisticDetector = (() => {
     const spans = [];
     for (const f of findings) if (f.patternId === 'nlp_job_title' && f.rawMatch) for (const o of jobOccurrences(text, f.rawMatch)) spans.push(o);
     for (const c of cands) { if (c.plural) continue; const r = String(c.rawMatch || c.name || '').trim(); if (r) for (const o of jobOccurrences(text, r)) spans.push(o); }
+    const coord = g11CoordinatedTitles(text, spans.slice());
+    for (const o of coord) spans.push(o);
     const nJobsAt = s => { const se = g4SentenceOf(sents, s); const inS = spans.filter(([a]) => a >= se[0] && a < se[1]).sort((x, y) => x[0] - y[0] || y[1] - x[1]); let n = 0, end = -1; for (const [a, b] of inS) { if (a >= end) { n++; end = b; } else if (b > end) end = b; } return n; };
     for (const c of cands) {
       if (c.plural || !(c.source === 'csv_exact_match' || c.source === 'csv_phrase_match') || c.confidence !== 'high') continue;
@@ -6304,6 +6338,11 @@ const TrustLinguisticDetector = (() => {
       if (!occ.length) continue;
       const [s, e] = occ[0];
       findings.push({ patternId: 'nlp_job_title', label: 'Job Title (statement)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: true, attributed: false, lowQualifying: true });
+    }
+    for (const [s, e] of coord) {
+      const taken = findings.filter(f => (f.patternId === 'nlp_person_name' || f.patternId === 'nlp_organization' || f.patternId === 'nlp_job_title') && f.rawMatch).flatMap(f => jobOccurrences(text, f.rawMatch));
+      if (taken.some(o => g7Overlap(o, [s, e])) || !g9Qualifies(text, s, e, sents, people, nJobsAt(s), true)) continue;
+      findings.push({ patternId: 'nlp_job_title', label: 'Job Title (statement)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: false, attributed: false, lowQualifying: true });
     }
     for (const f of findings) {
       if (f.patternId !== 'nlp_job_title' || !f.rawMatch || f.lowQualifying) continue;
@@ -6395,6 +6434,8 @@ const TrustLinguisticDetector = (() => {
     const out = fold.filter(isNO).concat(orig.filter(f => f.patternId === 'nlp_job_title'));
     if (wholeCaps) for (const f of fold) if (f.patternId === 'nlp_job_title' && !out.some(g => g.patternId === f.patternId && low(g) === low(f))) out.push(f);
     // a title found only next to a person that the case fold recovered ("jenny lim, teacher at ateneo") is kept too
+    // (and a title the original scan already has, but could not qualify without that person, takes the flag)
+    for (const f of fold) if (f.patternId === 'nlp_job_title' && f.lowQualifying) out.forEach(g => { if (g.patternId === f.patternId && !g.lowQualifying && low(g) === low(f)) g.lowQualifying = true; });
     for (const f of fold) if (f.patternId === 'nlp_job_title' && f.lowQualifying && !out.some(g => g.patternId === f.patternId && (low(g) === low(f) || low(g).includes(low(f))))) out.push(f);
     for (const f of orig) {
       if (!isNO(f)) continue;

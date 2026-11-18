@@ -50,7 +50,6 @@ function extractPHIDValue(raw) {
   // Patterns are tested in order of appearance.
   // Try to match longer, more specific patterns before shorter generic ones.
   const labelPatterns = [
-    /^driver.{0,2}s.{0,2}\s+licen[cs]e\s*\.?\s*[:=\s]*/i,  // "Driver's License", "Drivers License", etc.
     /^passport\s+no\s*\.?\s*[:=\s]*/i,
     /^id\s+no\s*\.?\s*[:=\s]*/i,
     /^license\s+no\s*\.?\s*[:=\s]*/i,
@@ -58,18 +57,11 @@ function extractPHIDValue(raw) {
     /^employee\s+id\s*\.?\s*[:=\s]*/i,
     /^mother.{0,2}s.{0,2}\s+maiden\s*\.?\s*[:=\s]*/i,  // "Mother's Maiden", "Mothers Maiden", etc.
     /^sss\s+no\s*\.?\s*[:=\s]*/i,
-    /^gsis\s+no\s*\.?\s*[:=\s]*/i,
-    /^pag.?ibig\s*\.?\s*[:=\s]*/i,
-    /^barangay\s*\.?\s*[:=\s]*/i,
-    /^comelec\s*\.?\s*[:=\s]*/i,
     /^philhealth\s*\.?\s*[:=\s]*/i,
     /^philid\s*\.?\s*[:=\s]*/i,
-    /^police\s*\.?\s*[:=\s]*/i,
     /^umid\s*\.?\s*[:=\s]*/i,
     /^prc\s*\.?\s*[:=\s]*/i,
-    /^tin\s*\.?\s*[:=\s]*/i,
     /^number\s*\.?\s*[:=\s]*/i,
-    /^nbi\s*\.?\s*[:=\s]*/i,
     /^id\s*\.?\s*[:=\s]*/i,
     /^no\s*\.?\s*[:=\s]*/i,
   ];
@@ -119,8 +111,6 @@ function isPhIDPlaceholder(patternId, value) {
   const knownTestValues = {
     ph_id_philid: new Set([]),
     ph_id_sss: new Set([]),
-    ph_id_gsis: new Set([]),
-    ph_id_tin: new Set([]),
   };
   
   if (knownTestValues[patternId]) {
@@ -509,60 +499,6 @@ function structuralValidatePHID_SSS(raw) {
   return true;
 }
 
-// ── TASK-2.2: GSIS (Government Service Insurance System) Number Validator ──────
-// Implements structural validation for Philippine GSIS numbers (10 digits).
-// Validates:
-//   - Exactly 10 numeric digits (separators already stripped by caller)
-//   - Agency/account type code (digits 1-4): 0001-9999 (not 0000)
-//   - Member sequence (digits 5-9): 00000-99999 (any value)
-//   - Check digit (digit 10): modulo 10 validation
-// Reference: Requirement 6, PH_ID_METADATA.gsis configuration
-
-/**
- * Structural validator for GSIS (Government Service Insurance System) numbers.
- * Validates agency code, member sequence, and check digit via modulo 10.
- *
- * Format: 10 digits total
- *   - Digits 1-4: Agency/account type code (0001-9999)
- *   - Digits 5-9: Member sequence (00000-99999)
- *   - Digit 10: Check digit (modulo 10 validation)
- *
- * Example valid: "0001234560"
- * Example invalid: "0000234560" (agency code 0000 is invalid, must be 0001-9999)
- *
- * @param {string} raw - normalized GSIS number (10 digits, separators already stripped)
- * @returns {boolean} true if valid GSIS structure; false otherwise
- */
-function structuralValidatePHID_GSIS(raw) {
-  // Never throw errors - return false for malformed input
-  if (!raw || typeof raw !== "string") return false;
-
-  // Ensure exactly 10 numeric digits
-  if (!/^\d{10}$/.test(raw)) return false;
-
-  // OPTIMIZATION: Extract agency code using charCodeAt (faster than slice+parseInt)
-  // Agency must be 0001-9999, so first 3 digits cannot all be zero
-  const agencyCode = (raw.charCodeAt(0) - 48) * 1000 +
-                     (raw.charCodeAt(1) - 48) * 100 +
-                     (raw.charCodeAt(2) - 48) * 10 +
-                     (raw.charCodeAt(3) - 48);
-
-  if (agencyCode < 1 || agencyCode > 9999) return false;
-
-  // Validate check digit via modulo 10
-  // Sum first 9 digits using charCodeAt
-  let digitSum = 0;
-  for (let i = 0; i < 9; i++) {
-    digitSum += raw.charCodeAt(i) - 48;
-  }
-
-  const remainder = digitSum % 10;
-  const expectedCheckDigit = (10 - remainder) % 10;
-  const checkDigitProvided = raw.charCodeAt(9) - 48;
-
-  return checkDigitProvided === expectedCheckDigit;
-}
-
 // ── TASK-4.1: Philippine Passport Structural Validator ────────────────────────
 // Validates Philippine passport numbers in the format:
 //   - Optional "P" or "PH" prefix
@@ -654,51 +590,6 @@ function validateWeightPattern(raw) {
   return /^\d{1,3}(?:\.\d{1,2})?\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?)$/i.test(raw.trim());
 }
 
-/**
- * Validates TIN (Taxpayer Identification Number) structure.
- * 
- * Format: 9 digits total
- *   - Digits 1-3: Registration area code (100-900 for Philippine regions)
- *   - Digits 4-6: Sequence of registration within that area (000-999)
- *   - Digits 7-8: Further classification (00-99)
- *   - Digit 9: Check digit (0-9, calculated via modulo 11)
- *
- * Example valid: "123456789"
- * Example invalid: "023456789" (area code 023 is invalid, must be 100-900)
- *
- * @param {string} raw - normalized TIN number (9 digits, separators already stripped)
- * @returns {boolean} true if valid TIN structure; false otherwise
- */
-function structuralValidatePHID_TIN(raw) {
-  // Never throw errors - return false for malformed input
-  if (!raw || typeof raw !== "string") return false;
-
-  // Ensure exactly 9 numeric digits
-  if (!/^\d{9}$/.test(raw)) return false;
-
-  // OPTIMIZATION: Extract area code using charCodeAt (faster than slice+parseInt)
-  // Area must be 100-900
-  const areaCode = (raw.charCodeAt(0) - 48) * 100 +
-                   (raw.charCodeAt(1) - 48) * 10 +
-                   (raw.charCodeAt(2) - 48);
-  if (areaCode < 100 || areaCode > 900) return false;
-
-  // Validate check digit via modulo 11
-  // OPTIMIZATION: Pre-computed weight array, use charCodeAt instead of parseInt
-  const weights = [6, 5, 4, 3, 2, 7, 6, 5];
-  let checksum = 0;
-  for (let i = 0; i < 8; i++) {
-    checksum += (raw.charCodeAt(i) - 48) * weights[i];
-  }
-
-  const remainder = checksum % 11;
-  const expectedCheckDigit = remainder === 0 ? 0 : 11 - remainder;
-  const finalCheckDigit = expectedCheckDigit === 10 ? 0 : expectedCheckDigit;
-  const checkDigitProvided = raw.charCodeAt(8) - 48;
-
-  return checkDigitProvided === finalCheckDigit;
-}
-
 // ── TASK-3.1: PhilHealth Structural Validator ──────────────────────────────────
 // Validates PhilHealth member ID numbers in both recent (12-digit) and legacy
 // (15-alphanumeric) RF card formats per Requirement 9.
@@ -715,103 +606,6 @@ function structuralValidatePHID_TIN(raw) {
 //
 // Performance target: <1ms per call
 // Reference: Requirement 9, TASK-3.1
-
-// ── TASK-4.2: Driver's License (LTO) Structural Validator ────────────────────────
-/**
- * Validates the structural integrity of a Philippine Driver's License.
- * 
- * Driver's License Format Specification (LTO):
- *   - Exactly 11 characters (numeric or alphanumeric mix)
- *   - Characters 1-2: Region code (01-16 for Philippine regions)
- *   - Characters 3-4: City/municipality code (00-99)
- *   - Characters 5-8: Series/batch code (numeric or alphanumeric)
- *   - Characters 9-11: Sequence number (000-999 for numeric, AAA-ZZZ for alphanumeric, or mixed)
- * 
- * LTO Issues both numeric-only and alphanumeric variants:
- *   - Numeric variant: all 11 characters are digits (0-9)
- *   - Alphanumeric variant: mix of digits and letters (0-9, A-Z, a-z)
- * 
- * Validation Rules:
- *   - Must be exactly 11 characters
- *   - Must contain only alphanumeric characters (0-9, A-Z, a-z)
- *   - First 2 characters must be digits (region code 01-16)
- *   - Characters 3-4 must be digits (city/municipality code 00-99)
- *   - Characters 5-8 can be alphanumeric (series/batch code)
- *   - Characters 9-11 can be alphanumeric (sequence number)
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * 
- * Examples:
- *   structuralValidatePHID_DriversLicense("12345678901")      → true (valid numeric)
- *   structuralValidatePHID_DriversLicense("12-34-ABCD-567")   → true (valid with separators, alphanumeric)
- *   structuralValidatePHID_DriversLicense("00-12-ABCD-567")   → false (region code 00 is invalid, must be 01-16)
- *   structuralValidatePHID_DriversLicense("17-34-ABCD-567")   → false (region code 17 is invalid, must be 01-16)
- *   structuralValidatePHID_DriversLicense("12-AB-ABCD-567")   → false (city code 'AB' not numeric)
- *   structuralValidatePHID_DriversLicense("1234567890")       → false (only 10 characters)
- * 
- * @param {string} raw - the raw matched driver's license value (may contain separators)
- * @returns {boolean} true if the driver's license structure is valid, false otherwise
- */
-function structuralValidatePHID_DriversLicense(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing separators (hyphens, spaces, dots)
-  const normalized = normalizePHID(raw);
-
-  // Validate character count: must be exactly 11
-  if (normalized.length !== 11) {
-    return false;
-  }
-
-  // Validate all characters are alphanumeric (0-9, A-Z, a-z)
-  if (!/^[0-9A-Za-z]{11}$/.test(normalized)) {
-    return false;
-  }
-
-  // Extract character sections
-  const regionCodeStr = normalized.slice(0, 2);                     // characters 1-2
-  const cityCodeStr = normalized.slice(2, 4);                       // characters 3-4
-  const seriesBatchCode = normalized.slice(4, 8);                   // characters 5-8
-  const sequenceNumber = normalized.slice(8, 11);                   // characters 9-11
-
-  // Validation 1: Region code (characters 1-2) must be digits 01-16
-  if (!/^\d{2}$/.test(regionCodeStr)) {
-    return false;
-  }
-  const regionCode = parseInt(regionCodeStr, 10);
-  if (regionCode < 1 || regionCode > 16) {
-    return false;
-  }
-
-  // Validation 2: City/municipality code (characters 3-4) must be digits 00-99
-  if (!/^\d{2}$/.test(cityCodeStr)) {
-    return false;
-  }
-  const cityCode = parseInt(cityCodeStr, 10);
-  if (cityCode < 0 || cityCode > 99) {
-    return false;
-  }
-
-  // Validation 3: Series/batch code (characters 5-8) must be alphanumeric (format-only)
-  // No specific range validation; any alphanumeric combination is valid
-  if (!/^[0-9A-Za-z]{4}$/.test(seriesBatchCode)) {
-    return false;
-  }
-
-  // Validation 4: Sequence number (characters 9-11) must be alphanumeric (format-only)
-  // Can be numeric (000-999) or alphanumeric (AAA-ZZZ or mixed)
-  // No specific range validation; any alphanumeric combination is valid
-  if (!/^[0-9A-Za-z]{3}$/.test(sequenceNumber)) {
-    return false;
-  }
-
-  // All validations passed
-  return true;
-}
 
 /**
  * Validate PhilHealth member ID number structure.
@@ -992,509 +786,6 @@ function structuralValidatePHID_PRC(raw) {
   }
 }
 
-// ── TASK-5.1: PSA Certificate Structural Validator ───────────────────────────
-/**
- * Validates the structural integrity of a Philippine PSA Certificate number
- * (birth, marriage, death certificates issued by PSA - Philippine Statistics Authority).
- * 
- * PSA Certificate Format Specification:
- *   - 8–13 numeric digits (separators optional and stripped)
- *   - Digits 1–3: Certificate type code (e.g., 101=birth, 201=marriage, 301=death)
- *   - Digits 4–6: Province/city code (000–999)
- *   - Digits 7–10: Year and batch number
- *   - Remaining digits: Sequence within that batch
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * 
- * Examples:
- *   structuralValidatePHID_PSACertificate("12345678")   → true (8 digits, valid structure)
- *   structuralValidatePHID_PSACertificate("123-4567-8901-23") → true (13 digits with separators)
- *   structuralValidatePHID_PSACertificate("1234567")    → false (7 digits, too short)
- *   structuralValidatePHID_PSACertificate("12345678901234") → false (14 digits, too long)
- *   structuralValidatePHID_PSACertificate("abcd5678")    → false (contains letters)
- * 
- * Validation rules:
- *   - Must be 8–13 numeric digits after normalization (no letters or special chars except separators)
- *   - Certificate type (digits 1–3): any 3-digit value (common: 101, 201, 301, but not strictly validated)
- *   - Province/city code (digits 4–6): any 3-digit value (000–999 range always valid for 3 digits)
- *   - Year and batch (digits 7–10): any 4-digit value
- *   - Sequence (digits 11–13): any remaining digits (1–3 digits for positions 11–13)
- * 
- * @param {string} raw - the raw matched PSA certificate value (may contain separators)
- * @returns {boolean} true if the PSA certificate structure is valid, false otherwise
- */
-function structuralValidatePHID_PSACertificate(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing separators (hyphens, spaces, dots)
-  const normalized = normalizePHID(raw);
-
-  // Validate digit count: must be 8-13 digits
-  if (normalized.length < 8 || normalized.length > 13) {
-    return false;
-  }
-
-  // Validate all characters are digits
-  if (!/^\d{8,13}$/.test(normalized)) {
-    return false;
-  }
-
-  // Extract certificate type (digits 1-3)
-  const certTypeStr = normalized.slice(0, 3);
-  const certType = parseInt(certTypeStr, 10);
-
-  // Extract province/city code (digits 4-6)
-  const provinceCodeStr = normalized.slice(3, 6);
-  const provinceCode = parseInt(provinceCodeStr, 10);
-
-  // Extract year and batch (digits 7-10)
-  const yearBatchStr = normalized.slice(6, 10);
-  const yearBatch = parseInt(yearBatchStr, 10);
-
-  // Extract sequence (remaining digits 11-13, if present)
-  // For 8-digit format: no sequence digits
-  // For 9-13 digit formats: 1-4 sequence digits (positions 10+)
-  const sequenceStr = normalized.slice(10);
-
-  // Basic structural validation (no strict checks on values, just format):
-  // Certificate type: 0-999 (any 3-digit value; common types are 101, 201, 301)
-  if (certType < 0 || certType > 999) {
-    return false;
-  }
-
-  // Province/city code: 0-999 (any 3-digit value is valid)
-  if (provinceCode < 0 || provinceCode > 999) {
-    return false;
-  }
-
-  // Year and batch: 0-9999 (any 4-digit value is valid)
-  if (yearBatch < 0 || yearBatch > 9999) {
-    return false;
-  }
-
-  // Sequence: if present, must be 1-4 digits (0-9999)
-  if (sequenceStr.length > 0) {
-    const sequence = parseInt(sequenceStr, 10);
-    if (sequence < 0 || sequence > 9999) {
-      return false;
-    }
-  }
-
-  // All structural validations passed
-  return true;
-}
-
-// ── TASK-3.2: Pag-IBIG (Home Development Mutual Fund) Structural Validator ────────
-// Validates Pag-IBIG member ID numbers in 12-digit format per Requirement 15, 17.
-//
-// Pag-IBIG Format:
-//   - Exactly 12 numeric digits
-//   - Optional separators (hyphens, spaces, dots) removed during normalization
-//   - Typically displayed as XXXX-XX-XXXXXX (4-2-6) but may vary
-//   - No specific checksum algorithm documented; structural validation only
-//
-// Validation Rules:
-//   - Exactly 12 numeric digits (separators optional and stripped by caller)
-//   - No specific digit range constraints documented for Pag-IBIG
-//   - Format-only validation (digit count and numeric character set)
-//
-// Performance target: <1ms per call
-// Reference: Requirements 15, 17, Design.md Pag-IBIG section
-
-/**
- * Validates the structural integrity of a Philippine Pag-IBIG (Home Development Mutual Fund) member ID.
- * 
- * Pag-IBIG Format Specification:
- *   - Exactly 12 numeric digits (separators optional and stripped)
- *   - Typical display format: XXXX-XX-XXXXXX (4-2-6 grouping) or XXXXXXXXXXXX
- *   - No specific digit range constraints for Pag-IBIG; structural validation only
- *
- * Pag-IBIG (Home Development Mutual Fund) is the housing and savings benefit system for Filipino workers.
- * The 12-digit member ID uniquely identifies an individual in the HDMF system.
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * 
- * Examples:
- *   structuralValidatePHID_PagIBIG("123456789012")   → true (valid 12-digit Pag-IBIG)
- *   structuralValidatePHID_PagIBIG("1234-56-789012") → true (valid with separators)
- *   structuralValidatePHID_PagIBIG("12345678901")    → false (11 digits, too short)
- *   structuralValidatePHID_PagIBIG("1234567890123")  → false (13 digits, too long)
- *   structuralValidatePHID_PagIBIG("1234-56-78901A") → false (non-numeric character 'A')
- *   structuralValidatePHID_PagIBIG(null)             → false (null input)
- * 
- * @param {string} raw - the raw matched Pag-IBIG value (may contain separators)
- * @returns {boolean} true if the Pag-IBIG structure is valid, false otherwise
- */
-function structuralValidatePHID_PagIBIG(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing separators (hyphens, spaces, dots)
-  const normalized = normalizePHID(raw);
-
-  // Validate digit count: must be exactly 12 digits
-  if (normalized.length !== 12) {
-    return false;
-  }
-
-  // Validate all characters are digits
-  if (!/^\d{12}$/.test(normalized)) {
-    return false;
-  }
-
-  // All structural rules passed
-  return true;
-}
-
-// ── TASK-5.2: NBI Clearance Structural Validator ─────────────────────────────────
-/**
- * Validates the structural integrity of a Philippine NBI (National Bureau of Investigation) clearance number.
- * 
- * NBI Clearance Format Specification:
- *   - Standard format: NBI-YYYY-0000000
- *   - "NBI" prefix (literal, case-insensitive)
- *   - Hyphen separator
- *   - YYYY: 4-digit year of issuance (1900-2099)
- *   - Hyphen separator
- *   - 0000000: 7-digit clearance number (0000001-9999999)
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * 
- * Examples:
- *   structuralValidatePHID_NBIClearance("NBI-2023-1234567")   → true (valid standard format)
- *   structuralValidatePHID_NBIClearance("nbi-2023-1234567")   → true (case-insensitive)
- *   structuralValidatePHID_NBIClearance("NBI 2023 1234567")   → true (flexible separators)
- *   structuralValidatePHID_NBIClearance("2023-1234567")       → false (missing NBI prefix)
- *   structuralValidatePHID_NBIClearance("NBI-2023-123456")    → false (only 6 digits, need 7)
- *   structuralValidatePHID_NBIClearance("NBI-0000-1234567")   → false (year only 4 digits in YYYY format)
- *   structuralValidatePHID_NBIClearance(null)                 → false (null input)
- * 
- * @param {string} raw - the raw matched NBI clearance value (NBI-YYYY-0000000 format)
- * @returns {boolean} true if the NBI clearance structure is valid, false otherwise
- */
-function structuralValidatePHID_NBIClearance(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize: convert to uppercase and remove optional spaces (allow NBI - YYYY - 0000000 or NBI-YYYY-0000000)
-  let normalized = raw.toUpperCase().replace(/\s+/g, "");
-
-  // Standard format check: NBI-YYYY-0000000 (with hyphens)
-  const formatRegex = /^NBI-\d{4}-\d{7}$/;
-  if (!formatRegex.test(normalized)) {
-    return false;
-  }
-
-  // Extract components
-  const parts = normalized.split("-");
-  const prefix = parts[0];        // "NBI"
-  const yearStr = parts[1];       // "YYYY"
-  const numberStr = parts[2];     // "0000000"
-
-  // Validate prefix
-  if (prefix !== "NBI") {
-    return false;
-  }
-
-  // Validate year: 1900-2099
-  const year = parseInt(yearStr, 10);
-  if (year < 1900 || year > 2099) {
-    return false;
-  }
-
-  // Validate clearance number: 0000001-9999999 (not all zeros)
-  const number = parseInt(numberStr, 10);
-  if (number < 1 || number > 9999999) {
-    return false;
-  }
-
-  // All validations passed
-  return true;
-}
-
-// ── TASK-5.3: Police Clearance Structural Validator ────────────────────────────
-/**
- * Validates the structural integrity of a Philippine Police (PNP) clearance number.
- * 
- * Police Clearance Format Specification:
- *   - 6–10 alphanumeric characters (separators optional and stripped)
- *   - Optional "PNP" prefix (case-insensitive)
- *   - Optional 4-digit year prefix (1900-2099) before the main clearance ID
- *   - Office/region codes (first 1-2 digits after prefix): 01-99 for PNP units
- *   - Remaining digits: sequence within issuance period
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * Sanitize format: "PNP-2021-****-56" or "*-*-***456"
- * 
- * Examples:
- *   structuralValidatePHID_PoliceClearance("PNP-2021-123456")  → true (valid with PNP and year)
- *   structuralValidatePHID_PoliceClearance("2021-123456")      → true (valid with year, no PNP prefix)
- *   structuralValidatePHID_PoliceClearance("123456")           → true (valid 6-digit base clearance)
- *   structuralValidatePHID_PoliceClearance("PNP-123456")       → true (valid with PNP prefix)
- *   structuralValidatePHID_PoliceClearance("1234567890AB")     → true (valid alphanumeric)
- *   structuralValidatePHID_PoliceClearance("PNP-0123456")      → false (office code 01 but 7+ chars may be invalid)
- *   structuralValidatePHID_PoliceClearance("12345")            → false (5 characters, too short)
- *   structuralValidatePHID_PoliceClearance("12345678901")      → false (11 characters, too long)
- *   structuralValidatePHID_PoliceClearance(null)               → false (null input)
- * 
- * @param {string} raw - the raw matched Police clearance value (may contain prefix/year and separators)
- * @returns {boolean} true if the Police clearance structure is valid, false otherwise
- */
-function structuralValidatePHID_PoliceClearance(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing the optional "PNP" prefix and separators (hyphens, spaces, dots)
-  let normalized = normalizePHID(raw, "PNP");
-
-  // After normalization, check for optional 4-digit year prefix (1900-2099)
-  let baseID = normalized;
-  let year = null;
-
-  if (normalized.length > 6 && /^\d+$/.test(normalized)) {
-    // Check if the first 4 digits form a valid year
-    const possibleYear = parseInt(normalized.slice(0, 4), 10);
-    if (possibleYear >= 1900 && possibleYear <= 2099) {
-      year = possibleYear;
-      baseID = normalized.slice(4);  // remaining digits after year prefix
-    }
-  }
-
-  // Validate character count for base ID (excluding optional year prefix): 6-10 characters
-  if (baseID.length < 6 || baseID.length > 10) {
-    return false;
-  }
-
-  // Validate all characters are alphanumeric (0-9, A-Z, a-z)
-  if (!/^[A-Za-z0-9]{6,10}$/.test(baseID)) {
-    return false;
-  }
-
-  // If year was detected, validate remaining length (6-10 chars)
-  // Total with year: 4 (year) + 6-10 (base) = 10-14 chars
-  if (year !== null && (year < 1900 || year > 2099)) {
-    return false;
-  }
-
-  // Extract office/region code (first 2 digits of base ID if numeric, or first digit if mixed)
-  // For numeric-only: first 1-2 digits should represent office code (01-99)
-  if (/^\d+$/.test(baseID)) {
-    // All numeric: extract first 2 digits as office code
-    const officeCodeStr = baseID.slice(0, 2);
-    const officeCode = parseInt(officeCodeStr, 10);
-    // Office/region code: 01-99 (not 00)
-    if (officeCode < 1 || officeCode > 99) {
-      return false;
-    }
-  }
-  // If alphanumeric (contains letters), the office code validation is skipped
-  // as the structure is less standardized for mixed formats
-
-  // All structural validations passed
-  return true;
-}
-
-// ── TASK-5.4: Barangay Clearance Structural Validator ────────────────────────────
-/**
- * Validates the structural integrity of a Philippine Barangay Clearance number.
- * 
- * Barangay Clearance Format Specification:
- *   - 4–8 numeric digits (separators optional and stripped)
- *   - Optional "BC" or "Barangay" prefix (case-insensitive)
- *   - Optional 4-digit year prefix (1900-2099, YYYY format)
- *   - Barangay code: 2 digits (01-99 for barangay ID within municipality)
- *   - Sequence number: remaining digits (0-9999)
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * Risk Level: MODERATE (unlike other IDs which are HIGH)
- * Sanitize format: "BC-2021-****" or "2021-12-****"
- * 
- * Examples:
- *   structuralValidatePHID_BarangayClearance("BC-2021-01-1234")  → true (valid with prefix and year)
- *   structuralValidatePHID_BarangayClearance("2021-01-1234")     → true (valid with year, no BC prefix)
- *   structuralValidatePHID_BarangayClearance("01-1234")          → true (valid barangay + sequence)
- *   structuralValidatePHID_BarangayClearance("BC-011234")        → true (valid with BC prefix, no year)
- *   structuralValidatePHID_BarangayClearance("2021-00-1234")     → false (barangay code 00 is invalid, must be 01-99)
- *   structuralValidatePHID_BarangayClearance("011234")           → true (6 digits: 01 barangay + 1234 sequence)
- *   structuralValidatePHID_BarangayClearance("012")              → false (3 digits, too short)
- *   structuralValidatePHID_BarangayClearance("01234567890")      → false (11 digits, too long)
- *   structuralValidatePHID_BarangayClearance(null)               → false (null input)
- * 
- * @param {string} raw - the raw matched Barangay clearance value (may contain prefix/year and separators)
- * @returns {boolean} true if the Barangay clearance structure is valid, false otherwise
- */
-function structuralValidatePHID_BarangayClearance(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing the optional "BC" or "Barangay" prefix and separators
-  // stripChars: "BC-" covers both "BC" and "Barangay" prefixes (will strip leading BC/Barangay)
-  let normalized = normalizePHID(raw, "BC");
-  
-  // Also handle "Barangay" prefix if present (after normalizePHID removes separators)
-  if (normalized.toLowerCase().startsWith("barangay")) {
-    normalized = normalized.slice(8);  // remove "barangay" (8 characters)
-  }
-
-  normalized = normalized.trim();
-
-  // After prefix removal, check for optional 4-digit year prefix (1900-2099)
-  let baseID = normalized;
-  let year = null;
-
-  if (normalized.length > 4 && /^\d+$/.test(normalized)) {
-    // Check if the first 4 digits form a valid year
-    const possibleYear = parseInt(normalized.slice(0, 4), 10);
-    if (possibleYear >= 1900 && possibleYear <= 2099) {
-      year = possibleYear;
-      baseID = normalized.slice(4);  // remaining digits after year prefix
-    }
-  }
-
-  // Validate digit count for base ID (excluding optional year prefix): 4-8 digits
-  if (baseID.length < 4 || baseID.length > 8) {
-    return false;
-  }
-
-  // Validate all characters are digits
-  if (!/^\d{4,8}$/.test(baseID)) {
-    return false;
-  }
-
-  // Extract barangay code (first 2 digits of base ID)
-  const barangayCodeStr = baseID.slice(0, 2);
-  const barangayCode = parseInt(barangayCodeStr, 10);
-
-  // Validate barangay code: 01-99 (not 00)
-  if (barangayCode < 1 || barangayCode > 99) {
-    return false;
-  }
-
-  // Extract sequence (remaining 2-6 digits)
-  const sequenceStr = baseID.slice(2);
-  const sequence = parseInt(sequenceStr, 10);
-
-  // Validate sequence: 0-9999 (for 2-4 digit sequences)
-  // For 5-6 digit sequences: 0-99999 or 0-999999
-  const maxSequence = Math.pow(10, sequenceStr.length) - 1;
-  if (sequence < 0 || sequence > maxSequence) {
-    return false;
-  }
-
-  // All structural validations passed
-  return true;
-}
-
-// ── TASK-5.5: COMELEC Voter's ID Structural Validator ────────────────────────────
-/**
- * Validates the structural integrity of a Philippine COMELEC (Commission on Elections) Voter's ID.
- * 
- * COMELEC Voter's ID Format Specification:
- *   - 10–14 numeric digits (separators optional and stripped)
- *   - Digits 1-2: Province code (01-82 for Philippine provinces)
- *   - Digits 3-4: City/municipality code (01-99 for cities/municipalities within province)
- *   - Digits 5-6: Barangay code (01-99 for barangays within city/municipality)
- *   - Digits 7-10: Precinct number (0000-9999 for voting precincts)
- *   - Remaining digits (if present): Voter sequence within that precinct (0-9999)
- * 
- * Implementation note: Never throws errors. Returns false for any malformed input,
- * null/undefined values, or validation failures. Performance target: <1ms per call.
- * Sanitize format: "12-34-56-****-****" (province-city-barangay + precinct redacted + sequence)
- * 
- * Examples:
- *   structuralValidatePHID_COMELECVoterID("12-34-56-7890-1234")  → true (valid 14-digit with separators)
- *   structuralValidatePHID_COMELECVoterID("12345678901234")      → true (valid 14-digit no separators)
- *   structuralValidatePHID_COMELECVoterID("1234567890")          → true (valid 10-digit base)
- *   structuralValidatePHID_COMELECVoterID("00-34-56-7890-1234")  → false (province code 00, must be 01-82)
- *   structuralValidatePHID_COMELECVoterID("83-34-56-7890-1234")  → false (province code 83, must be 01-82)
- *   structuralValidatePHID_COMELECVoterID("12-00-56-7890-1234")  → false (city code 00, must be 01-99)
- *   structuralValidatePHID_COMELECVoterID("12-34-00-7890-1234")  → false (barangay code 00, must be 01-99)
- *   structuralValidatePHID_COMELECVoterID("123456789")           → false (9 digits, too short)
- *   structuralValidatePHID_COMELECVoterID("123456789012345")     → false (15 digits, too long)
- *   structuralValidatePHID_COMELECVoterID(null)                  → false (null input)
- * 
- * @param {string} raw - the raw matched COMELEC Voter's ID value (may contain separators)
- * @returns {boolean} true if the COMELEC Voter's ID structure is valid, false otherwise
- */
-function structuralValidatePHID_COMELECVoterID(raw) {
-  // Graceful input handling: return false for null, undefined, or non-string values
-  if (!raw || typeof raw !== "string") {
-    return false;
-  }
-
-  // Normalize by removing separators (hyphens, spaces, dots)
-  const normalized = normalizePHID(raw);
-
-  // Validate digit count: must be 10-14 digits
-  if (normalized.length < 10 || normalized.length > 14) {
-    return false;
-  }
-
-  // Validate all characters are digits
-  if (!/^\d{10,14}$/.test(normalized)) {
-    return false;
-  }
-
-  // Extract structural components
-  const provinceCodeStr = normalized.slice(0, 2);              // digits 1-2
-  const cityCodeStr = normalized.slice(2, 4);                  // digits 3-4
-  const barangayCodeStr = normalized.slice(4, 6);              // digits 5-6
-  const precinctStr = normalized.slice(6, 10);                 // digits 7-10
-  const sequenceStr = normalized.slice(10);                    // remaining digits (if any)
-
-  // Validate province code: 01-82 for Philippine provinces
-  const provinceCode = parseInt(provinceCodeStr, 10);
-  if (provinceCode < 1 || provinceCode > 82) {
-    return false;
-  }
-
-  // Validate city/municipality code: 01-99
-  const cityCode = parseInt(cityCodeStr, 10);
-  if (cityCode < 1 || cityCode > 99) {
-    return false;
-  }
-
-  // Validate barangay code: 01-99
-  const barangayCode = parseInt(barangayCodeStr, 10);
-  if (barangayCode < 1 || barangayCode > 99) {
-    return false;
-  }
-
-  // Validate precinct number: 0000-9999
-  const precinct = parseInt(precinctStr, 10);
-  if (precinct < 0 || precinct > 9999) {
-    return false;
-  }
-
-  // Validate sequence (if present): 0-9999 for 4 remaining digits, or less for fewer digits
-  if (sequenceStr.length > 0) {
-    const sequence = parseInt(sequenceStr, 10);
-    const maxSequence = Math.pow(10, sequenceStr.length) - 1;
-    if (sequence < 0 || sequence > maxSequence) {
-      return false;
-    }
-  }
-
-  // All structural validations passed
-  return true;
-}
-
 // ── TASK-5.6: PhilID (PSA National ID) Structural Validator ─────────────────────
 /**
  * Validates the structural integrity of a Philippine PhilID (PSA National ID).
@@ -1655,7 +946,15 @@ const PH_AREA_FOLLOW_STOPWORDS = [
   "manage", "manages", "confirm", "confirming", "confirmed", "confirms",
   // document words
   "permit", "permits", "clearance", "certificate", "license", "document", "documents",
-  "form", "forms"
+  "form", "forms",
+  // ordinary nouns that follow "barangay" in prose ("barangay budget", "barangay
+  // ordinance"), and a brand/team name that is not a locality ("Barangay Ginebra").
+  "budget", "ordinance", "ordinances", "fund", "funds", "road", "roads", "ginebra",
+  // verbs / auxiliaries / function words. These also stop the name run: without
+  // them "Sitio Maligaya is a beautiful place" swallowed "is a".
+  "has", "have", "had", "are", "were", "been", "will", "would", "does", "did",
+  "play", "plays", "played", "win", "wins", "won", "also", "just", "very",
+  "from", "after", "before", "when", "who", "which", "because", "while", "then", "than"
 ];
 
 
@@ -1663,6 +962,10 @@ const _streetTypeAlt = PH_STREET_TYPES.join("|");
 const _areaMarkerAlt = PH_AREA_MARKERS.join("|");
 const _unitMarkerAlt = PH_UNIT_MARKERS.join("|");
 const _areaStopAlt = PH_AREA_FOLLOW_STOPWORDS.join("|");
+// Case-insensitive literal for a case-SENSITIVE RegExp: "Brgy" -> "[Bb][Rr][Gg][Yy]".
+const ciLiteral = (w) => w.replace(/[A-Za-z]/g, c => `[${c.toLowerCase()}${c.toUpperCase()}]`);
+const _areaMarkerCI = PH_AREA_MARKERS.map(ciLiteral).join("|");
+const _areaStopCI = PH_AREA_FOLLOW_STOPWORDS.map(ciLiteral).join("|");
 
 /**
  * Structural validator for a street-level PH address candidate.
@@ -1688,20 +991,36 @@ function structuralValidatePHStreetAddress(raw) {
   const areaMarker = `(?:${_areaMarkerAlt})\\.?`;
   const unitMarker = `(?:${_unitMarkerAlt})\\.?`;
 
-  // 1. Number somewhere before a street-type word ("123 Rizal St.")
-  if (new RegExp(`\\b\\d+[A-Za-z]?\\b[\\s\\S]{0,40}?\\b${streetType}(?:\\b|$)`, "i").test(s)) {
+  // 1. Number, then a street NAME word, then a street-type word ("123 Rizal St.").
+  //    A word must sit directly before the street type, so a count plus an
+  //    abbreviation ("3 Dr. appointments", "2 Ave") is not an address.
+  if (new RegExp(`\\b\\d+[A-Za-z]?\\b[\\s\\S]{0,40}?\\b[A-Za-z][\\w.-]*[\\s,]+${streetType}(?:\\b|$)`, "i").test(s)) {
     return true;
   }
-  // 2. Unit / block / lot / building marker + a NUMERIC identifier.
-  //    Requiring a digit avoids matching common words ("Lot of", "Unit tests").
-  if (new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+[A-Za-z]?`, "i").test(s)) {
-    return true;
+  // 2. Unit / block / lot / building marker + a NUMERIC identifier, AND at least
+  //    one corroborating anchor. A lone "Unit 4" / "Room 305" / "Blk 5" is just as
+  //    often a course unit or an exam block, so it needs a second signal:
+  //    another marker ("Blk 5 Lot 12"), a letter id ("4B"), a street type, an area
+  //    marker, or a comma + Title-Case component ("Unit 4, Sunrise Tower").
+  {
+    const units = s.match(new RegExp(`\\b${unitMarker}\\s*#?\\s*\\d+(?:-?[A-Za-z])?`, "ig")) || [];
+    if (units.length) {
+      const multi = units.length >= 2;
+      const alnumId = units.some(u => /\d-?[A-Za-z]$/.test(u.trim()));
+      const hasStreet = new RegExp(`\\b${streetType}(?:\\b|$)`, "i").test(s);
+      const hasArea = new RegExp(`\\b${areaMarker}\\s+\\S`, "i").test(s);
+      const commaTitle = /,\s*[A-Z][a-z]/.test(s);
+      if (multi || alnumId || hasStreet || hasArea || commaTitle) return true;
+    }
   }
-  // 3. Area marker + a following PROPER-NOUN name token.
-  //    A following common word ("captain", "in", "hall", ...) means this is
-  //    ordinary prose ("barangay captain", "barangay in Batanes"), not an
-  //    address, so it is rejected via a negative lookahead stopword list.
-  if (new RegExp(`\\b${areaMarker}\\s+(?!(?:${_areaStopAlt})\\b)[A-Za-z0-9][\\w-]*`, "i").test(s)) {
+  // 3. Area marker + a following PROPER-NOUN name token. Barangay, purok,
+  //    sitio and subdivision names are proper nouns, so the token after the
+  //    marker must start with a capital letter or a digit. A lowercase word is
+  //    ordinary prose ("complaint to the barangay about it", "barangay captain").
+  //    The check is case-sensitive; the marker and the stopword list are matched
+  //    case-insensitively through ciLiteral(), so "Captain" and "captain" are both
+  //    rejected as a name.
+  if (new RegExp(`\\b(?:${_areaMarkerCI})\\.?\\s+(?!(?:${_areaStopCI})\\b)[A-Z0-9][\\w-]*`).test(s)) {
     return true;
   }
   // 4. Labeled field with content
@@ -2009,7 +1328,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "id_label",
     label: "Government-Issued ID Field",
     reason: "Government-issued identifiers classified are classified as Sensitive Personal Information under RA 10173. Sharing these — even just the field label with a value — with an AI assistant transmits them to a third-party server where they may be logged or retained. These identifiers can be used for identity theft, benefit fraud, or account takeover.",
-    regex: /\b(?:sss|gsis|philhealth|pagibig|pag[- ]?ibig|tin|passport(?:\s?no(?:\.|\b))?|driver.?s?\s?licen[cs]e(?:\s?no(?:\.|\b))?|license\s?no|plate\s?no|student\s?id|employee\s?id|id\s?number|mother.?s?\s?maiden(?:\s?name)?|umid|postal\s?id|voter.?s?\s?id|national\s?id|philsys)\s*:[ \t]*.+/gi,
+    regex: /\b(?:sss|philhealth|passport(?:\s?no(?:\.|\b))?|license\s?no|plate\s?no|student\s?id|employee\s?id|id\s?number|mother.?s?\s?maiden(?:\s?name)?|umid|postal\s?id|national\s?id|philsys)\s*:[ \t]*.+/gi,
     risk: "high",
     validate: null,
     sanitize: (m) => {
@@ -2110,24 +1429,41 @@ const TRUSTPROMPT_PATTERNS = [
       // The negative lookahead blocks common connectors that may follow a comma
       // ("..., and the rent...") — needed because the /i flag makes [A-Z] match
       // any case, so without it a lowercase "and" could be consumed.
-      const NOT_CONNECTOR = "(?!(?:and|or|but|the|a|an|with|for|then|so|which|who|that|is|are|was|were)\\b)";
-      const CONT = "(?:\\s*,\\s*" + NOT_CONNECTOR + "(?:" + AREA + "\\.?\\s+)?[A-Z][\\w.-]*(?:\\s+[A-Z][\\w.-]*){0,2}){0,4}";
+      const NOT_CONNECTOR = "(?!(?:and|or|but|the|a|an|with|for|then|so|which|who|that|is|are|was|were|near|beside|behind|across|along|at|in|on|by|to|from|please|can|could|i|we|you|my|our|just|also)\\b)";
+      // Lookbehind placed before a token separator: the previous character must not
+      // be a sentence-ending ".", unless it closes an address abbreviation
+      // ("St.", "Brgy.", "Sto."). Without it the span ran past the sentence end:
+      // "...Cainta. I play guitar" was captured as "...Cainta. I play".
+      const NO_SENT_END = "(?<=\\b(?:Sto|Sta|St|Ave|Blvd|Rd|Dr|Ln|Hwy|Ext|Brgy|Subd|Bldg|Blk|Mt|Jr|Sr)\\.|[^.])";
+      const CONT = "(?:\\s*,\\s*" + NOT_CONNECTOR + "(?:" + AREA + "\\.?\\s+)?[A-Z][\\w.-]*(?:" + NO_SENT_END + "\\s+" + NOT_CONNECTOR + "[A-Z][\\w.-]*){0,2}){0,4}";
       return new RegExp(
         "(?:" +
           // A. number [unit run] name(s) street-type (+ continuation)
-          "\\b(?:Blk|Block|Lot|Unit|No)\\.?\\s*\\d+[A-Za-z]?(?:[,\\s]+(?:Blk|Block|Lot|Unit)\\.?\\s*\\d+[A-Za-z]?)*[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          // The street NAME is required ({1,3}): a bare "3 Dr." / "2 Ave" / "5 Ext"
+          // is a count + abbreviation ("3 Dr. appointments"), not an address.
+          "\\b(?:Blk|Block|Lot|Unit|No)\\.?\\s*\\d+[A-Za-z]?(?:[,\\s]+(?:Blk|Block|Lot|Unit)\\.?\\s*\\d+[A-Za-z]?)*[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
           "|" +
-          "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){0,3}" + STREET + "\\b\\.?" + CONT +
+          "\\b\\d+[A-Za-z]?[\\s,]+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
           "|" +
           // B. area marker + PROPER-NOUN name (+ continuation).
           //    AREA_STOP rejects a following common word so "barangay captain"
           //    and "barangay in Batanes" are NOT treated as an address.
-          "\\b" + AREA + "\\.?\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*(?:\\s+[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
+          //    Each extra name token is also checked against the stopword list so the
+          //    span stops before "is a" / "play basketball" instead of swallowing them.
+          "\\b" + AREA + "\\.?\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*(?:" + NO_SENT_END + "\\s+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*){0,2}" + CONT +
           "|" +
           // C. unit/building marker + a NUMERIC identifier (+ optional building name)
           //    The identifier must contain a digit (e.g. "4B", "5", "12") so common
           //    words like "Lot of", "Unit tests", "Block diagram" do NOT match.
-          "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+[A-Za-z]?(?:[,\\s]+[A-Za-z0-9][\\w.-]*){0,3}" +
+          //    Chained markers ("Lot 5 Block 3 Phase 2") and the following building /
+          //    subdivision name are kept in ONE span, then the continuation consumes
+          //    ", City, Province". Free tokens are stopword-guarded so "unit 4 tests
+          //    and ..." does not run on. The structural validator additionally
+          //    requires corroboration for a lone "Unit 4".
+          "\\b(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+(?:-?[A-Za-z])?" +
+            "(?:[,\\s]+(?:Unit|Blk|Block|Lot|Bldg|Building|Floor|Flr|Rm|Room|Phase)\\.?\\s*#?\\s*\\d+(?:-?[A-Za-z])?)*" +
+            "(?:" + NO_SENT_END + "[,\\s]+" + AREA_STOP + "[A-Za-z0-9][\\w.-]*){0,3}" +
+            "(?:\\s+" + STREET + "\\b\\.?)?" + CONT +
           "|" +
           // D. labeled address field
           // Only match if followed by typical address components:
@@ -2184,7 +1520,12 @@ const TRUSTPROMPT_PATTERNS = [
         if (wordAfterBrgy && wordAfterBrgy[1]) {
           wordsToCheck.add(wordAfterBrgy[1]);
         }
-        if (nextWordInText && nextWordInText[1]) {
+        // The word AFTER the match only matters for a bare "Brgy. X" mention. A
+        // full multi-part address ("45 Mabini St., Brgy. San Roque, Cainta.") ends
+        // at a sentence boundary, and the next sentence's first word ("I", "We",
+        // "She") says nothing about whether the span is an address.
+        const isSimpleAreaMention = !/[,\d]/.test(rawMatch);
+        if (nextWordInText && nextWordInText[1] && isSimpleAreaMention) {
           wordsToCheck.add(nextWordInText[1]);
         }
         
@@ -2208,6 +1549,9 @@ const TRUSTPROMPT_PATTERNS = [
           "have", "do", "does", "did", "should", "would", "could"
         ]);
         
+        // Share the structural validator's stopword list so both stay in step.
+        PH_AREA_FOLLOW_STOPWORDS.forEach(w => nonPlaceWords.add(w));
+
         // Check if any of the next words indicate this is NOT a place name
         for (const word of wordsToCheck) {
           if (nonPlaceWords.has(word)) {
@@ -2694,23 +2038,6 @@ const TRUSTPROMPT_PATTERNS = [
   },
 
   {
-    id: "ph_id_gsis",
-    label: "GSIS (Government Service Insurance System)",
-    reason: "GSIS number identifies government employees and their benefits under RA 10173. Used for government employee payroll and benefit administration, it is a critical identifier for the public sector workforce.",
-    regex: /(?:^|\s|[-().\[\]{}<>])(\d{4})[_\-\s]?(\d{7})[_\-\s]?(\d)(?:$|[\s,;:.!?\-().\[\]{}<>])/g,
-    risk: "high",
-    validate: null,
-    structuralValidate: structuralValidatePHID_GSIS,
-    sanitize: (m) => {
-      const digits = m.replace(/[^\d]/g, "");
-      if (digits.length === 10) {
-        return digits.slice(0, 4) + "-" + "*".repeat(5) + "-" + digits.slice(-1);
-      }
-      return "[REDACTED-GSIS]";
-    }
-  },
-
-  {
     id: "ph_id_sss",
     label: "SSS (Social Security System)",
     reason: "SSS number is a social insurance identifier linked to employment and benefits under RA 10173. Required for employee registration and benefit claims, it serves as a key employment identifier in the Philippines.",
@@ -2741,40 +2068,6 @@ const TRUSTPROMPT_PATTERNS = [
         return digits.slice(0, 2) + "-" + "*".repeat(9) + "-" + digits.slice(-1);
       }
       return "[REDACTED-PHILHEALTH]";
-    }
-  },
-
-  {
-    id: "ph_id_drivers_license",
-    label: "Driver's License (LTO)",
-    reason: "Driver's License issued by the Land Transportation Office (LTO) is a government-issued identification credential used for vehicle operation and identity verification under RA 10173. It contains personal information and driving privileges data.",
-    regex: /[A-Z]\d{2}-\d{2}-\d{6}/g,
-    risk: "high",
-    validate: null,
-    structuralValidate: null,
-    sanitize: (m) => {
-      const alphanumeric = m.replace(/[^A-Za-z0-9]/g, "");
-      if (alphanumeric.length >= 10) {
-        return alphanumeric.slice(0, 1) + "**-**-" + alphanumeric.slice(-3);
-      }
-      return "[REDACTED-DRIVERS-LICENSE]";
-    }
-  },
-
-  {
-    id: "ph_id_voters",
-    label: "Voter's ID (COMELEC)",
-    reason: "Voter's ID issued by the Commission on Elections (COMELEC) is a government-issued identification used for voting and electoral verification under RA 10173. It contains voter registration and personal identification data linked to electoral rolls.",
-    regex: /\d{4}-\d{2}-\d{8}-[A-Z]/g,
-    risk: "high",
-    validate: null,
-    structuralValidate: null,
-    sanitize: (m) => {
-      const parts = m.split("-");
-      if (parts.length === 4) {
-        return "****-**-" + parts[2].slice(-4) + "-" + parts[3];
-      }
-      return "[REDACTED-VOTERS-ID]";
     }
   },
 
@@ -3089,7 +2382,7 @@ const TRUSTPROMPT_PATTERNS = [
   },
 
   // ── ID-IN-CODE PATTERNS (TASK: Detect Government IDs in Code Contexts) ─────
-  // These patterns detect when government IDs (UMID, SSS, GSIS) appear in code
+  // These patterns detect when government IDs (UMID, SSS) appear in code
   // variable assignments, object literals, and function arguments.
   // This helps users understand they're sharing code with embedded credentials.
 
@@ -3145,31 +2438,6 @@ const TRUSTPROMPT_PATTERNS = [
     }
   },
 
-  // GSIS in variable assignment
-  // Example: const gsis = "1234-5678901-0";
-  {
-    id: "ph_id_gsis_variable_assignment",
-    label: "GSIS in Code Variable Assignment",
-    reason: "GSIS credential embedded in code variable assignment. Code containing government employee identifiers may be logged by AI platforms.",
-    regex: /(?:const|let|var)\s+(\w*(?:gsis|govt?_?employee|govt?_?id|civil_?service)\w*)\s*=\s*["']?(\d{4}-\d{7}-\d)["']?/gi,
-    risk: "high",
-    validate: null,
-    structuralValidate: (raw) => {
-      const digits = raw.match(/\d{4}-\d{7}-\d/)?.[0];
-      return digits ? structuralValidatePHID_GSIS(digits) : false;
-    },
-    sanitize: (m) => {
-      const varMatch = m.match(/(?:const|let|var)\s+(\w+)/);
-      const idMatch = m.match(/\d{4}-\d{7}-\d/);
-      const varName = varMatch ? varMatch[1] : "ID";
-      const idDigits = idMatch ? idMatch[0] : "";
-      if (idDigits) {
-        return `${varName}=${idDigits.slice(0, 4)}-${"*".repeat(5)}-${idDigits.slice(-1)}`;
-      }
-      return "[REDACTED-GSIS-ASSIGNMENT]";
-    }
-  },
-
   // ID in object literal
   // Example: {umid: "0111-3044737-0", name: "John"}
   // Example: {sss: "12-3456789-0", employeeInfo: {...}}
@@ -3178,7 +2446,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_object_literal",
     label: "Government ID in Object Literal",
     reason: "Government ID embedded in code object literal. This is a code pattern that will be visible to AI platforms, exposing your credential data structure.",
-    regex: /[{,]\s*(?:umid|sss|gsis|employee_?id|user_?id|emp_?id|govt?_?id|social_?security|identity_?number)\s*:\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d|\d{4}-\d{4}-\d{4}-\d{4})["']?/gi,
+    regex: /[{,]\s*(?:umid|sss|employee_?id|user_?id|emp_?id|govt?_?id|social_?security|identity_?number)\s*:\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d|\d{4}-\d{4}-\d{4}-\d{4})["']?/gi,
     risk: "high",
     validate: null,
     structuralValidate: (raw) => {
@@ -3192,7 +2460,7 @@ const TRUSTPROMPT_PATTERNS = [
       return false;
     },
     sanitize: (m) => {
-      const keyMatch = m.match(/(?:umid|sss|gsis|employee_?id|user_?id|emp_?id|id)\s*:\s*/i);
+      const keyMatch = m.match(/(?:umid|sss|employee_?id|user_?id|emp_?id|id)\s*:\s*/i);
       const idMatch = m.match(/(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d|\d{4}-\d{4}-\d{4}-\d{4})/);
       
       if (keyMatch && idMatch) {
@@ -3219,7 +2487,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_function_argument",
     label: "Government ID in Function Argument",
     reason: "Government ID passed as function argument in code. Function calls with credential data are logged by AI platforms, exposing your usage patterns.",
-    regex: /\w+\s*\(\s*[{,]?\s*(?:umid|sss|gsis|employee_?id|user_?id|id)\s*[:=]\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d)["']?/gi,
+    regex: /\w+\s*\(\s*[{,]?\s*(?:umid|sss|employee_?id|user_?id|id)\s*[:=]\s*["']?(\d{4}-\d{7}-\d|\d{2}-\d{7}-\d)["']?/gi,
     risk: "high",
     validate: null,
     structuralValidate: (raw) => {
@@ -3280,18 +2548,9 @@ if (typeof module !== 'undefined' && module.exports) {
     structuralValidateApiKey,
     structuralValidatePHID_UMID,
     structuralValidatePHID_SSS,
-    structuralValidatePHID_GSIS,
     structuralValidatePHID_Passport,
-    structuralValidatePHID_TIN,
-    structuralValidatePHID_DriversLicense,
     structuralValidatePHID_PhilHealth,
     structuralValidatePHID_PRC,
-    structuralValidatePHID_PSACertificate,
-    structuralValidatePHID_PagIBIG,
-    structuralValidatePHID_NBIClearance,
-    structuralValidatePHID_PoliceClearance,
-    structuralValidatePHID_BarangayClearance,
-    structuralValidatePHID_COMELECVoterID,
     structuralValidatePHID_PhilID,
     structuralValidatePHStreetAddress
   };

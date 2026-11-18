@@ -105,6 +105,10 @@ const LOAD_ORDER = [
   "terms-names-extra.js",
   "context-attribution.js",
   "validator-wrapper-worker.js",
+  "terms-medical.js",
+  "terms-financial.js",
+  "terms-organizations.js",
+  "terms-identity.js",
   "gazetteer.js",
   "linguistic-detector.js",
 ];

@@ -95,7 +95,16 @@
   const EXCLUSION_PATTERNS = [
     // Research / academic reference
     { id: "excl_research", category: "research",
-      pattern: /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper))\b/i },
+      pattern: /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper)|for\s+my\s+(?:thesis|research|paper|study|report))\b/i },
+    // Declared-hypothetical / sample data framing.
+    // Covers sentences that introduce a fake or illustrative example record:
+    //   "A sample fake record might read: …"
+    //   "Here is an example record: …"
+    //   "A faux patient record: …"
+    //   "This is test/dummy/mock data."
+    //   "Can you critique how realistic this sample is?"
+    { id: "excl_sample_data", category: "hypothetical",
+      pattern: /\b(?:sample\s+(?:fake\s+)?(?:record|data|entry|case|profile|example)|faux\s+(?:record|data|patient|entry|example)|mock\s+(?:record|data)|example\s+(?:record|data)|test\s+(?:data|case)|dummy\s+(?:data|record)|(?:might|could|would)\s+read\b|critique\s+(?:how|the)|how\s+realistic|this\s+is\s+(?:example|sample|test|dummy|faux|mock)\s+(?:data|record)?)\b/i },
     // Educational / informational inquiry
     { id: "excl_educational", category: "educational",
       pattern: /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about|reading\s+about|learning\s+about)\b/i },
@@ -246,6 +255,32 @@
     }
 
     if (suppressed) return decide(false, "exclusion_suppressed", suppressed.sentence, suppressed.entry);
+
+    // ── Document-level fallback ───────────────────────────────────────────
+    // The governance rules spec defines co-occurrence at prompt level, not
+    // sentence level. When a trigger and a context term appear in the same
+    // prompt but never in the same sentence (e.g. a person's name in the
+    // opening line and "my salary grade" in a closing request), the
+    // sentence loop above finds no co-occurrence sentence. Rather than
+    // blocking Rule 2 entirely, we do a document-level check: if the
+    // prompt contains at least one trigger text AND at least one context
+    // term, escalate — unless every sentence that contains a context term
+    // is individually suppressed by an exclusion pattern.
+    const anyTriggerInDoc = triggers.some(t => containsTerm(fullText, t)) || !!hasAnchor(fullText);
+    if (anyTriggerInDoc) {
+      // Check whether ALL context-bearing sentences are excluded.
+      const contextSentences = sentences.filter(s => contexts.some(t => containsTerm(s, t)));
+      if (contextSentences.length > 0) {
+        const allExcluded = contextSentences.every(s => matchExclusion(s) !== null);
+        if (allExcluded) {
+          const firstExcl = matchExclusion(contextSentences[0]);
+          return decide(false, "exclusion_suppressed", contextSentences[0], firstExcl);
+        }
+        // At least one context sentence is not excluded: escalate.
+        return decide(true, "no_exclusion_doc_level", contextSentences[0], null);
+      }
+    }
+
     return decide(false, "no_cooccurrence", null, null);
   }
 

@@ -95,10 +95,15 @@ const TrustNormalizer = (() => {
    *   - Restore standalone "I"
    */
   function toSentenceCase(str) {
+    // Capitalize the first letter of every word (title case per word) rather
+    // than only the sentence opener. When capsGuard fires on an all-caps prompt,
+    // pure sentence-case lowercases every name mid-sentence ("FATIMA ALI" →
+    // "fatima ali"), making them invisible to all regex paths that require an
+    // initial uppercase letter. Word-level title casing ("Fatima Ali") preserves
+    // the proper-noun signal Path C needs while still fixing the all-caps problem.
     return str
       .toLowerCase()
-      .replace(/^([a-z])/, c => c.toUpperCase())
-      .replace(/([.!?]\s+)([a-z])/g, (_, p, l) => p + l.toUpperCase())
+      .replace(/(?:^|(?<=[.!?\s]))([a-z])/gu, c => c.toUpperCase())
       .replace(/\bi\b/g, "I");
   }
 
@@ -111,8 +116,10 @@ const TrustNormalizer = (() => {
    * These are acronyms / ID labels that should stay uppercase.
    */
   function capsGuard(str) {
-    // Suppress for short all-caps labels (e.g. "TIN: 123", "API key")
-    if (/^[A-Z]{1,4}[^a-z]*$/.test(str.trim())) {
+    // Suppress for short all-caps labels (e.g. "TIN: 123", "API key").
+    // Guard: at most 4 uppercase letters, optionally followed by non-alpha chars,
+    // AND the whole string is short (≤ 10 chars) so it cannot be a sentence.
+    if (str.trim().length <= 10 && /^[A-Z]{1,4}[^a-z]*$/.test(str.trim())) {
       return { text: str, wasCapsConverted: false };
     }
     const fire = str.length > 10 && uppercaseRatio(str) > 0.70;

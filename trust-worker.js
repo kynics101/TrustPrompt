@@ -99,19 +99,11 @@ const BASE_SCORES = {
 
   // ── Philippine Government IDs (all score 10) ────────────────────────────
   ph_id_philid:              10,  // PhilID (PSA National ID)
-  ph_id_drivers_license:     10,  // Driver's License (LTO)
   ph_id_passport:            10,  // Passport (BI)
   ph_id_umid:                10,  // UMID (Unified Multi-Purpose ID)
   ph_id_sss:                 10,  // SSS (Social Security System)
-  ph_id_gsis:                10,  // GSIS (Government Service Insurance System)
   ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
-  ph_id_tin:                 10,  // TIN (Taxpayer Identification Number)
   ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
-  ph_id_nbi_clearance:       10,  // NBI Clearance
-  ph_id_police_clearance:    10,  // Police Clearance (PNP)
-  ph_id_psa_certificate:     10,  // PSA Certificate (Vital Records)
-  ph_id_barangay_clearance:  10,  // Barangay Clearance
-  ph_id_comelec_voter_id:    10,  // COMELEC Voter's ID
 
   email:            5,
   ph_mobile:        5,
@@ -152,19 +144,11 @@ const ENTITY_TIER = {
 
   // ── Philippine Government IDs (all critical tier) ────────────────────────
   ph_id_philid:              "critical",  // PhilID (PSA National ID)
-  ph_id_drivers_license:     "critical",  // Driver's License (LTO)
   ph_id_passport:            "critical",  // Passport (BI)
   ph_id_umid:                "critical",  // UMID (Unified Multi-Purpose ID)
   ph_id_sss:                 "critical",  // SSS (Social Security System)
-  ph_id_gsis:                "critical",  // GSIS (Government Service Insurance System)
   ph_id_prc:                 "critical",  // PRC (Professional Regulation Commission)
-  ph_id_tin:                 "critical",  // TIN (Taxpayer Identification Number)
   ph_id_philhealth:          "critical",  // PhilHealth (Health Insurance)
-  ph_id_nbi_clearance:       "critical",  // NBI Clearance
-  ph_id_police_clearance:    "critical",  // Police Clearance (PNP)
-  ph_id_psa_certificate:     "critical",  // PSA Certificate (Vital Records)
-  ph_id_barangay_clearance:  "critical",  // Barangay Clearance
-  ph_id_comelec_voter_id:    "critical",  // COMELEC Voter's ID
 
   email:            "significant",  // FIXED: Should be "significant", not "direct"
   ph_mobile:        "significant",  // FIXED: Should be "significant", not "direct"
@@ -269,6 +253,10 @@ const FIRST_PERSON_ANCHORS = [
   /\bi\s+(?:earn|owe|make)\b/i,
   /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
   /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
+  // Contraction forms of the "I am" anchors above ("I'm" = "I am").
+  /\bi['’]m\s+diagnosed\b/i,
+  /\bi['’]m\s+(?:taking|on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
+  /\bi['’]m\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
 ];
 
 // ── Rule 2 — Contextual exclusion filter (mirror of scanner.js) ───────────────
@@ -279,7 +267,9 @@ const FIRST_PERSON_ANCHORS = [
 // and the numeric base score are unchanged.
 const EXCLUSION_PATTERNS = [
   // Research / academic reference
-  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper))\b/i,
+  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper)|for\s+my\s+(?:thesis|research|paper|study|report))\b/i,
+  // Declared-hypothetical / sample data framing (mirrors context-attribution.js excl_sample_data)
+  /\b(?:sample\s+(?:fake\s+)?(?:record|data|entry|case|profile|example)|faux\s+(?:record|data|patient|entry|example)|mock\s+(?:record|data)|example\s+(?:record|data)|test\s+(?:data|case)|dummy\s+(?:data|record)|(?:might|could|would)\s+read\b|critique\s+(?:how|the)|how\s+realistic|this\s+is\s+(?:example|sample|test|dummy|faux|mock)\s+(?:data|record)?)\b/i,
   // Educational / informational inquiry
   /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about)\b/i,
   // General discussion
@@ -399,6 +389,122 @@ function preliminaryClass(score) {
 //
 // Rule 4 — No governance rule applies → retain preliminary
 
+// ── Organization attribution (scoring gate; mirrors scanner.js) ───────────────
+// An organization is scored only when the sentence ties it to the writer
+// ("my company X", "I work at X", "I am a member of X"). A third-party or
+// general mention is detected and shown with no score.
+const ORG_AFFILIATION_BEFORE_RE = new RegExp(
+  "\\b(?:my|our|mine)\\s+(?:[\\w'’-]+\\s+){0,2}?" +
+    "(?:company|employer|workplace|office|school|university|college|organization|team|firm|church|association|club|agency|hospital|clinic|branch|department|unit|group)\\b[^.!?\\n]*$" +
+  "|" +
+  "\\b(?:i|we)\\s+(?:" +
+    "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired)\\b" +
+    "|(?:am|was|are|were)\\s+(?:(?:a|an|the)\\s+)?" +
+      "(?:(?:member|members|employee|employees|staff|student|students|intern|interns|volunteer|volunteers|alumni|alumnus|alumna|graduate|graduates)\\s+(?:of|at|with|for)\\b" +
+      "|(?:hired|employed|recruited)\\s+(?:by|at)\\b)" +
+  ")[^.!?\\n]*$" +
+  // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
+  "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
+  "i"
+);
+function isAttributedOrganization(fullText, name) {
+  if (!fullText || !name) return false;
+  const lower = fullText.toLowerCase();
+  const needle = name.trim().toLowerCase();
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const sentenceStart = Math.max(lower.lastIndexOf('.', i - 1), lower.lastIndexOf('!', i - 1),
+                                   lower.lastIndexOf('?', i - 1), lower.lastIndexOf('\n', i - 1)) + 1;
+    if (ORG_AFFILIATION_BEFORE_RE.test(fullText.slice(sentenceStart, i))) return true;
+  }
+  return false;
+}
+// Labeled record fields (mirrors scanner.js): the value of a "Company:" field in a
+// multi-field record that is not a hiring notice is an attributed organization.
+const RECORD_FIELD_LABEL_RE = /(?:^|[\n.;|]|\s)\s*[A-Za-z][A-Za-z ]{1,24}\s*[:=]\s*\S/g;
+const RECORD_ORG_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:company|employer|organi[sz]ation|workplace|agency|affiliation)\s*[:=]\s*$/i;
+const RECORD_HIRING_RE = /\b(?:hiring|vacanc(?:y|ies)|job\s+(?:opening|openings|posting|ad|advert(?:isement)?)|now\s+accepting|apply\s+(?:now|here|at|by|online)|applicants?|we\s+are\s+looking\s+for|qualifications?|requirements?)\b/i;
+function isRecordFieldValue(fullText, name, labelRe) {
+  if (!fullText || !name) return false;
+  if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+  if (RECORD_HIRING_RE.test(fullText)) return false;
+  const lower = fullText.toLowerCase();
+  const needle = name.trim().toLowerCase();
+  if (!needle) return false;
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    if (labelRe.test(fullText.slice(Math.max(0, i - 40), i))) return true;
+  }
+  return false;
+}
+// ── Personal attributes (scoring gate; mirrors scanner.js) ───────────────────
+// Age, height, weight, eye color, blood type and sex are scored only when the
+// sentence ties the value to the writer ("I'm 25", "I weigh 70 kg", "my height
+// is 170 cm") or the value belongs to a labeled record field ("Age: 25" in a
+// record with at least two labeled fields that is not a hiring notice).
+// Third-person / generic mentions are detected and shown but add no score.
+// Only age_value currently has a base score in this file's BASE_SCORES.
+const PERSONAL_ATTRIBUTE_IDS = new Set([
+  "age_value",
+  "height_mention",
+  "weight_mention",
+  "eye_color_mention",
+  "blood_type_mention",
+  "sex_mention",
+]);
+const ATTR_MAX_TAIL_WORDS = 6;
+const ATTR_LEAD_RE = /\b(?:i['’]?m|i\s+am|i\s+was|i['’]ll\s+be|i\s+will\s+be|i\s+(?:just\s+)?turn(?:ed|ing|s)?|i['’]ll\s+turn|i\s+will\s+turn|i\s+weigh(?:ed)?|i\s+stand|i\s+measure[ds]?)\b/gi;
+const ATTR_LEAD_HAVE_RE = /\b(?:i\s+have|i['’]ve(?:\s+got)?|i\s+had|i\s+got)\b/gi;
+const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?|sex|gender)\b/gi;
+const ATTR_NON_SELF_WORDS = new Set([
+  "my", "his", "her", "hers", "their", "our", "your", "he", "she", "they", "we", "you",
+  "the", "this", "that", "these", "those", "its", "it", "who", "whom", "whose", "which",
+]);
+const RECORD_ATTR_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:age|sex|gender|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?)\s*[:=]\s*(?:[^\n;|.]|\.(?=\d)){0,24}$/i;
+
+function attrTailIsSelf(prefix, re) {
+  const rx = new RegExp(re.source, re.flags);
+  let m;
+  while ((m = rx.exec(prefix)) !== null) {
+    if (m[0] === "") { rx.lastIndex++; continue; }
+    const tail = prefix.slice(m.index + m[0].length).trim();
+    const words = tail ? tail.split(/\s+/) : [];
+    if (words.length > ATTR_MAX_TAIL_WORDS) continue;
+    if (words.some(w => ATTR_NON_SELF_WORDS.has(w.toLowerCase().replace(/[^a-z']/g, "")))) continue;
+    return true;
+  }
+  return false;
+}
+function isAttributeRecordValue(fullText, end) {
+  if ((fullText.match(RECORD_FIELD_LABEL_RE) || []).length < 2) return false;
+  if (RECORD_HIRING_RE.test(fullText)) return false;
+  return RECORD_ATTR_LABEL_RE.test(fullText.slice(Math.max(0, end - 60), end));
+}
+function isAttributedPersonalAttribute(fullText, f) {
+  const name = f && f.rawMatch;
+  if (!fullText || !name) return false;
+  const lower = fullText.toLowerCase();
+  const needle = String(name).trim().toLowerCase();
+  if (!needle) return false;
+  const allowHave = f.patternId === "eye_color_mention" || f.patternId === "blood_type_mention";
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const end = i + needle.length;
+    const upto = fullText.slice(0, end);
+    const boundary = /[\s\S]*(?:[.!?]+\s+|\n)/.exec(upto);
+    const prefix = boundary ? upto.slice(boundary[0].length) : upto;
+    if (attrTailIsSelf(prefix, ATTR_LEAD_RE)) return true;
+    if (attrTailIsSelf(prefix, ATTR_POSSESSIVE_RE)) return true;
+    if (allowHave && attrTailIsSelf(prefix, ATTR_LEAD_HAVE_RE)) return true;
+    if (isAttributeRecordValue(fullText, end)) return true;
+  }
+  return false;
+}
+
+function isScorableFinding(f, fullText) {
+  if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
+  if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+  if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
+  return true;
+}
+
 function evaluateGovernance(findings, preliminary, fullText) {
 
   // ── Rule 1: validated critical entity → HIGH ────────────────────────────
@@ -438,7 +544,7 @@ function evaluateGovernance(findings, preliminary, fullText) {
   // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
   // Condition: every *scored* entity (BASE_SCORES > 0) has a base score of
   // exactly 2, meaning no Moderate (5) or Critical (10) entity is present.
-  const scoredFindings = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+  const scoredFindings = findings.filter(f => isScorableFinding(f, fullText));
   const hasAnyScoredEntity = scoredFindings.length > 0;
   const allLowImpact = scoredFindings.every(
     f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -468,7 +574,7 @@ function finalClass(preliminary, governance) {
 // ── Main scoring function ─────────────────────────────────────────────────────
 
 function computeRiskScore(findings, fullText) {
-  const scorable = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0);
+  const scorable = findings.filter(f => isScorableFinding(f, fullText));
 
   // ── No scored entities ──────────────────────────────────────────────────
   // Normally No Detected Risk — except the Rule 2 anchor-only path: an
@@ -611,6 +717,12 @@ function runPathA(normalisedText) {
 
 // ── Merge + deduplicate ───────────────────────────────────────────────────────
 
+// Credential types where one secret can be matched by several regex alternatives
+// with different spans (bare value vs. labelled assignment). Same set as scanner.js.
+const CREDENTIAL_CONTAINMENT_IDS = new Set([
+  'api_key', 'aws_key', 'github_token', 'jwt', 'connection_string', 'private_key'
+]);
+
 function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings = []) {
   // ── Deduplicate per (patternId × rawMatch) pair ──────────────────────────────
   //
@@ -639,6 +751,20 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
   // organization name.
   const merged = [...seen.values()];
   return merged.filter(f => {
+    // ── Credential containment: one secret, two matches ─────────────────────
+    // Same rule as scanner.js: keep only the widest span per credential type when
+    // a bare vendor-prefix match is a substring of a labelled match for one secret.
+    if (CREDENTIAL_CONTAINMENT_IDS.has(f.patternId)) {
+      const selfText = f.rawMatch.trim();
+      const hasWiderSpan = merged.some(other =>
+        other !== f &&
+        other.patternId === f.patternId &&
+        other.rawMatch.trim() !== selfText &&
+        other.rawMatch.trim().includes(selfText)
+      );
+      if (hasWiderSpan) return false;
+    }
+
     if (f.patternId === 'ph_address') {
       const self = f.rawMatch.trim().toLowerCase();
       const hasLongerAddress = merged.some(other =>
@@ -668,6 +794,17 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
         other.rawMatch.trim().toLowerCase().includes(frag)
       );
       if (insideAddress) return false;
+    }
+
+    // Financial and health context words inside an organization name are part of
+    // the name, not a disclosure about the writer (mirrors scanner.js).
+    if (f.patternId === 'gazetteer_financial' || f.patternId === 'gazetteer_medical' ||
+        f.patternId === 'trigger_financial' || f.patternId === 'trigger_health') {
+      const term = f.rawMatch.trim().toLowerCase();
+      const inOrganization = merged.some(other =>
+        other.patternId === 'nlp_organization' && other.rawMatch &&
+        other.rawMatch.trim().toLowerCase().includes(term));
+      if (inOrganization) return false;
     }
     return true;
   });

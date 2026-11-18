@@ -1,4 +1,4 @@
-// linguistic-detector.js — PATH C: Linguistic-based PII detection using compromise.js
+﻿// linguistic-detector.js — PATH C: Linguistic-based PII detection using compromise.js
 //
 // This module uses NLP (tokenization, POS tagging, NER) to detect broad PII
 // categories that are too variable for regex or gazetteer approaches:
@@ -144,6 +144,16 @@ const TrustLinguisticDetector = (() => {
     'existing', 'existing', 'pending', 'rising', 'falling', 'growing', 'declining',
     'increasing', 'decreasing', 'maintaining', 'controlling', 'monitoring', 'tracking',
     'measuring', 'assessing', 'evaluating', 'analyzing', 'designing', 'engineering',
+
+    // ★ Common gerunds that appear after self-intro anchors ("I am applying", "I am looking",
+    // "I'm trying", etc.). These must be in the static list so the ok2 guard in
+    // extractLowercaseSelfIntros rejects them without depending on Compromise tags.
+    'applying', 'looking', 'trying', 'hoping', 'wanting', 'waiting', 'entering',
+    'starting', 'finishing', 'joining', 'leaving', 'returning', 'traveling',
+    'visiting', 'attending', 'seeking', 'requesting', 'submitting', 'preparing',
+    'studying', 'teaching', 'learning', 'reading', 'writing', 'thinking', 'asking',
+    'speaking', 'listening', 'watching', 'playing', 'eating', 'drinking', 'sleeping',
+    'sending', 'receiving', 'checking', 'verifying', 'filling', 'signing', 'paying',
     
     // ★ NEW: Common verbs in past tense (avoid "Worked X", "Lived Y" → X, Y as names)
     'worked', 'lived', 'played', 'called', 'named', 'heard', 'seen', 'found', 'left',
@@ -625,7 +635,7 @@ const TrustLinguisticDetector = (() => {
       'my ', 'your ', 'their ', 'her ', 'his ', 'our ',
       'be a ', 'become a ', 'hired as ',
       ...JOB_BECAME_TRIGGERS,
-      "i'm a ", "i'm an ",                   // ★ FIX: Added "i'm an" variant
+      "i'm a ", "i'm an ", "i'm the ",       // ★ FIX: Added "i'm an" variant; "i'm the" mirrors "am the"
       "you're a ", "you're an ",             // ★ FIX: Added "you're an" variant
       "they're a ", "they're an ",           // ★ FIX: Added "they're an" variant
       "he's a ", "she's a ", "she's an "     // ★ FIX: Added he/she contractions
@@ -929,12 +939,54 @@ const TrustLinguisticDetector = (() => {
   // word ("Bread and Butter Pudding", "Maria and Ben Santos") is left to the other passes. Pairs of ordinary nouns ("Salt and Pepper") fail on X.
   // Languages and nationalities (a small data list kept inside Path C; Path B's list in gazetteer.js is private and is not touched). A bare language
   // or nationality word is not a person in the directive pass ("translate to Tagalog", "for Spanish learners") or the pair pass ("English and Spanish").
-  const G_LANG_NAT = new Set(('english french spanish german italian portuguese dutch russian polish czech hungarian romanian greek turkish arabic hebrew persian farsi ' +
-    'hindi urdu bengali tamil telugu punjabi nepali sinhala thai lao khmer vietnamese burmese malay indonesian filipino tagalog pilipino cebuano bisaya ilocano ilokano ' +
-    'hiligaynon waray kapampangan pangasinan bicolano chavacano tausug maranao maguindanao mandarin cantonese hokkien chinese japanese korean mongolian swahili zulu xhosa ' +
-    'yoruba igbo hausa amharic somali afrikaans latin swedish norwegian danish finnish icelandic ukrainian serbian croatian bulgarian ' +
-    'american british canadian australian mexican brazilian argentine chilean colombian peruvian venezuelan cuban indian pakistani bangladeshi egyptian nigerian kenyan ghanaian ' +
-    'ethiopian moroccan iranian iraqi israeli saudi emirati qatari irish scottish welsh swiss austrian belgian singaporean taiwanese').split(' '));
+  // Nationality adjectives only — language names removed.
+  // Purpose: prevent these words from being treated as person names in name-pair,
+  // directive, and self-intro detection (extractNamePairsWithAnd, extractLowercaseSelfIntros,
+  // extractLowercaseCuedNames). Keep in sync with NATIONALITY_WORDS / NATIONALITY_PHRASES
+  // in gazetteer.js — if a word is there it should be here too.
+  // NOTE: Ethnic-group identifiers (ilocano, cebuano, kapampangan, waray, etc.) intentionally
+  // excluded — they are detected as ethnic-origin context indicators, not nationalities,
+  // and must not silently suppress name detection in unrelated prompts.
+  const G_LANG_NAT = new Set([
+    // ── Philippines ───────────────────────────────────────────────────────────
+    'filipino', 'filipina', 'pilipino', 'pilipina', 'philipino', 'philipina',
+    'fillipino', 'fillipina', 'philippino', 'pinoy', 'pinay',
+    // ── Southeast Asia ────────────────────────────────────────────────────────
+    'indonesian', 'malaysian', 'singaporean', 'vietnamese', 'burmese', 'myanmarese',
+    'cambodian', 'laotian', 'taiwanese', 'hongkonger', 'bruneian', 'timorese',
+    // ── East / South / Central Asia ───────────────────────────────────────────
+    'chinese', 'japanese', 'korean', 'mongolian', 'kazakhstani', 'uzbekistani',
+    'indian', 'pakistani', 'bangladeshi', 'nepali', 'nepalese',
+    // ── Oceania ───────────────────────────────────────────────────────────────
+    'australian', 'fijian', 'samoan',
+    // ── Americas ──────────────────────────────────────────────────────────────
+    'american', 'canadian', 'mexican', 'brazilian', 'colombian',
+    'argentinian', 'argentine', 'peruvian', 'chilean', 'venezuelan',
+    'bolivian', 'ecuadorian', 'paraguayan', 'uruguayan',
+    'guatemalan', 'honduran', 'salvadoran', 'nicaraguan',
+    'cuban', 'jamaican', 'haitian', 'trinidadian', 'guyanese', 'panamanian',
+    // ── Europe ────────────────────────────────────────────────────────────────
+    'british', 'scottish', 'welsh', 'irish',
+    'german', 'spanish', 'italian', 'portuguese',
+    'belgian', 'swiss', 'swedish', 'norwegian', 'danish', 'finnish',
+    'ukrainian', 'russian', 'greek', 'turkish',
+    'austrian', 'czech', 'slovak', 'croatian', 'serbian',
+    'slovenian', 'bulgarian', 'romanian', 'hungarian', 'latvian',
+    'lithuanian', 'estonian', 'macedonian', 'montenegrin',
+    'icelandic', 'maltese', 'cypriot',
+    'albanian', 'azerbaijani', 'armenian', 'georgian',
+    'belarusian', 'moldovan',
+    // ── Middle East ───────────────────────────────────────────────────────────
+    'emirati', 'qatari', 'kuwaiti', 'omani',
+    'iranian', 'iraqi', 'syrian', 'yemeni', 'lebanese',
+    'jordanian', 'palestinian', 'israeli', 'afghan',
+    // ── Africa ────────────────────────────────────────────────────────────────
+    'egyptian', 'libyan', 'tunisian', 'moroccan', 'algerian',
+    'sudanese', 'nigerian', 'kenyan', 'ghanaian', 'ethiopian',
+    'tanzanian', 'ugandan', 'rwandan', 'cameroonian', 'senegalese',
+    'zambian', 'zimbabwean', 'namibian', 'mozambican', 'angolan',
+    'congolese', 'somali',
+  ]);
   const G_AND_VERB_RE =/\b(?:thank(?:s|ed|ing)?|contact(?:s|ed|ing)?|e-?mail(?:s|ed|ing)?|tell(?:s|ing)?|told|ask(?:s|ed|ing)?|call(?:s|ed|ing)?|meet(?:s|ing)?|met|remind(?:s|ed|ing)?|invite[sd]?|inviting)\b/i;
   const G_AND_REL_RE = /\b(?:friends?|classmates?|schoolmates?|colleagues?|co-?workers?|teammates?|cousins?|sisters?|brothers?|siblings?|twins?|aunt|uncle|nephew|niece|mother|father|mom|dad|parents?|son|daughter|children|kids?|wife|husband|spouse|partner|boyfriend|girlfriend|fianc[eé]e?|neighbou?rs?|roommates?|housemates?|grandparents?|grandmother|grandfather|godparents?|in-laws?|relatives?|family)\b/i;
   const G_AND_TRAIL_RE = /^\s*(?:(?:are|were)\s+both\b|both\b|(?:said|says|told|asked|replied|wrote|works?|worked|lives?|lived|went|came|arrived|joined|presented|attended|left|called|live|work)\b)/i;
@@ -981,7 +1033,10 @@ const TrustLinguisticDetector = (() => {
       let m;
       while ((m = re.exec(text)) !== null) {
         const t1 = m[1], t2 = m[2];
-        const ok1 = nameHasPersonTag(isolatedNameTags(t1)) || (!strict && !isOrdinaryNonNameWord(t1) && !isPlaceOrOrgWord(t1));
+        // Reject nationality / language / ethnic-group words (e.g. "ilocano", "cebuano", "filipino") as the name token.
+        // G_LANG_NAT is already used for this purpose in extractNamePairsWithAnd and extractLowercaseCuedNames; this closes the same gap here.
+        if (G_LANG_NAT.has(t1.toLowerCase())) continue;
+        const ok1 = nameHasPersonTag(isolatedNameTags(t1)) || isKnownGivenName(t1) || (!strict && !isOrdinaryNonNameWord(t1) && !isPlaceOrOrgWord(t1));
         if (!ok1) continue;
         const ok2 = t2 && !isOrdinaryNonNameWord(t2) && !isPlaceOrOrgWord(t2) && t2.length >= 2;
         if (strict && !ok2) continue;
@@ -990,6 +1045,97 @@ const TrustLinguisticDetector = (() => {
         if (findings.some(f => f.rawMatch && f.rawMatch.toLowerCase() === name.toLowerCase())) continue;
         findings.push({ patternId: 'nlp_person_name', label: 'Person Name (Lowercase intro)', risk: 'low', rawMatch: name, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'lowercase_self_intro' });
       }
+    }
+  }
+
+  // Stage h. Names written in lowercase (or in mixed case) with a person cue next to them: "message from rodel aquino of pldt",
+  // "please ask maria santos", "thank you ana lim", "ma. cristina de la cruz of bdo". Every other name pass keys on Title Case, so a
+  // chat message typed in lowercase produced no person at all. The evidence is deliberately two-sided, because a lowercase run has no
+  // capital letter to vouch for it:
+  //   (1) a CUE next to the run: a person-directed verb or preposition before it (from, to, for, with, by, ask, tell, call, thank you,
+  //       "my manager is"...), a verb of speech / work right after it, "of / from / at <known organization>" right after it, or an
+  //       existing person finding that the run extends (a name already accepted but truncated at a lowercase surname);
+  //   (2) DICTIONARY evidence on every word: the first word is a known given name and each following word a known name word
+  //       (surname particles such as "de la" / "dela" are allowed between them), none of them an ordinary non-name word.
+  // Not reported: a run followed by a street / campus / organization head word ("rosa santos street", "maria santos hospital"), a run
+  // inside an e-mail address or path, and a run made only of Title-Case words (the Title-Case passes own those).
+  function extractLowercaseCuedNames(text, findings) {
+    if (!NAMES_DICT_AVAILABLE || !text) return;
+    // built per call: PERSON_DIRECTED_BEFORE_RE is declared later in this file (it is not yet initialised when the module loads)
+    // LC_REL_NOUN_CUE: catches relational-noun introductions like "my cousin [name]", "her husband [name]",
+    // "their son [name]". The relational noun sits directly before the name run, so the 50-char window ends at the noun.
+    const LC_REL_NOUN_CUE = /\b(?:my|our|his|her|their|the)\s+(?:cousin|husband|wife|brother|sister|son|daughter|mother|father|mom|dad|uncle|aunt|nephew|niece|grandfather|grandmother|grandma|grandpa|godfather|godmother|godson|goddaughter|partner|boyfriend|girlfriend|spouse|friend|classmate|colleague|co-worker|teammate|neighbor|neighbour|roommate|housemate|relative|sibling|twin)\s+$/iu;
+    const LC_NAME_BEFORE_CUES = [
+      G_B_BEFORE_CUE_RE, PERSON_DIRECTED_BEFORE_RE, G_B_PREP_CUE_RE,
+      /\bthank(?:s|\s+you)\s+$/i,
+      /\b(?:my|our|his|her|their)\s+(?:[\p{L}''-]+\s+){0,5}(?:is|was)\s+$/iu,
+      LC_REL_NOUN_CUE,
+    ];
+    const TOK = String.raw`\p{L}[\p{L}\p{M}]*(?:[-'’]\p{L}[\p{L}\p{M}]*)*`;
+    const tokRe = new RegExp(TOK, 'gu');
+    const toks = [];
+    let m;
+    while ((m = tokRe.exec(text)) !== null) toks.push({ w: m[0], s: m.index, e: m.index + m[0].length });
+
+    const validName = (w, first) => {
+      const lw = w.toLowerCase();
+      if (/\d/.test(w) || NON_NAME_WORDS.has(lw) || INTERNAL_FUNCTION_WORDS.has(lw) || G_LANG_NAT.has(lw)) return false;
+      if (!(first ? isKnownGivenName(w) : isKnownNameWord(w))) return false;
+      return nameHasPersonTag(isolatedNameTags(w)) || !isOrdinaryNonNameWord(w);
+    };
+
+    for (let i = 0; i < toks.length; i++) {
+      const t0 = toks[i];
+      const prevCh = t0.s > 0 ? text[t0.s - 1] : '';
+      if (prevCh && /[@./\\_\-\p{L}\p{M}\d]/u.test(prevCh)) continue;            // inside an address, path or longer word
+
+      // optional "Ma." lead (Maria): kept in the span, not counted as a name word
+      let k = i, lead = false;
+      if (t0.w.toLowerCase() === 'ma' && text.slice(t0.e, t0.e + 2) === '. ' && toks[i + 1]) { lead = true; k = i + 1; }
+
+      // greedy run of single-space-separated name words, particles allowed between them
+      const run = [];
+      let prevEnd = lead ? toks[k - 1].e + 1 : -1, core = 0;
+      for (let j = k; j < toks.length; j++) {
+        const tk = toks[j];
+        if (run.length && text.slice(prevEnd, tk.s) !== ' ') break;
+        const isParticle = RUN_PARTICLE_WORDS.has(tk.w.toLowerCase()) && core >= 1;
+        if (isParticle) { run.push({ tk, particle: true }); prevEnd = tk.e; continue; }
+        if (core >= 4 || !validName(tk.w, core === 0)) break;
+        run.push({ tk, particle: false }); core++; prevEnd = tk.e;
+      }
+      while (run.length && run[run.length - 1].particle) run.pop();               // a run cannot end on "de" / "la"
+      if (core < 2 || run.filter(r => !r.particle).length < 2) continue;
+
+      const first = lead ? toks[i] : run[0].tk, last = run[run.length - 1].tk;
+      // Title-Case-only runs belong to the other passes; here at least one word must be lowercase
+      if (!run.some(r => /^\p{Ll}/u.test(r.tk.w))) continue;
+
+      const span = text.slice(first.s, last.e);
+      const before = text.slice(Math.max(0, first.s - 50), first.s);
+      const after = text.slice(last.e, last.e + 60);
+      const nextWord = (after.match(/^\s+([\p{L}][\p{L}\p{M}'’.-]*)/u) || [])[1];
+      if (nextWord) {
+        const nw = nextWord.toLowerCase().replace(/\.$/, '');
+        if (STREET_HEAD_WORDS.has(nw) || RUN_ORG_HEAD_WORDS.has(nw) || STRONG_ORG_HEAD_WORDS.has(nw)) continue;
+      }
+
+      const orgAfter = after.match(/^\s*,?\s*(?:of|from|at)\s+(?:the\s+)?([\p{L}&][\p{L}\p{M}&'’-]*)/iu);
+      const extendsExisting = findings.some(f => f.patternId === 'nlp_person_name' && f.rawMatch &&
+        span.toLowerCase().startsWith(f.rawMatch.trim().toLowerCase()) && f.rawMatch.trim().length < span.length);
+      const cued = LC_NAME_BEFORE_CUES.some(re => re.test(before)) || G_B_AFTER_CUE_RE.test(after) ||
+        !!(orgAfter && EXTENSIVE_ORGANIZATIONS.has(orgAfter[1].toLowerCase())) || extendsExisting;
+      if (!cued) continue;
+
+      const low = span.toLowerCase();
+      if (findings.some(f => f.patternId === 'nlp_person_name' && f.rawMatch && f.rawMatch.trim().toLowerCase() === low)) { i = toks.indexOf(last); continue; }
+      // the run supersedes any shorter person finding it contains (a name truncated at its lowercase surname)
+      for (let x = findings.length - 1; x >= 0; x--) {
+        const f = findings[x];
+        if (f.patternId === 'nlp_person_name' && f.rawMatch && low.includes(f.rawMatch.trim().toLowerCase())) findings.splice(x, 1);
+      }
+      findings.push({ patternId: 'nlp_person_name', label: 'Person Name (Lowercase cued)', risk: 'low', rawMatch: span, safeVersion: '[NAME REDACTED]', source: 'C_linguistic', extractionMethod: 'lowercase_cued_name', validated: false });
+      i = toks.indexOf(last);
     }
   }
 
@@ -1283,6 +1429,16 @@ const TrustLinguisticDetector = (() => {
       if (looksLikePlaceName(potentialName)) {
         continue;
       }
+
+      // ★ NEW GUARD: Reject religion/identity terms (e.g., "Roman Catholic")
+      // These are detected by the gazetteer as gazetteer_religion or gazetteer_nationality,
+      // not as person names. TrustIdentityTerms is available from terms-identity.js.
+      if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(potentialName)) {
+        console.debug(`[PATH_C/NAMES] Filtered - identity term: "${potentialName}"`);
+        continue;  // Skip religion/identity terms like "Roman Catholic", "Filipino"
+      } else if (typeof TrustIdentityTerms === 'undefined') {
+        console.debug(`[PATH_C/NAMES] ⚠️  TrustIdentityTerms not available for "${potentialName}"`);
+      }
       
       // Heuristic 1: Name must be 3+ characters (lowered from 4 to catch more names)
       if (potentialName.length < 3) continue;
@@ -1312,6 +1468,100 @@ const TrustLinguisticDetector = (() => {
     }
     
     return names;
+  }
+
+  // ── Comma-appositive role construct extractor ──────────────────────────────
+  //
+  // Handles patterns of the form:
+  //   "[role-word] [firstname] [lastname], [job-title] at [org]"
+  //   e.g. "customer jenny lim, teacher at ateneo"
+  //        "patient maria santos, nurse at pgh"
+  //
+  // These are common in support-ticket / case-note text where names appear in
+  // all-lowercase, so the standard Title-Case-requiring extractors miss them.
+  //
+  // Role-words are nouns that immediately precede a person's name in this context
+  // (customer, client, patient, subscriber, member, user, employee, applicant,
+  // complainant, vendor, supplier, contractor, student, resident, claimant).
+  //
+  // Returns an array of { name, jobTitle, org } objects. All three fields may be
+  // undefined if not present. Only the fields that were actually matched are set.
+  const TICKET_ROLE_WORDS = new Set([
+    'customer', 'client', 'patient', 'subscriber', 'member', 'user',
+    'employee', 'applicant', 'complainant', 'vendor', 'supplier',
+    'contractor', 'student', 'resident', 'claimant', 'account holder',
+    'caller', 'sender', 'recipient', 'buyer', 'seller',
+  ]);
+
+  /**
+   * Extract person name, job title, and organization from comma-appositive
+   * constructs: "[role-word] [firstname] [lastname], [job-title] at [org]"
+   *
+   * Designed for all-lowercase text (support tickets, case notes, chat logs)
+   * where the standard Title-Case patterns in extractPersons miss the name.
+   *
+   * @param {string} text - normalized text (may be mixed/lowercase)
+   * @returns {Array<{name: string|undefined, jobTitle: string|undefined, org: string|undefined}>}
+   * @private
+   */
+  function extractAppositiveRoleConstruct(text) {
+    if (!text) return [];
+    const results = [];
+
+    // Build a single alternation from TICKET_ROLE_WORDS
+    const roleAlt = [...TICKET_ROLE_WORDS].map(w => w.replace(/\s+/, '\\s+')).join('|');
+
+    // Pattern: "[role-word] [word1] [word2], [job-title-word(s)] at [org-word(s)]"
+    // The comma-appositive may or may not include an "at [org]" part.
+    // Name: 1–3 consecutive word characters (lowercase or title-case)
+    // Job title: 1–3 words — the continuation stops before the literal word "at"
+    //   so "teacher at ateneo" splits correctly: job="teacher", org="ateneo".
+    //   The negative lookahead (?!at\b) prevents "at" from being consumed as a
+    //   job-title word, forcing the optional "at [org]" branch to match instead.
+    // Org: 1–4 words, terminated by comma, sentence boundary, or end of string
+    const pattern = new RegExp(
+      `\\b(?:${roleAlt})\\s+` +                                          // role-word
+      `([a-zA-Z][a-z]+(?:\\s+[a-zA-Z][a-z]+){0,2})` +                   // name (1–3 words)
+      `(?:\\s*,\\s*` +                                                    // comma
+        `([a-zA-Z][a-z]+(?:\\s+(?!at\\b)[a-zA-Z][a-z]+){0,2})` +        // job title — stops before "at"
+        `(?:\\s+at\\s+([a-zA-Z][a-zA-Z0-9]+(?:\\s+[a-zA-Z][a-zA-Z0-9]+){0,3}))?` + // "at [org]"
+      `)?`,
+      'gi'
+    );
+
+    let m;
+    while ((m = pattern.exec(text)) !== null) {
+      const rawName    = m[1]?.trim();
+      const rawJob     = m[2]?.trim();
+      const rawOrg     = m[3]?.trim();
+
+      // Guard: skip if name is a known non-name or possessive word
+      if (rawName) {
+        const firstWord = rawName.split(/\s+/)[0].toLowerCase();
+        if (NON_NAME_WORDS.has(firstWord)) continue;
+        // Skip pure single common words (prepositions etc.)
+        if (rawName.split(/\s+/).length < 2 && NON_NAME_WORDS.has(rawName.toLowerCase())) continue;
+      }
+
+      // Guard: skip obvious placeholder/generic single-word "names"
+      if (rawName && /^(?:the|a|an|and|or|but|not|this|that)$/i.test(rawName)) continue;
+
+      const entry = {};
+      if (rawName)  entry.name     = rawName;
+      if (rawJob)   entry.jobTitle = rawJob;
+      if (rawOrg)   entry.org      = rawOrg;
+
+      if (Object.keys(entry).length > 0) {
+        // Avoid duplicates within this call
+        const isDup = results.some(r =>
+          r.name?.toLowerCase() === entry.name?.toLowerCase() &&
+          r.jobTitle?.toLowerCase() === entry.jobTitle?.toLowerCase()
+        );
+        if (!isDup) results.push(entry);
+      }
+    }
+
+    return results;
   }
 
   // Appositive phrases that indicate roles/positions
@@ -1512,7 +1762,13 @@ const TrustLinguisticDetector = (() => {
       const employmentCue = /\b(?:work(?:s|ed|ing)?|employ(?:ed|ee|er)?|intern(?:s|ed|ing|ship)?|join(?:s|ed|ing)?|hired|hiring|resign(?:s|ed)?|laid\s+off|staff|colleague|coworker|co-worker|boss|manager|supervisor|affiliated|member|alumn(?:us|a|i)|studied|studying|graduated)\b/i.test(before);
       const corporateSuffix = /^\s*,?\s*(?:inc|corp|corporation|ltd|limited|llc|llp|co|company|group|holdings)\b/i.test(after);
 
-      if (employmentCue || corporateSuffix) return false;  // genuine affiliation
+      // The verb list above misses the affiliation frames people actually write: "<First> <Last> of <Org>",
+      // "<job title> from <Org>", "From: <Name>, <Org>" and the same frames in lowercase chat. hasOrgAffiliationCue()
+      // (Group 13) already knows them; consulting it keeps the two filters from disagreeing about the same word
+      // ("Rodel Aquino of PLDT" was dropped here while Group 13 would have kept it).
+      const affiliationFrame = hasOrgAffiliationCue(text, m.index);
+
+      if (employmentCue || corporateSuffix || affiliationFrame) return false;  // genuine affiliation
     }
     return true;  // only ever appears as a plain word
   }
@@ -2740,6 +2996,11 @@ const TrustLinguisticDetector = (() => {
       const w = m[1], lw = w.toLowerCase();
       if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
       if (/['’]s$|s['’]$/i.test(w)) break;                    // Group 14 (G): a possessive ("Protection's fire marshal") ends the title
+      // Religion and nationality terms (e.g. "Muslim", "Filipina") are separate
+      // sensitive entities detected by their own gazetteer path. They must not be
+      // absorbed into the job-title span as modifiers ("Muslim Filipina Nurse" ->
+      // only "Nurse" should be the job title).
+      if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(lw)) break;
       let ok = JOB_MOD_ADJ.has(lw);
       // Group 6: when the finding is backed only by a possessive trigger ("my sourdough starter"),
       // extend over qualification adjectives only, never over noun modifiers.
@@ -2775,6 +3036,9 @@ const TrustLinguisticDetector = (() => {
   // generic announcements are written, and such announcements are policy rows)
   const JOB_POST_BEFORE_RE = /(?:^|[\n.!?]\s*)(?:wanted|now hiring|hiring|vacanc(?:y|ies)|job openings?|openings?|looking for|seeking|needed)\s*[:\-–]\s*[^.?!\n]*$/i;
   const JOB_EMPLOYMENT_HISTORY_BEFORE_RE = /\b(?:previously|formerly|currently|presently|since\s+\d{4}|from\s+\d{4})\b[^.?!\n]*$/i;
+  // a staffing need earlier in the same sentence ("Our barangay needs a X, a Y, and a Z", "we are hiring a X and a Y",
+  // "looking for a X or a Y"). The roles are being named as positions to fill, which is a job-post style list.
+  const JOB_STAFFING_NEED_BEFORE_RE = /\b(?:needs?|needed|requires?|required|wants?|wanted|hir(?:e|es|ed|ing)|recruit(?:s|ed|ing)?|looking\s+for|seeking|search(?:ing)?\s+for|openings?\s+for|positions?\s+for|vacanc(?:y|ies)\s+for)\b[^.?!\n]*$/i;
   // a pronoun copula + article ("I am a", "she is a"; NOT "we are looking"), "works as", or a possessive, at most 6 words before the title
   const JOB_FIRST_PERSON_TIE_RE = /\b(?:(?:i['’]?m|i am|i was|she is|he is|she['’]?s|he['’]?s|they are|we are)\s+(?:an?|the)|(?:work(?:s|ed|ing)?|serv(?:e|es|ed|ing)|employed)\s+as|my|our|his|her|their|your)\s+(?:[\w'’&-]+\s+){0,6}$/i;
   function jobCoordinationContextOk(text, s, e) {
@@ -2787,6 +3051,7 @@ const TrustLinguisticDetector = (() => {
     if (/^\s*(?:[-*•▪◦]|\d+[.)])\s/.test(linePre) || /\|/.test(linePre)) return true;         // bullet / table row
     if (JOB_POST_BEFORE_RE.test(beforeS)) return true;                                           // WANTED: / hiring / looking for ...
     if (JOB_EMPLOYMENT_HISTORY_BEFORE_RE.test(beforeS) || JOB_FIRST_PERSON_TIE_RE.test(beforeS)) return true;
+    if (JOB_STAFFING_NEED_BEFORE_RE.test(beforeS)) return true;
     for (const m of sentence.matchAll(/(?:[A-Z][\w'’-]*\s+){1,3}[A-Z][\w'’-]*/g)) {            // a person's name in the sentence
       if (looksLikePersonNameRun(m[0].trim().split(/\s+/))) return true;
     }
@@ -2807,6 +3072,162 @@ const TrustLinguisticDetector = (() => {
     return null;
   }
 
+  // ── Possessive-third-party-role suppression ───────────────────────────────
+  //
+  // Pattern: "my/her/his/their/your <title> <action-verb>" (e.g. "my doctor says",
+  // "her nurse told me", "his therapist recommended"). The title describes a third
+  // party acting on the user, not the user's own occupation. Because the possessive
+  // is also in JOB_POSSESSIVE_TRIGGERS (used as a job-context confirmation), these
+  // matches survive checkJobContext but are contextually meaningless as PII.
+  //
+  // The check is conservative: every word-boundary occurrence of the title in the
+  // text must follow a possessive AND be immediately followed by an action/speech
+  // verb. If even one occurrence is NOT in this pattern, the title is kept.
+  const POSSESSIVE_ROLE_BEFORE_RE = /\b(?:my|her|his|their|your)\s+$/i;
+
+  // ── Narrative-actor-role suppression ─────────────────────────────────────
+  //
+  // Pattern: "a/an <title> <action/behaviour verb>" where the title names an
+  // unnamed third-party actor in a narrative, fictional, or hypothetical sentence
+  // (e.g. "a hacker posts", "a thief stole", "a nurse told me", "an attacker
+  // accessed"). The title is not a personal disclosure — no name, no employer, no
+  // first-person attribution. It survives checkJobContext because "a " is a valid
+  // job trigger (correctly so for "Pedro is a nurse"), but here the article
+  // introduces a generic-role subject, not a named individual's occupation.
+  //
+  // Conservative design (mirrors isPossessiveThirdPartyRole):
+  //   - Applies only when EVERY word-boundary occurrence of the title is in this
+  //     exact pattern. One occurrence outside it keeps the title.
+  //   - Suppressed when a Title-Case personal name token appears anywhere in the
+  //     same sentence (the role may then belong to a named person in a record).
+  //   - Suppressed when a first-person marker is in the same sentence.
+  //   - Suppressed when "at [Org]" or "in [Org]" follows the title (employer tie).
+  //   - Action-verb list covers common verbs used immediately after a subject noun
+  //     in narrative text; job-role attribution verbs ("is", "works", "serves",
+  //     "employed") are intentionally excluded so they do not veto real titles.
+
+  // Verbs that mark an unnamed actor performing an action (not attributing a job).
+  // "is", "was", "works", "serves" are excluded — those are attribution verbs.
+  const NARRATIVE_ACTION_AFTER_RE = /^\s+(?:posts?|posted|says?|said|tells?|told|claims?|claimed|steal|stole|stolen|hack(?:ed|s|ing)?|access(?:ed|es|ing)?|breach(?:ed|es|ing)?|leak(?:ed|s|ing)?|attack(?:ed|s|ing)?|call(?:ed|s|ing)?|contact(?:ed|s|ing)?|report(?:ed|s|ing)?|mention(?:ed|s|ing)?|not(?:ed|es|ing)?|wrot?e?|writes?|start(?:ed|s|ing)?|enter(?:ed|s|ing)?|tr(?:ied|ies|ying)|attempt(?:ed|s|ing)?|perform(?:ed|s|ing)?|conduct(?:ed|s|ing)?|caus(?:ed|es|ing)?|commit(?:ted|s|ing)?|execut(?:ed|es|ing)?|exploit(?:ed|s|ing)?|obtain(?:ed|s|ing)?|us(?:ed|es|ing)?|provid(?:ed|es|ing)?|send|sent|receiv(?:ed|es|ing)?|replac(?:ed|es|ing)?|upload(?:ed|s|ing)?|download(?:ed|s|ing)?|arrang(?:ed|es|ing)?|present(?:ed|s|ing)?|instruct(?:ed|s|ing)?|reach(?:ed|es|ing)?|threaten(?:ed|s|ing)?|demand(?:ed|s|ing)?|impersonat(?:ed|es|ing)?)\b/i;
+  // A personal name token: a Title-Case word that is not a common function word.
+  const NARRATIVE_NAME_IN_SENTENCE_RE = /\b[A-Z][a-z]{1,}\b/;
+  // First-person markers in the same sentence.
+  const NARRATIVE_FIRST_PERSON_RE = /\b(?:i\b|i'm|i've|i was|i am|my |i have|i work|i study)\b/i;
+  // Employer tie after the title ("at BDO", "in Meralco").
+  const NARRATIVE_EMPLOYER_AFTER_RE = /^\s*(?:at|in|for|with)\s+[A-Z]/;
+
+  /**
+   * Returns true when EVERY word-boundary occurrence of `title` in `text`
+   * follows an indefinite article ("a/an") and is immediately trailed by a
+   * narrative action verb — indicating an unnamed generic-role subject, not a
+   * personal job disclosure.
+   *
+   * Override conditions (keeps the title) checked on the **framing clause** only
+   * (the portion of the sentence up to the first colon or quotation that follows
+   * the title match, so that quoted content such as "a hacker posts: 'Name: Pedro
+   * Ramos...'" does not rescue "hacker" via the name inside the quote):
+   *   - A first-person anchor is present in the framing clause.
+   *   - A Title-Case personal name token appears in the framing clause.
+   *   - "at [Capital word]" follows the title directly (employer tie).
+   *
+   * @param {string} text  - normalised prompt text
+   * @param {string} title - detected job title string
+   * @returns {boolean}
+   * @private
+   */
+  function isNarrativeActorRole(text, title) {
+    if (!title) return false;
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'gi');
+    let match;
+    let found = false;
+    while ((match = re.exec(text)) !== null) {
+      found = true;
+      const before = text.slice(Math.max(0, match.index - 60), match.index);
+      const after  = text.slice(match.index + match[0].length,
+                                Math.min(text.length, match.index + match[0].length + 60));
+
+      // Requirement 1: title must be immediately preceded by "a/an" (allowing up
+      // to 3 optional modifier words between the article and the title).
+      if (!/\ban?\s+(?:[\w-]+\s+){0,3}$/i.test(before)) return false;
+
+      // Requirement 2: a narrative action verb must follow immediately.
+      if (!NARRATIVE_ACTION_AFTER_RE.test(after)) return false;
+
+      // ── Override checks — scoped to the framing clause only ──────────────
+      // The framing clause is the text between the sentence start and the first
+      // colon / opening quote that appears AFTER the title match.  This prevents
+      // names inside a quoted record ("a hacker posts: 'Name: Pedro Ramos...'")
+      // from mistakenly rescuing the title.
+      const sentStart = Math.max(
+        text.lastIndexOf('.', match.index - 1),
+        text.lastIndexOf('!', match.index - 1),
+        text.lastIndexOf('?', match.index - 1),
+        text.lastIndexOf('\n', match.index - 1)
+      ) + 1;
+      // Framing clause ends at the first colon / opening quote after the title,
+      // or at the sentence boundary if neither is present first.
+      const clauseEnd = (() => {
+        const afterMatch = match.index + match[0].length;
+        let e = text.length;
+        for (const ch of ['.', '!', '?', '\n']) {
+          const k = text.indexOf(ch, afterMatch);
+          if (k !== -1 && k < e) e = k;
+        }
+        // Colon or opening quote right after the title ends the framing clause.
+        for (const delim of [':', '"', "'", '\u2018', '\u201C']) {
+          const k = text.indexOf(delim, afterMatch);
+          if (k !== -1 && k < e) e = k;
+        }
+        return e;
+      })();
+      const framingClause = text.slice(sentStart, clauseEnd);
+
+      if (NARRATIVE_FIRST_PERSON_RE.test(framingClause)) return false;
+
+      // A Title-Case word other than common determiners/conjunctions in the
+      // framing clause overrides (a named person in the same clause).
+      const titleCaseWords = (framingClause.match(NARRATIVE_NAME_IN_SENTENCE_RE) || [])
+        .filter(w => !JOB_FUNCTION_WORDS.has(w.toLowerCase()));
+      if (titleCaseWords.length > 0) return false;
+
+      // An employer preposition directly after the title overrides.
+      if (NARRATIVE_EMPLOYER_AFTER_RE.test(after)) return false;
+    }
+    // All occurrences matched the narrative-actor pattern (and at least one was found).
+    return found;
+  }
+  const THIRD_PARTY_ACTION_AFTER_RE = /^\s+(?:says?|said|told|tells?|recommends?|recommended|prescribed?|advise[sd]?|suggests?|suggested|mentioned|explained|noted|warned|ordered|instructed|referred|referred|diagnosed|treated|saw|seen|check(?:ed|s)?|monitor(?:ed|s)?)/i;
+
+  /**
+   * Returns true if every occurrence of `title` in `text` appears in the
+   * "possessive + title + action-verb" pattern — i.e., the title always
+   * describes a third party acting on the speaker, never the speaker's own role.
+   *
+   * @param {string} text - normalised prompt text
+   * @param {string} title - the job title string to test
+   * @returns {boolean}
+   * @private
+   */
+  function isPossessiveThirdPartyRole(text, title) {
+    if (!title) return false;
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'gi');
+    let match;
+    let found = false;
+    while ((match = re.exec(text)) !== null) {
+      found = true;
+      const before = text.slice(Math.max(0, match.index - 20), match.index);
+      const after  = text.slice(match.index + match[0].length, Math.min(text.length, match.index + match[0].length + 40));
+      // If this occurrence is NOT in the possessive+action-verb pattern, keep the title.
+      if (!POSSESSIVE_ROLE_BEFORE_RE.test(before) || !THIRD_PARTY_ACTION_AFTER_RE.test(after)) {
+        return false;
+      }
+    }
+    // All occurrences matched the suppression pattern (and at least one was found).
+    return found;
+  }
+
   function validateJobTitlesWithCompromise(csvFindings, text, doc) {
     if (!COMPROMISE_AVAILABLE || csvFindings.length === 0) {
       // If no compromise or no findings, return all CSV findings
@@ -2817,6 +3238,34 @@ const TrustLinguisticDetector = (() => {
     const deferred = [];
 
     for (const finding of csvFindings) {
+      // Appositive-role findings are structurally validated upstream
+      // (comma-appositive is itself evidence of an occupation).
+      // Skip all context/POS checks and pass them through directly.
+      if (finding.fromAppositive) {
+        validated.push(finding);
+        console.debug(`[PATH_C/VAL_JOB] PASS (appositive role, structural): "${finding.rawMatch || finding.name}"`);
+        continue;
+      }
+      // ── Possessive-third-party-role guard ──────────────────────────────
+      // Drop titles that only appear as "my/her/his/their doctor says"-style
+      // references. The person is a third party acting on the user, not the
+      // user's own occupation. This check runs before any other validation so
+      // the false positive never reaches the findings list or the UI.
+      const titleText = finding.rawMatch || finding.name;
+      if (isPossessiveThirdPartyRole(text, titleText)) {
+        console.debug(`[PATH_C/VAL_JOB] FILTER (possessive third-party role): "${titleText}"`);
+        continue;
+      }
+      // ── Narrative-actor-role guard ──────────────────────────────────────
+      // Drop titles that only appear as "a <title> <action-verb>" in narrative
+      // or fictional framing (e.g. "a hacker posts", "an attacker accessed").
+      // The title names a generic unnamed actor, not a named individual's job.
+      // Conservative: suppressed when a named person or first-person anchor is
+      // in the same sentence, or when "at [Org]" follows the title.
+      if (isNarrativeActorRole(text, titleText)) {
+        console.debug(`[PATH_C/VAL_JOB] FILTER (narrative actor role): "${titleText}"`);
+        continue;
+      }
       const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
 
       try {
@@ -2980,6 +3429,14 @@ const TrustLinguisticDetector = (() => {
       const actualSpan = findActualSpan(text, finding.rawMatch || finding.name);
       
       try {
+        // Appositive-role findings: the "at [org]" structure is itself context evidence.
+        // Skip the standard context/POS gate to avoid false-negative on lowercase org names.
+        if (finding.fromAppositive) {
+          validated.push(finding);
+          console.debug(`[PATH_C/VAL_ORG] PASS (appositive role, structural): "${finding.rawMatch || finding.name}"`);
+          continue;
+        }
+
         // High-confidence CSV exact matches bypass validation
         if (finding.source === 'csv_exact_match' && finding.confidence === 'high') {
           validated.push(finding);
@@ -3354,6 +3811,25 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // Method 2.8: Extract names from comma-appositive role constructs (NEW)
+      // Handles: "[role-word] [firstname] [lastname], [job-title] at [org]"
+      // e.g. "customer jenny lim, teacher at ateneo" — catches all-lowercase names
+      // that the Title-Case-requiring patterns above cannot reach.
+      const appositiveConstructs = extractAppositiveRoleConstruct(text);
+      for (const construct of appositiveConstructs) {
+        if (construct.name && !findings.some(f => f.rawMatch.toLowerCase() === construct.name.toLowerCase())) {
+          findings.push({
+            patternId: 'nlp_person_name',
+            label: 'Person Name (NLP)',
+            risk: 'low',
+            rawMatch: construct.name,
+            safeVersion: '[NAME REDACTED]',
+            source: 'C_linguistic',
+            validated: false
+          });
+        }
+      }
+
       // Method 3: Extract from multi-sentence context (NEW)
       // Handles cases like: "i have 3 professors. Ms padua is the head of oict."
       const entityContexts = extractEntityContextPairs(text);
@@ -3440,7 +3916,7 @@ const TrustLinguisticDetector = (() => {
   // does not score "manager".
   const FIRST_PERSON_JOB_ATTRIBUTION = [
     // "I am a/an [title]" / "I'm a/an [title]" (with optional adverb hedges)
-    /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an)\s+/i,
+    /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an|the)\s+/i,
     // "I work/working/worked as a/an [title]" / "I serve as a/an/the [title]"
     /\bi\s+(?:work(?:ing|ed)?|serv(?:e|ing))\s+as\s+(?:a|an|the)\s+/i,
     // "I am/was employed as a/an [title]"
@@ -3453,6 +3929,50 @@ const TrustLinguisticDetector = (() => {
     // first-person reference keeps it attributed to the speaker.
     /^\s*as\s+(?:a|an|the)\s+.*\bi\b/i,
   ];
+
+  // Self-introduction with an appositive title: "I'm Maria Santos, a 25 year old
+  // nurse", "I am Dr. Maria Santos, the head nurse", "My name is Maria Santos, a
+  // nurse". The patterns above need "I'm/I am" directly before the article, so a
+  // name in between hid the attribution. This is a SEPARATE, narrower check, so
+  // the patterns above are unchanged. It requires:
+  //   - "I'm / I am / My name is" + a 1-4 word CAPITALIZED name + comma + a/an/the;
+  //   - none of the name words is an ordinary word ("I'm Sorry, the manager ...");
+  //   - the title sits within APPOSITIVE_MAX_WORDS_BEFORE_TITLE words after the
+  //     article, with no comma/period between and no third-person word, so a
+  //     later "... and my boss is a manager" is not attributed.
+  // "I'm helping Maria Santos, a nurse" does not match (lowercase "helping").
+  const FIRST_PERSON_NAME_APPOSITIVE = [
+    /\b[Ii](?:['\u2019]m|\s+am)\s+((?:[A-Z][A-Za-z'\u2019.-]*\s+){0,3}[A-Z][A-Za-z'\u2019.-]*)\s*,\s*(?:a|an|the)\s+/,
+    /\b[Mm]y\s+name\s+is\s+((?:[A-Z][A-Za-z'\u2019.-]*\s+){0,3}[A-Z][A-Za-z'\u2019.-]*)\s*,\s*(?:a|an|the)\s+/,
+  ];
+  const APPOSITIVE_MAX_WORDS_BEFORE_TITLE = 5;
+  const APPOSITIVE_NOT_A_NAME = new Set([
+    'sorry', 'glad', 'happy', 'sad', 'sure', 'fine', 'good', 'great', 'here', 'there', 'back',
+    'not', 'also', 'just', 'still', 'now', 'very', 'really', 'honestly', 'currently', 'proud',
+    'excited', 'hoping', 'looking', 'trying', 'going', 'working', 'helping', 'asking', 'writing',
+    'new', 'so', 'too', 'then',
+  ]);
+  const APPOSITIVE_THIRD_PERSON_RE = /\b(?:my|his|her|their|our|your|he|she|they|we|you|who|whom|whose|which)\b/i;
+
+  function isNameAppositiveJobTitle(sentence, lowTitle) {
+    for (const re of FIRST_PERSON_NAME_APPOSITIVE) {
+      const m = re.exec(sentence);
+      if (!m) continue;
+      const nameWords = m[1].split(/\s+/).map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
+      if (nameWords.some(w => APPOSITIVE_NOT_A_NAME.has(w))) continue;
+      const tail = sentence.slice(m.index + m[0].length);
+      const lowTail = tail.toLowerCase();
+      for (let i = lowTail.indexOf(lowTitle); i !== -1; i = lowTail.indexOf(lowTitle, i + 1)) {
+        if (/[a-z]/.test(lowTail[i + lowTitle.length] || '')) continue;   // whole word only
+        const before = tail.slice(0, i);
+        if (/[,;:.!?]/.test(before)) continue;
+        if (APPOSITIVE_THIRD_PERSON_RE.test(before)) continue;
+        const words = before.trim() ? before.trim().split(/\s+/) : [];
+        if (words.length <= APPOSITIVE_MAX_WORDS_BEFORE_TITLE) return true;
+      }
+    }
+    return false;
+  }
 
   /**
    * Decide whether a detected job title is self-attributed in first person.
@@ -3473,6 +3993,7 @@ const TrustLinguisticDetector = (() => {
       for (const sentence of sentences) {
         if (!sentence.toLowerCase().includes(low)) continue;
         if (FIRST_PERSON_JOB_ATTRIBUTION.some(re => re.test(sentence))) return true;
+        if (isNameAppositiveJobTitle(sentence, low)) return true;
       }
     } catch (error) {
       console.debug('[TrustPrompt/PATH_C] Job attribution check failed:', error.message);
@@ -3540,6 +4061,29 @@ const TrustLinguisticDetector = (() => {
         }
       }
       
+      // Method 1.8: Extract job title from comma-appositive role constructs (NEW)
+      // Handles: "[role-word] [name], [job-title] at [org]"
+      // e.g. "customer jenny lim, teacher at ateneo" — the job title sits between
+      // a comma and "at [org]" and is never reached by copular or first-person patterns.
+      // Detect-only (attributed: false) — no first-person self-attribution.
+      const appositiveConstructsForJob = extractAppositiveRoleConstruct(text);
+      for (const construct of appositiveConstructsForJob) {
+        if (construct.jobTitle && !shouldFilterCommonJobTitle(construct.jobTitle)) {
+          if (!findings.some(f => f.rawMatch.toLowerCase() === construct.jobTitle.toLowerCase())) {
+            findings.push({
+              patternId: 'nlp_job_title',
+              label: 'Job Title (NLP)',
+              risk: 'low',
+              rawMatch: construct.jobTitle,
+              safeVersion: '[JOB TITLE REDACTED]',
+              source: 'C_linguistic',
+              validated: false,
+              attributed: false
+            });
+          }
+        }
+      }
+
       // Method 2: Extract from entity context (NEW)
       // Captures role indicators like "professor", "panelist" when used with names
       const entityContexts = extractEntityContextPairs(text);
@@ -3867,13 +4411,15 @@ const TrustLinguisticDetector = (() => {
       }
       
       // Method 4: Fallback to trigger phrases for explicit org declarations
-      // This catches cases where NER might miss organizations or need context
+      // This catches cases where NER might miss organizations or need context.
+      // Character class includes apostrophe (') and period (.) so names like
+      // "St. Luke's" and "St. Mary's" are fully captured.
       const orgTriggers = [
-        /\bwork\s+at\s+([A-Za-z0-9&\s,]+?)(?:\.|,|;|$|\band\b)/gi,
-        /\bwork\s+for\s+([A-Za-z0-9&\s,]+?)(?:\.|,|;|$|\band\b)/gi,
-        /\bwork\s+with\s+([A-Za-z0-9&\s,]+?)(?:\.|,|;|$|\band\b)/gi,
-        /\bemploy(?:ed)?\s+(?:at|by)\s+([A-Za-z0-9&\s,]+?)(?:\.|,|;|$|\band\b)/gi,
-        /\bworking\s+(?:at|for)\s+([A-Za-z0-9&\s,]+?)(?:\.|,|;|$|\band\b)/gi,
+        /\bwork\s+at\s+([A-Za-z0-9&'.'\s,]+?)(?:,|;|$|\band\b)/gi,
+        /\bwork\s+for\s+([A-Za-z0-9&'.'\s,]+?)(?:,|;|$|\band\b)/gi,
+        /\bwork\s+with\s+([A-Za-z0-9&'.'\s,]+?)(?:,|;|$|\band\b)/gi,
+        /\bemploy(?:ed)?\s+(?:at|by)\s+([A-Za-z0-9&'.'\s,]+?)(?:,|;|$|\band\b)/gi,
+        /\bworking\s+(?:at|for)\s+([A-Za-z0-9&'.'\s,]+?)(?:,|;|$|\band\b)/gi,
       ];
       
       for (const trigger of orgTriggers) {
@@ -3900,6 +4446,36 @@ const TrustLinguisticDetector = (() => {
       }
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // METHOD 4.5 (NEW): COMMA-APPOSITIVE ROLE CONSTRUCT — ORG
+      // Handles: "[role-word] [name], [job-title] at [org]"
+      // e.g. "customer jenny lim, teacher at ateneo"
+      // The organization follows "at" and is entirely lowercase, invisible to
+      // Pattern 3 of extractOrganizationContexts which requires [A-Z] initial.
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const appositiveConstructsForOrg = extractAppositiveRoleConstruct(text);
+      for (const construct of appositiveConstructsForOrg) {
+        if (construct.org) {
+          const rawOrg = construct.org;
+          if (rawOrg.length >= 3 && !shouldFilterCommonOrganization(rawOrg) && !isCodePattern(text, rawOrg)) {
+            if (!findings.some(f => f.rawMatch.toLowerCase() === rawOrg.toLowerCase())) {
+              findings.push({
+                patternId: 'nlp_organization',
+                label: 'Organization (NLP)',
+                risk: 'low',
+                rawMatch: rawOrg,
+                safeVersion: '[ORGANIZATION REDACTED]',
+                source: 'C_linguistic',
+                validated: false,
+                governed: false,
+                governanceConfidence: 'low',
+                governanceSource: 'appositive_role'
+              });
+            }
+          }
+        }
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // METHOD 5 (NEW): REVERSE CSV LOOKUP FOR ORGANIZATIONS
       // ★ FIX #2: Search organizations.csv for mentions in text
       // 
@@ -3914,7 +4490,7 @@ const TrustLinguisticDetector = (() => {
         if (!findings.some(f => f.rawMatch.toLowerCase() === orgName.toLowerCase())) {
           findings.push({
             patternId: 'nlp_organization',
-            label: `Organization (NLP - CSV ${csvOrg.source})`,
+            label: `Organization (NLP)`,
             risk: 'low',
             rawMatch: orgName,
             safeVersion: '[ORGANIZATION REDACTED]',
@@ -4180,6 +4756,49 @@ const TrustLinguisticDetector = (() => {
         validated: false
       });
       console.debug(`[PATH_C/STRUCTURAL] Head match (dept): "${span}"`);
+    }
+
+    // ── (b4) HEAD-LAST DEPARTMENT pattern ─────────────────────────────────
+    // Catches the reverse form: "<Modifier> department/division/unit/office"
+    // e.g. "HR department", "Finance department", "IT department",
+    //      "Accounting division", "Legal office".
+    // The modifier must be a known word-boundary token (a bare common noun
+    // before "department" is excluded by an internal stopword set so "the
+    // department" or "our department" does not create a spurious finding).
+    // Accepts: Title Case word or uppercase acronym (2–5 caps) as the modifier.
+    // Does NOT require an affiliation cue because the head word itself
+    // ("department", "division", "unit", "office") is unambiguous.
+    {
+      const DEPT_HEAD_WORDS = 'department|division|unit|office|bureau|section|committee|team|staff';
+      const DEPT_STOP_MODIFIERS = new Set([
+        'the', 'a', 'an', 'my', 'our', 'their', 'your', 'his', 'her', 'its',
+        'this', 'that', 'each', 'every', 'some', 'any', 'no', 'one', 'other',
+        'whole', 'entire', 'same', 'next', 'last', 'new', 'old', 'right', 'left',
+      ]);
+      // Modifier: a 2–5-letter all-caps acronym OR a Title-Case word ≥ 2 chars.
+      const HEAD_LAST_DEPT_RE = new RegExp(
+        `\\b([A-Z]{2,5}|[A-Z][a-z]{1,30})(?:\\s+[A-Z][a-z]{1,20}){0,2}\\s+(${DEPT_HEAD_WORDS})\\b`,
+        'g'
+      );
+      let dm;
+      while ((dm = HEAD_LAST_DEPT_RE.exec(text)) !== null) {
+        const span = dm[0].trim();
+        const modifier = dm[1].toLowerCase();
+        if (DEPT_STOP_MODIFIERS.has(modifier)) continue;         // guard: article/possessive modifier
+        const lowerSpan = span.toLowerCase();
+        if (alreadyFoundLower.has(lowerSpan)) continue;          // guard: dedup
+        if (shouldFilterCommonOrganization(span)) continue;      // guard: common-word filter
+        alreadyFoundLower.add(lowerSpan);
+        found.push({
+          name: span,
+          rawMatch: span,
+          confidence: 'medium',
+          source: 'structural_match',
+          csvValidated: false,
+          validated: false
+        });
+        console.debug(`[PATH_C/STRUCTURAL] Head-last dept match: "${span}"`);
+      }
     }
 
     // ── (c) INSTITUTION_RE — institution-ending words ─────────────────────
@@ -4819,7 +5438,14 @@ const TrustLinguisticDetector = (() => {
     'authority', 'organization', 'organizations', 'incorporated', 'inc', 'corp', 'ltd', 'llc', 'llp', 'gmbh', 'enterprises'
   ]);
   const STREET_HEAD_WORDS = new Set([
-    'street', 'avenue', 'boulevard', 'blvd', 'highway', 'road', 'expressway', 'campus', 'barangay', 'subdivision'
+    'street', 'avenue', 'boulevard', 'blvd', 'highway', 'road', 'expressway', 'campus', 'barangay', 'subdivision',
+    // Street types from the address validator (patterns.js PH_STREET_TYPES) that
+    // are not listed above. Without them "Ayala Lane" was tagged as a person.
+    'lane', 'ln', 'drive', 'extension', 'ext', 'circle', 'parkway',
+    // abbreviated forms ("Rizal St", "Mabini Ave"): when the address itself is
+    // filtered as a directions/title mention, the street used to leak through as
+    // a person name.
+    'st', 'ave', 'rd', 'hwy'
   ]);
   const GENERIC_PLACE_WORDS = new Set(['paris', 'london', 'tokyo', 'seoul', 'beijing', 'georgia', 'california', 'texas', 'new york']);
   const PLACE_MOTION_WORDS = /\b(?:travel(?:l?ing)?|trip|route|relocat\w*|mov(?:e|es|ed|ing)|fly(?:ing)?|flight|driv(?:e|es|ing)|commut\w*|visit\w*|ship\w*|migrat\w*|transfer\w*|head(?:ing)?|go(?:ing)?|located|based|liv(?:e|es|ed|ing)|resid\w*)\b/i;
@@ -5047,6 +5673,55 @@ const TrustLinguisticDetector = (() => {
     }
   }
 
+  // A dictionary / structural organization is often only the LEADING part of the full legal name: "Manila Bulletin" is in the dictionary,
+  // the text says "Manila Bulletin Publishing Corporation". The METHOD 4 run for the full name is discarded because it starts with a place
+  // word, so the report stopped at "Manila Bulletin". When the finding is directly followed by up to three Title-Case words and then a
+  // Title-Case corporate suffix, the finding is extended to the suffix. Only that frame extends it: a suffix is required, every word
+  // between must be Title Case, and a finding that already ends in a suffix is left alone.
+  const G_ORG_TAIL_RE = new RegExp(
+    String.raw`^((?:\s+\p{Lu}[\p{L}\p{M}&'’-]*){0,3}?\s+(?:Corporation|Corp|Incorporated|Inc|Limited|Ltd|LLC|LLP|Company|Co|Holdings|Group|Enterprises|Industries|Ventures))(?![\p{L}\p{M}\d'’-])`, 'u');
+  function extendOrganizationsToCorporateSuffix(findings, text) {
+    const orgs = findings.filter(f => f.patternId === 'nlp_organization' && f.rawMatch);
+    for (const f of orgs) {
+      const raw = f.rawMatch.trim();
+      if (G_CORP_SUFFIX_RE.test(raw.split(/\s+/).pop().replace(/[.,]+$/, ''))) continue;
+      for (const [, e] of jobOccurrences(text, raw)) {
+        const m = text.slice(e, e + 80).match(G_ORG_TAIL_RE);
+        if (!m) continue;
+        f.rawMatch = text.slice(e - raw.length, e + m[1].length);   // an exact duplicate this creates is removed below
+        f.extensionMethod = 'corporate_suffix_tail';
+        break;
+      }
+    }
+    // drop exact duplicates created by the extension
+    const seen = new Set();
+    return findings.filter(f => {
+      if (f.patternId !== 'nlp_organization' || !f.rawMatch) return true;
+      const k = f.rawMatch.trim().toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  // A single capitalised word that is a dictionary organization, is not a known personal name and has no person cue is the organization,
+  // not a person ("Ramon Dizon of Meralco", "an email from Meralco"). The directive ("from X") and subject-position passes only look at
+  // the word's shape, so they reported it as a person; the organization finding that would have absorbed it can be absent (the
+  // single-word organization filter keeps only affiliation frames). A cue (honorific, "my name is", job title) still wins.
+  function dropPersonsThatAreDictionaryOrganizations(findings, text) {
+    const drop = new Set();
+    findings.forEach((f, idx) => {
+      if (f.patternId !== 'nlp_person_name' || !f.rawMatch) return;
+      const raw = f.rawMatch.trim();
+      if (/\s/.test(raw) || !EXTENSIVE_ORGANIZATIONS.has(raw.toLowerCase()) || isKnownNameWord(raw)) return;
+      const occs = jobOccurrences(text, raw);
+      if (!occs.length || occs.some(([s, e]) => hasPersonCueAround(text, s, e))) return;
+      drop.add(idx);
+      console.debug(`[PATH_C/ORGPERSON] Dropped person that is a dictionary organization: "${raw}"`);
+    });
+    return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller clears and refills `findings`)
+  }
+
   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
     const orgs = findings
       .filter(f => f.patternId === 'nlp_organization' && f.rawMatch)
@@ -5086,6 +5761,17 @@ const TrustLinguisticDetector = (() => {
       //      real surnames, so they must not close a two-word case such as "Hannah Bank"), but a bare one of them is not a name.
       if (words.length === 1 && (w0 => STRONG_ORG_HEAD_WORDS.has(w0) || RUN_ORG_HEAD_WORDS.has(w0))(words[0].toLowerCase().replace(/\.$/, ''))) {
         drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (bare head word): "${raw}"`); return;
+      }
+      // (g) a name directly after an area marker is a locality, not a person
+      //     ("Brgy. San Roque", "Sitio Maligaya"). A person cue (checked above)
+      //     still wins.
+      if (occs.every(([s]) => /\b(?:barangay|brgy|sitio|purok|subd|subdivision)\.?\s+$/i.test(text.slice(Math.max(0, s - 16), s)))) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (follows area marker): "${raw}"`); return;
+      }
+      // (g2) "Sto." / "Sta." (Santo/Santa) alone is an abbreviation, never a name
+      //      ("Sto. Domingo church" produced a person "Sto").
+      if (words.length === 1 && /^(?:sto|sta)\.?$/i.test(raw)) {
+        drop.add(idx); console.debug(`[PATH_C/G1] Dropped person (Sto./Sta. abbreviation): "${raw}"`); return;
       }
       // (d) single-word place used locatively
       if (words.length === 1 && isKnownPlaceWord(raw) && occs.every(([s, e]) => hasLocativeCue(text, s, e))) {
@@ -6392,6 +7078,13 @@ const TrustLinguisticDetector = (() => {
   const G9_STREET_AFTER_RE = /^(?:street|st|ave|avenue|road|rd|lane|ln|drive|dr|boulevard|blvd|subdivision|village|heights|plaza|bridge|park)\b/i;
   function addSaintOrganizations(findings, text) {
     if (!/\b(?:st|sta|sto|saint|santa|santo)\b/i.test(text)) return;
+    // a dictionary Saint-name organization ("St. Luke's") followed by a street word is an address, not an organization ("St. Luke's Street")
+    for (let k = findings.length - 1; k >= 0; k--) {
+      const f = findings[k];
+      if (f.patternId !== 'nlp_organization' || !f.rawMatch || !/^(?:st|sta|sto|saint|santa|santo)\b\.?\s/i.test(f.rawMatch.trim())) continue;
+      const occ = jobOccurrences(text, f.rawMatch);
+      if (occ.length && occ.every(([, e]) => G9_STREET_AFTER_RE.test(text.slice(e).replace(/^\s+/, '')))) findings.splice(k, 1);
+    }
     const re = /\b(?:at|from|of|with)\s+((?:st|sta|sto|saint|santa|santo)\.?\s+[\p{L}][\p{L}'’-]*)/giu;
     let m;
     while ((m = re.exec(text)) !== null) {
@@ -6522,9 +7215,31 @@ const TrustLinguisticDetector = (() => {
             name = tw.slice(0, -1).join(' ');
           }
 
+          // ★ FIX: Single-word evidence gate — applied AFTER trailing trim, same principle as Cause B in METHOD 4
+          // The trigger phrase "I am" is structural evidence for multi-word names but insufficient for
+          // a single word that might be any kind of noun. Single words like "Ilocano" (ethnolinguistic),
+          // "Away" (adverb), or plain Title-Case adjectives must be validated against the name dictionary
+          // or Compromise Person tag before being reported as person names.
+          if (!name.includes(' ')) {
+            const singleTags = isolatedNameTags(name);
+            if (!isKnownGivenName(name) && !nameHasPersonTag(singleTags)) {
+              console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - single word after trim, no name evidence: "${name}"`);
+              continue;
+            }
+          }
+
           // ★ FIX: Filter out non-name words (adjectives, verbs, descriptors, etc.)
           // Check if ANY word in the phrase is a known non-name word
           const words = name.split(/\s+/);
+          // Reject nationality / ethnolinguistic words used in self-identification
+          // ("I am Ilocano", "I'm Filipino") — these are not person names. G_LANG_NAT
+          // is already applied in extractLowercaseSelfIntros; this closes the same gap
+          // here for Title-Case words produced when the normalizer capitalises the
+          // first character of the prompt (e.g. "Ilocano" from "i am ilocano...").
+          if (words.some(w => G_LANG_NAT.has(w.toLowerCase()))) {
+            console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - nationality/ethnolinguistic word: "${name}"`);
+            continue;
+          }
           const hasNonNameWord = words.some(word => NON_NAME_WORDS.has(word.toLowerCase()));
           if (hasNonNameWord) {
             console.debug(`[PATH_C/NAMES] METHOD 2: Filtered - contains non-name word: ${words.filter(w => NON_NAME_WORDS.has(w.toLowerCase())).join(', ')}`);
@@ -6673,10 +7388,29 @@ const TrustLinguisticDetector = (() => {
         // captured by the dedicated org extractor / location pattern instead.
         if (classifyPersonRun(candidateName, textNLP.slice(standaloneMatch.index + candidateName.length, standaloneMatch.index + candidateName.length + 4)) === 'organization') {
           console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - classified as organization: "${candidateName}"`);
+          // The run is an organization. Report it as one here: the run is removed from the
+          // person list, and no other pass produced it, so it was missed entirely
+          // ("The Mabini Street Business Association" had no finding at all).
+          // Only with an unmistakable institutional head word (association, department, university...).
+          // A weaker head ("Foundation", "Bank") can also be a surname ("Hope Foundation Reyes").
+          const hasStrongOrgHead = candidateName.split(/\s+/).some(w => STRONG_ORG_HEAD_WORDS.has(w.toLowerCase().replace(/[.,]$/, '')));
+          if (hasStrongOrgHead && !findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch &&
+                                  f.rawMatch.toLowerCase() === candidateName.toLowerCase())) {
+            findings.push({ patternId: 'nlp_organization', label: 'Organization (NLP)', risk: 'low',
+              rawMatch: candidateName, safeVersion: '[ORGANIZATION REDACTED]',
+              source: 'C_linguistic', extractionMethod: 'name_run_organization', validated: false });
+          }
           continue;
         }
         if (looksLikePlaceName(candidateName)) {
           console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - place/country name: "${candidateName}"`);
+          continue;
+        }
+
+        // ★ NEW GUARD: Reject religion/identity terms (e.g., "Roman Catholic")
+        // These should be detected by gazetteer as gazetteer_religion, not as person names
+        if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(candidateName)) {
+          console.debug(`[PATH_C/NAMES] METHOD 4: Filtered - identity term: "${candidateName}"`);
           continue;
         }
 
@@ -6716,7 +7450,46 @@ const TrustLinguisticDetector = (() => {
       }
       
       console.debug(`[TrustPrompt/PATH_C] Names found: ${nameCount}`);
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 1.5: APPOSITIVE ROLE CONSTRUCT
+      // Handles all-lowercase appositive patterns from support-ticket / case-note
+      // text: "[role-word] [firstname] [lastname], [job-title] at [org]"
+      // e.g. "customer jenny lim, teacher at ateneo"
+      // All five Stage 1 name methods require Title Case, so they miss names
+      // introduced by a role word in mid-sentence lowercase text.
+      // Names go to findings immediately. Job titles and orgs are queued in
+      // temporary arrays and merged into the CSV arrays after Stage 2 builds them.
+      // ═══════════════════════════════════════════════════════════════════════
+      const _appositiveJobQueue = [];
+      const _appositiveOrgQueue = [];
+      {
+        const appositives = extractAppositiveRoleConstruct(textNLP);
+        for (const c of appositives) {
+          if (c.name && !findings.some(f => f.rawMatch.toLowerCase() === c.name.toLowerCase())) {
+            nameCount++;
+            findings.push({
+              patternId: 'nlp_person_name',
+              label: 'Person Name (NLP)',
+              risk: 'low',
+              rawMatch: c.name,
+              safeVersion: '[NAME REDACTED]',
+              source: 'C_linguistic',
+              extractionMethod: 'appositive_role'
+            });
+            console.debug(`[PATH_C/NAMES] STAGE 1.5: found name "${c.name}"`);
+          }
+          if (c.jobTitle) {
+            _appositiveJobQueue.push({ name: c.jobTitle, rawMatch: c.jobTitle, confidence: 'medium', source: 'appositive_role', csvValidated: false });
+            console.debug(`[PATH_C/JOBS] STAGE 1.5: queued job title "${c.jobTitle}"`);
+          }
+          if (c.org) {
+            _appositiveOrgQueue.push({ name: c.org, rawMatch: c.org, confidence: 'medium', source: 'appositive_role', csvValidated: false });
+            console.debug(`[PATH_C/ORGS] STAGE 1.5: queued org "${c.org}"`);
+          }
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════════════════
       // STAGE 2: CSV-FIRST DETECTION (Job Titles + Organizations)
       // ═══════════════════════════════════════════════════════════════════════
@@ -6728,6 +7501,29 @@ const TrustLinguisticDetector = (() => {
       
       let csvOrgFindings = findOrganizationsCSVFirst(textNLP);
       console.debug(`[TrustPrompt/PATH_C] CSV Organizations found: ${csvOrgFindings.length}`);
+
+      // Merge Stage 1.5 appositive queues now that the CSV arrays exist.
+      for (const jt of _appositiveJobQueue) {
+        if (!csvJobFindings.some(f => (f.rawMatch || f.name).toLowerCase() === jt.rawMatch.toLowerCase())) {
+          // If the title is in the occupations CSV, promote to high-confidence so the
+          // validate gate fast-tracks it (same path as csv_exact_match high).
+          // Mark fromAppositive so the validator skips context-trigger checks that
+          // require "is a / was a / my" — the comma-appositive pattern is itself
+          // structural evidence of an occupation.
+          const inCSV = EXTENSIVE_JOB_TITLES.size > 0 && EXTENSIVE_JOB_TITLES.has(jt.rawMatch.toLowerCase());
+          csvJobFindings.push(Object.assign({}, jt, {
+            source: inCSV ? 'csv_exact_match' : 'appositive_role',
+            confidence: inCSV ? 'high' : 'medium',
+            csvValidated: inCSV,
+            fromAppositive: true
+          }));
+        }
+      }
+      for (const ov of _appositiveOrgQueue) {
+        if (!csvOrgFindings.some(f => (f.rawMatch || f.name).toLowerCase() === ov.rawMatch.toLowerCase())) {
+          csvOrgFindings.push(Object.assign({}, ov, { fromAppositive: true }));
+        }
+      }
 
       // D3: Structural org pass — runs after CSV to avoid re-detecting CSV hits.
       // Build a set of lower-cased rawMatches already found so structural can
@@ -6773,7 +7569,7 @@ const TrustLinguisticDetector = (() => {
         const rawMatch = title.rawMatch || title.name;
         findings.push({
           patternId: 'nlp_job_title',
-          label: `Job Title (${title.source})`,
+          label: `Job Title (NLP)`,
           risk: 'low',
           rawMatch,
           safeVersion: '[JOB TITLE REDACTED]',
@@ -6810,7 +7606,7 @@ const TrustLinguisticDetector = (() => {
         }
         findings.push({
           patternId: 'nlp_organization',
-          label: `Organization (${org.source})`,
+          label: `Organization (NLP)`,
           risk: 'low',
           rawMatch: orgRaw,
           safeVersion: '[ORGANIZATION REDACTED]',
@@ -6871,7 +7667,7 @@ const TrustLinguisticDetector = (() => {
         }
         findings.push({
           patternId: 'nlp_organization',
-          label: 'Organization (structural_match)',
+          label: 'Organization (NLP)',
           risk: 'low',
           rawMatch: orgRaw,
           safeVersion: '[ORGANIZATION REDACTED]',
@@ -7013,10 +7809,12 @@ const TrustLinguisticDetector = (() => {
       extractNamePairsWithAnd(textNLP, findings);
       if (PERSON_LOWERCASE_INTRO_ENABLED) extractLowercaseSelfIntros(textNLP, findings);
       joinNamesAcrossY(findings, textNLP);
+      extractLowercaseCuedNames(textNLP, findings);
       splitPersonFindingsAtY(findings);
       trimJobSpansOverNames(findings);
       { const refined = refinePersonCandidates(findings, textNLP); findings.length = 0; findings.push(...refined); }
       // Group 13: e-mail addresses and lowercase ordinary words are not organization mentions (runs before Group 1 so it sees the final organizations).
+      { const ext = extendOrganizationsToCorporateSuffix(findings, textNLP); findings.length = 0; findings.push(...ext); }
       { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
       // Cause A: a "<name> <business noun>" run is not a person (the organization, if there is evidence, comes from the structural pass).
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
@@ -7032,6 +7830,7 @@ const TrustLinguisticDetector = (() => {
       { const kept = stripLeadingImperativeFromOrganizations(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Group 1 (D1/D2): organizations and places must not also be reported as person names.
       { const kept = suppressPersonsAsOrganizationsOrPlaces(findings, textNLP); findings.length = 0; findings.push(...kept); }
+      { const kept = dropPersonsThatAreDictionaryOrganizations(findings, textNLP); findings.length = 0; findings.push(...kept); }
       // Phase 2: a person finding that is a place, street, dish, festival, disease, nationality, language or religion word is not a person.
       { const kept = vetoPersonEntityTypes(findings, textNLP); findings.length = 0; findings.push(...kept); }
       trimJobNationalityPrefix(findings);
@@ -7082,6 +7881,10 @@ const TrustLinguisticDetector = (() => {
       const honorificNames = extractNamesWithHonorific(textNLP);
       
       for (const name of honorificNames) {
+        // ★ NEW GUARD: Reject religion/identity terms even with honorifics
+        if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(name)) {
+          continue;  // Skip religion/identity terms like "Roman Catholic"
+        }
         if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
           method1Count++;
           findings.push({
@@ -7114,6 +7917,10 @@ const TrustLinguisticDetector = (() => {
         while ((match = pattern.exec(textNLP)) !== null) {
           const name = match[1].trim();
           if (name.length >= 2 && !shouldFilterCommonName(name)) {
+            // ★ NEW GUARD: Reject religion/identity terms
+            if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(name)) {
+              continue;  // Skip religion/identity terms
+            }
             if (!findings.some(f => f.rawMatch.toLowerCase() === name.toLowerCase())) {
               method2Count++;
               findings.push({
@@ -7156,30 +7963,33 @@ const TrustLinguisticDetector = (() => {
         
         // Extract the name if it passes filters
         if (subjectName.length >= 2 && !shouldFilterCommonName(subjectName)) {
-          const nameLower = subjectName.toLowerCase();
-          if (!findings.some(f => f.rawMatch.toLowerCase() === nameLower)) {
-            // Split multi-word names into individual names
-            const nameParts = subjectName.split(/\s+/);
-            for (const part of nameParts) {
-              if (part.length >= 2 && /^[A-Z]/.test(part) && !shouldFilterCommonName(part)) {
-                if (!findings.some(f => f.rawMatch.toLowerCase() === part.toLowerCase())) {
-                  method3Count++;
-                  findings.push({
-                    patternId: 'nlp_person_name',
-                    label: 'Person Name (NLP - Subject)',
-                    risk: 'low',
-                    rawMatch: part,
-                    safeVersion: '[NAME REDACTED]',
-                    source: 'C_linguistic',
-                    validated: false
-                  });
+          // ★ NEW GUARD: Reject religion/identity terms
+          if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(subjectName)) {
+            // Skip religion/identity terms
+          } else {
+            const nameLower = subjectName.toLowerCase();
+            if (!findings.some(f => f.rawMatch.toLowerCase() === nameLower)) {
+              // Split multi-word names into individual names
+              const nameParts = subjectName.split(/\s+/);
+              for (const part of nameParts) {
+                if (part.length >= 2 && /^[A-Z]/.test(part) && !shouldFilterCommonName(part)) {
+                  if (!findings.some(f => f.rawMatch.toLowerCase() === part.toLowerCase())) {
+                    method3Count++;
+                    findings.push({
+                      patternId: 'nlp_person_name',
+                      label: 'Person Name (NLP - Subject)',
+                      risk: 'low',
+                      rawMatch: part,
+                      safeVersion: '[NAME REDACTED]',
+                      source: 'C_linguistic',
+                      validated: false
+                    });
+                  }
                 }
               }
             }
           }
         }
-        
-        // Extract the job title if it passes filters (NOT if it's an adjective like "beautiful" or "pronoun")
         if (cleanJob.length >= 2 && !shouldFilterCommonJobTitle(cleanJob, { isFromPredicate: true })) {
           const jobLower = cleanJob.toLowerCase();
           if (!findings.some(f => f.rawMatch.toLowerCase() === jobLower)) {
@@ -7332,6 +8142,12 @@ const TrustLinguisticDetector = (() => {
         
         if (knownOrganizations.has(lowerName) || aiModelNames.has(lowerName)) {
           continue;  // Skip known organizations and AI models
+        }
+
+        // ★ NEW GUARD: Reject religion/identity terms (e.g., "Roman Catholic")
+        // These should be detected by gazetteer as gazetteer_religion, not as person names
+        if (typeof TrustIdentityTerms !== 'undefined' && TrustIdentityTerms.containsIdentityTerm(name)) {
+          continue;  // Skip religion/identity terms like "Roman Catholic", "Filipino"
         }
         
         if (measurementWords.has(lowerName) || commonWords.has(lowerName) || commonVerbs.has(lowerName) || pronouns.has(lowerName) || technicalContextWords.has(lowerName)) {

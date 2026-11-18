@@ -1,4 +1,4 @@
-﻿// gazetteer.js
+// gazetteer.js
 // PATH B — Gazetteer + trigger-phrase scan + lightweight NLP extraction.
 //
 // This path catches PII that regex (Path A) misses because it was typed in
@@ -73,6 +73,26 @@ const TrustGazetteer = (() => {
     "kurtosis", "breakout", "rollup", "flowback", "novation", "synergy",
     "unicorn", "decacorn", "m1", "m2", "pip", "spin-off", "phishing",
     "spoofing", "skimming", "scalping", "slippage", "dilution", "estate",
+    // "depression" is also in the medical list; the economic sense ("Great
+    // Depression") is not a personal financial disclosure, and double-typing it
+    // makes one word count as both a medical and a financial context indicator.
+    "depression",
+    // terms-financial.js is an industry glossary. These entries are ordinary
+    // business, legal or school vocabulary ("school principal", "settlement of
+    // the dispute", "distribution list", "copyright", "grace period") that
+    // surfaced as a financial context indicator with no personal cue at all.
+    // They never describe the writer's own finances.
+    "principal", "specialist", "correction", "distribution", "administration",
+    "authorization", "commitment", "cooperative", "foundation", "endorsement",
+    "stakeholder", "subsidiary", "speculation", "stabilization", "volatility",
+    "copyright", "trademark", "franchise", "inventory", "affiliate",
+    "associate", "compression", "consolidation", "accounting", "provision",
+    "grace period", "financial literacy",
+    // "owe", "owed", "owing" are plain verbs, not financial entities. The actual
+    // disclosed information in "I owe ₱120,000 to Pag-IBIG" is the monetary
+    // amount and the creditor, both of which are detected independently. Showing
+    // the verb as a chip adds noise without meaningful disclosure signal.
+    "owe", "owed", "owing",
   ]);
   // SOFT: real finance words that are also common general vocabulary. Kept,
   // but only surfaced when a personal (my/our/I) or monetary-amount cue is
@@ -86,9 +106,61 @@ const TrustGazetteer = (() => {
     "overhead", "coupon", "cheque", "check", "bail-in", "bailout",
     "takeover", "recovery", "goodwill", "patent", "medicare", "equity",
     "index", "growth", "savings",
+    // Business/everyday words that are real finance terms only when the writer
+    // ties them to themselves or a monetary amount appears nearby.
+    "budget", "budgeting", "commission", "withdrawal", "portfolio",
+    "shareholder", "settlement",
+    // Personal-finance vocabulary added by SUPPLEMENTARY_FINANCIAL_TERMS. Common
+    // verbs/nouns ("afford", "rent", "bills"), so they need a personal cue.
+    // "owe"/"owed"/"owing" moved to HARD — they are verbs, not financial entities.
+    "afford", "rent", "bills", "retirement", "expenses", "taxes",
+    // ── Corporate / instrument finance terms ────────────────────────────────
+    // These are legitimate finance indicators but describe corporate events,
+    // instruments or policies — not the user's own finances. "Questions about
+    // dividend policy", "the company declared a dividend", "equity market" are
+    // topic references, not personal disclosures. They require a personal cue
+    // (my/our + the term, or a first-person ownership verb) exactly like the
+    // other SOFT terms. Without the cue they are suppressed.
+    "dividend", "dividends", "equity", "portfolio", "loan", "loans",
+    "credit score", "credit rating", "investment", "investments",
+    "capital gains", "capital gain", "net worth", "cash flow",
+    "profit margin", "profit", "earnings", "yield", "return on investment",
+    "roi", "amortization", "collateral", "refinance", "refinancing",
+    "mortgage", "insurance premium", "insurance", "annuity", "pension",
+    "fund", "mutual fund", "hedge fund", "endowment", "brokerage",
+    "securities", "debenture", "warrant", "futures", "derivative",
+    "commodity", "forex", "cryptocurrency", "bitcoin", "ether",
+    "remittance", "reimbursement", "subsidy", "subsidy", "grant",
+    "allowance", "stipend", "royalty", "royalties", "licensing fee",
   ]);
   function excludeAmbiguousFinancial(terms) {
     return terms.filter(t => !AMBIGUOUS_FINANCIAL_HARD.has(t));
+  }
+
+  // ── GLOSSARY NORMALIZATION ────────────────────────────────────────────────
+  // terms-financial.js is exported from a CSV and some entries carry export
+  // artefacts that can never appear in a user's prompt, so they never matched:
+  //   "Euro (EUR)", "Japanese Yen (JPY)"   → trailing ISO-code annotation
+  //   "\"IAS 16 Property, Plant ...\""     → wrapping quotes / stray backslashes
+  // The annotation is stripped so the name itself ("euro", "japanese yen") is
+  // matchable. Names derived this way are currency/standard names, not personal
+  // disclosures, so they are recorded in DERIVED_CUE_GATED and treated like
+  // other ambiguous terms: surfaced only with a personal or monetary-amount cue.
+  const DERIVED_CUE_GATED = new Set();
+  function normalizeFinancialTerms(rawTerms) {
+    DERIVED_CUE_GATED.clear();
+    const out = new Set();
+    for (const raw of rawTerms) {
+      let t = String(raw).toLowerCase().replace(/\\/g, "").trim();
+      t = t.replace(/^["'\s]+|["'\s]+$/g, "");
+      const stripped = t.replace(/\s+\([^)]*\)\s*$/, "").trim();
+      if (stripped && stripped !== t) {
+        t = stripped;
+        DERIVED_CUE_GATED.add(t);
+      }
+      if (t) out.add(t);
+    }
+    return [...out];
   }
 
   // Initialize term arrays from JavaScript data
@@ -129,8 +201,39 @@ const TrustGazetteer = (() => {
     "hypertension", "cancer", "surgery", "medication", "medications",
     "treatment", "insulin", "chemotherapy", "heart disease", "kidney disease",
     "high cholesterol", "blood pressure", "allergy",
+    // Everyday health vocabulary absent from terms-medical.js (that file is a
+    // clinical lexicon: it has "dialysis" and "tuberculosis" but not these).
+    // Like every medical term they only surface with a personal/medical cue
+    // (see analyzeTermContext) and carry no score on their own.
+    "diagnosed", "diagnose", "pregnant", "pregnancy", "prenatal", "covid",
+    "tumor", "tumour", "biopsy", "therapy", "physical therapy", "radiotherapy",
+    "vaccination", "prescription", "infection", "disability", "transplant",
+    "injection", "illness", "disease", "symptom", "symptoms", "hospitalized",
+    "hospitalised", "heart attack", "kidney failure", "alzheimer", "alzheimer's",
+    "abortion", "contraception",
   ];
+  // Entries in terms-medical.js that are NOT medical conditions. The list was
+  // built from word-formation endings, so it also contains ordinary English
+  // words and abstractions ("basis", "oasis", "diagram", "empathy", "genesis").
+  // Removed outright: they are never a health disclosure.
+  const AMBIGUOUS_MEDICAL_HARD = new Set([
+    "basis", "analysis", "synthesis", "hypothesis", "genesis", "oasis",
+    "diagram", "anatomy", "empathy", "sympathy", "apathy", "telepathy",
+    "pathy", "animism", "dualism", "holism", "egoism", "egotism", "atomism",
+    "tropism", "magnetism", "osmosis", "mitosis", "meiosis", "chroma", "lysis",
+    "stasis", "kinesis", "chemism", "telesis", "cardia", "kurtosis", "narcism",
+    "sadism",
+  ]);
+  // Real health words that are also everyday vocabulary ("gas bill", "stress at
+  // work", "strain of tomatoes", "cuts and burns"). Kept, but only surfaced when
+  // the writer ties them to a health experience (see analyzeTermContext).
+  const AMBIGUOUS_MEDICAL_SOFT = new Set([
+    "stress", "gas", "strain", "cuts", "burns", "moles", "worms", "boils",
+    "chills", "corns", "burnout", "wounds", "lice",
+  ]);
   function mergeSupplementaryMedical() {
+    // Drop non-medical entries first so every rebuild path gets the same list.
+    MEDICAL_WORDS = MEDICAL_WORDS.filter(t => !AMBIGUOUS_MEDICAL_HARD.has(t));
     const existing = new Set([...MEDICAL_WORDS, ...MEDICAL_PHRASES]);
     for (const term of SUPPLEMENTARY_MEDICAL_TERMS) {
       if (existing.has(term)) continue;
@@ -147,12 +250,12 @@ const TrustGazetteer = (() => {
   console.log('[TrustGazetteer] Checking for FINANCIAL_TERMS_DATA:', typeof FINANCIAL_TERMS_DATA, Array.isArray(FINANCIAL_TERMS_DATA ? FINANCIAL_TERMS_DATA : null));
   if (typeof FINANCIAL_TERMS_DATA !== 'undefined' && Array.isArray(FINANCIAL_TERMS_DATA)) {
     console.log('[TrustGazetteer] ✅ Found FINANCIAL_TERMS_DATA, loading', FINANCIAL_TERMS_DATA.length, 'terms');
-    const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+    const financialTerms = normalizeFinancialTerms(FINANCIAL_TERMS_DATA);
     FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
     FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
   } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
     console.log('[TrustGazetteer] ✅ Found window.FINANCIAL_TERMS_DATA, loading', window.FINANCIAL_TERMS_DATA.length, 'terms');
-    const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+    const financialTerms = normalizeFinancialTerms(window.FINANCIAL_TERMS_DATA);
     FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
     FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
   } else {
@@ -164,8 +267,20 @@ const TrustGazetteer = (() => {
   // context words (e.g. "debt" only appears inside phrases such as
   // "Annual Debt Service"). Merged the same way as SUPPLEMENTARY_MEDICAL_TERMS.
   // Called here and from rebuildGazetteers(), which rebuilds the lists from the raw data.
-  const SUPPLEMENTARY_FINANCIAL_TERMS = ["debt"];
+  const SUPPLEMENTARY_FINANCIAL_TERMS = [
+    "debt",
+    // Personal-finance vocabulary missing from the glossary. Terms that are also
+    // common general words are in AMBIGUOUS_FINANCIAL_SOFT (personal cue needed).
+    "savings", "wages", "debts", "loans", "unpaid", "bankrupt", "afford", "401(k)",
+    "rent", "bills", "retirement", "expenses", "taxes",
+    // Filipino: salary, wages, debt.
+    "sweldo", "suweldo", "sahod", "utang",
+  ];
   function mergeSupplementaryFinancial() {
+    // Drop non-personal glossary entries (words AND phrases) so every rebuild
+    // path ends up with the same list.
+    FINANCIAL_WORDS = FINANCIAL_WORDS.filter(t => !AMBIGUOUS_FINANCIAL_HARD.has(t));
+    FINANCIAL_PHRASES = FINANCIAL_PHRASES.filter(t => !AMBIGUOUS_FINANCIAL_HARD.has(t));
     const existing = new Set([...FINANCIAL_WORDS, ...FINANCIAL_PHRASES]);
     for (const term of SUPPLEMENTARY_FINANCIAL_TERMS) {
       if (existing.has(term)) continue;
@@ -365,58 +480,22 @@ const TrustGazetteer = (() => {
     "chinoy",        // Chinese-Filipino self-identifier
     "tisoy", "tisay",              // half-Filipino, half-Caucasian
     "mestizo", "mestiza",          // mixed-heritage Filipino
-    // ── PH ethno-regional self-identifiers ────────────────────────────────────
-    "bisaya",        // Visayan ethnic/linguistic identity (largest regional group)
-    "ilocano", "ilokano",          // Ilocos region (both spellings common)
-    "cebuano",
-    "kapampangan",
-    "waray",         // Eastern Visayas; also a PH surname — word-boundary acceptable
-    "bicolano", "bikolano",
-    "bangsamoro",    // Muslim Mindanao political/ethnic self-identifier
-    "maranao", "maranaw",
-    "tausug",
-    "maguindanao",
-    "moro",          // historic/community self-identifier; PH Muslim identity
-    // ── Religion — standard English ───────────────────────────────────────────
-    "muslim", "christian", "catholic", "protestant", "evangelical",
-    "buddhist", "hindu", "jewish", "sikh",
-    "atheist", "agnostic",
-    "adventist", "pentecostal",
-    "mormon",        // colloquial name for LDS; more commonly typed than "latter-day saint"
-    "presbyterian", "methodist", "episcopal",
-    "taoist",        // Chinese-Filipino community
-    "sunni", "islamic",
-    "moslem",        // older spelling; appears on PH civil registry and school records
-    // ── Religion — Filipino-language terms ────────────────────────────────────
-    "kristyano",     // Tagalog: "Christian"
-    "katoliko", "katolika",        // Tagalog: Catholic (male/female)
-    "protestante",   // Tagalog: "Protestant"
-    "budista",       // Tagalog: "Buddhist"
-    // ── PH-specific denominations ─────────────────────────────────────────────
-    "aglipayan",     // Philippine Independent Church
-    "baptist",
-    "lds",           // Latter-day Saints abbreviation; "Latter-day Saint" in PHRASES
-    // NOTE: "iglesia" removed as standalone — means any church in Filipino
-    //       Use phrase "iglesia ni cristo" instead (in NATIONALITY_PHRASES)
-    // NOTE: "karaniwang" removed — means "ordinary/common", NOT a denomination
+    // NOTE: PH ethno-regional identifiers (ilocano, cebuano, kapampangan, waray, etc.)
+    // have been removed from this list. They are ethnic-group names, not nationalities.
+    // They are detected as ethnic-origin context indicators via the gazetteer ethnic path,
+    // not as nationality disclosures.
+    //
+    // NOTE: Religion terms (muslim, christian, catholic, etc.) have been removed here.
+    // They are handled exclusively by the RELIGION_TERMS / RELIGION_GAZETTEER_TERMS path
+    // and the religion trigger phrases. Keeping them here caused double-detection.
   ];
 
   // ── Nationality — multi-word phrases ─────────────────────────────────────
   // Sorted longest-first so longer phrases shadow shorter substrings.
   // These match without \b anchors — natural spacing provides the boundary.
+  // NOTE: Religion denomination phrases (iglesia ni cristo, roman catholic, etc.)
+  // have been removed — they are handled by the religion gazetteer path only.
   const NATIONALITY_PHRASES = [
-    // Denominations and religious identities
-    "iglesia ni cristo",           // full name; more reliable than bare "iglesia"
-    "inc member",                  // INC abbreviation in phrase context
-    "seventh-day adventist",
-    "born again christian",        // full form; more common than bare "born again"
-    "roman catholic",
-    "born again",
-    "jehovah's witness",
-    "jehovahs witness",            // no-apostrophe variant
-    "jehovah witness",             // no-apostrophe, no-s variant
-    "latter-day saint",
-    "latter day saint",
     // Citizenship and status
     "overseas filipino worker",    // full expanded form of OFW
     "dual citizen",                // RA 9225 Filipino dual citizenship
@@ -435,9 +514,6 @@ const TrustGazetteer = (() => {
     "sri lankan",
     "new zealander",
     "new zealand",
-    // Non-Catholic phrases (appear in PH school/hospital enrollment forms)
-    "non-catholic christian",
-    "non-catholic",
     // Additional multi-word nationalities from countries.csv (SRC-GAZ-001)
     "trinidadian or tobagonian",
     "papua new guinean",
@@ -495,6 +571,14 @@ const TrustGazetteer = (() => {
     { phrase: "i am called",          category: "person_name",  risk: "low" },
     { phrase: "call me",              category: "person_name",  risk: "low"    },
     { phrase: "my nickname is",       category: "person_name",  risk: "low"    },
+    // "I am <Name>" / "I AM <NAME>" — covers self-introductions that do not use
+    // "my name is". The age and sex_gender entries below share this phrase but
+    // have followPattern guards that immediately reject non-digit / non-gender
+    // values, so they are independent. grammarCheck("person_name") rejects spans
+    // that start with a digit, ensuring no overlap with the age trigger.
+    // GUARD: Reject words ending with -ing (verbs), -ed (past tense), and ethnic/nationality adjectives
+    // to prevent false positives like "I am applying", "I am ilocano", "I am Filipino", etc.
+    { phrase: "i am",                 category: "person_name",  risk: "low",   followPattern: /^(?![a-z]*(?:ing|ed)\b|(?:ilocano|cebuano|tagalog|bikol|kapampangan|pangasinense|waray|ilonggo|hiligaynon|mindanaoan|tausug|maranao|maguindanao|muslim|christian|catholic|buddhist|hindu|jewish|sikh|atheist|agnostic|philippine|filipin|pilipino|in\s|at\s|from\s|for\s|with\s|happy|sad|angry|tired|sick|well|born)\b)/i },
     // Age / DOB
     // FIXED: Made "years old" suffix mandatory to prevent false positives like "worked for 20 years"
     // Changed followPattern from /^\d{1,3}\s*(years?\s*old|yrs?\s*old|y\/o)?/ (optional suffix)
@@ -535,12 +619,15 @@ const TrustGazetteer = (() => {
     // Religion / belief
     { phrase: "i am a",               category: "religion",     risk: "low",   requireGazetteer: "religion" },
     { phrase: "i believe in",         category: "religion",     risk: "low",   requireGazetteer: "religion" },
-    // Financial
-    { phrase: "my salary is",         category: "financial",    risk: "low" },
-    { phrase: "i earn",               category: "financial",    risk: "low" },
-    { phrase: "my income is",         category: "financial",    risk: "low" },
-    { phrase: "my account number is", category: "financial",    risk: "high"   },
-    { phrase: "my card number is",    category: "financial",    risk: "high"   },
+    // Financial — the value after the phrase must contain a financial gazetteer
+    // term. Bare numbers (card/account numbers, amounts) never produce a
+    // trigger_financial finding; card/account numbers are handled by their own
+    // validated detectors (e.g. credit_card with Luhn check).
+    { phrase: "my salary is",         category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "i earn",               category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "my income is",         category: "financial",    risk: "low",   requireGazetteer: "financial" },
+    { phrase: "my account number is", category: "financial",    risk: "high",  requireGazetteer: "financial" },
+    { phrase: "my card number is",    category: "financial",    risk: "high",  requireGazetteer: "financial" },
     // Physical Descriptors — eye color and sex/gender
     { phrase: "my eye color is",      category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },
     { phrase: "my eyes are",          category: "eye_color",    risk: "low",   requireGazetteer: "eye_color" },
@@ -590,8 +677,9 @@ const TrustGazetteer = (() => {
   // Split of the source lists. Each term is in exactly one category:
   //   religion      → gazetteer_religion (scored, Low, base 2)
   //   nationality   → gazetteer_nationality (Rule 2 context indicator, score 0)
-  const RELIGION_GAZETTEER_TERMS = [...NATIONALITY_WORDS, ...NATIONALITY_PHRASES]
-    .filter(t => RELIGION_TERMS.has(t));
+  // NOTE: Religion terms were removed from NATIONALITY_WORDS / NATIONALITY_PHRASES, so
+  // RELIGION_GAZETTEER_TERMS is sourced directly from RELIGION_TERMS (the canonical set).
+  const RELIGION_GAZETTEER_TERMS = [...RELIGION_TERMS];
   const NATIONALITY_GAZETTEER_WORDS = NATIONALITY_WORDS.filter(t => !RELIGION_TERMS.has(t));
   const NATIONALITY_GAZETTEER_PHRASES = NATIONALITY_PHRASES.filter(t => !RELIGION_TERMS.has(t));
 
@@ -632,11 +720,11 @@ const TrustGazetteer = (() => {
     }
     
     if (typeof FINANCIAL_TERMS_DATA !== 'undefined' && Array.isArray(FINANCIAL_TERMS_DATA)) {
-      const financialTerms = FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+      const financialTerms = normalizeFinancialTerms(FINANCIAL_TERMS_DATA);
       FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
       FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
     } else if (typeof window !== 'undefined' && window.FINANCIAL_TERMS_DATA) {
-      const financialTerms = window.FINANCIAL_TERMS_DATA.map(t => t.toLowerCase());
+      const financialTerms = normalizeFinancialTerms(window.FINANCIAL_TERMS_DATA);
       FINANCIAL_PHRASES = financialTerms.filter(t => t.includes(' ')).sort((a, b) => b.length - a.length);
       FINANCIAL_WORDS = excludeAmbiguousFinancial(financialTerms.filter(t => !t.includes(' ')));
     }
@@ -1011,9 +1099,12 @@ const TrustGazetteer = (() => {
       // Stop at stop words
       if (STOP_WORDS.has(clean)) break;
 
-      // Stop at sentence-ending punctuation in the word
+      // Stop at sentence-ending punctuation in the word, but not for
+      // proper-noun abbreviations like "St." or "Dr." (single-letter or
+      // 2-letter prefix followed by a period). Those are part of the name.
+      const isAbbrev = /^\p{Lu}{1,3}\.$/u.test(word);
       collected.push(word);
-      if (/[.!?]$/.test(word)) break;
+      if (!isAbbrev && /[.!?]$/.test(word)) break;
     }
 
     const span = collected.join(" ").replace(/[.,!?;:]$/, "").trim();
@@ -1173,7 +1264,7 @@ const TrustGazetteer = (() => {
     // ("because", "while", "when", "who", "which"). Commas are intentionally NOT
     // treated as boundaries, so appositive/listing disclosures in the same
     // sentence (e.g. "I am a 30 year old, Filipino man") remain detectable.
-    const clauseBoundaryRe = /.*(?:[.!?;]|\b(?:because|while|when|who|which)\b)\s*/is;
+    const clauseBoundaryRe = /.*(?:[.!?;]|\b(?:because|while|when|who|which|before|after|until|unless|although|though|whether)\b)\s*/is;
     const nearContextLower = contextLower.replace(clauseBoundaryRe, "");
 
     // ── LOCATION-CONTEXT GUARD (nationality only) ───────────────────────────
@@ -1203,8 +1294,35 @@ const TrustGazetteer = (() => {
     // whether the term surfaces as a detection.)
     if (category === "financial") {
       const combined = contextLower + " " + contextAfterLower;
-      const procedural = /\b(how\s+(?:do|to|can|should)|declare|file|compute|calculate|report|register|what\s+(?:is|are)|explain)\b/.test(combined);
-      const hasAmountNearby = /(?:php|₱|\$|usd)\s?\d|\b\d{3,}(?:[.,]\d+)?\b/.test(combined);
+      // The how-to cue must be in the SAME sentence as the term. Scanning the
+      // whole +/-150 char window let a neighbouring question ("... his debt is
+      // piling up. How can I start a conversation?") suppress a real disclosure.
+      const sentenceBefore = contextLower.replace(/^[\s\S]*[.!?]\s+/, "");
+      const sentenceAfter = contextAfterLower.split(/[.!?](?:\s|$)/)[0];
+      const sentenceLocal = sentenceBefore + " " + sentenceAfter;
+
+      // ── TOPIC-REFERENCE GUARD (DEF-008) ─────────────────────────────────
+      // When a financial term is the SUBJECT of research rather than a
+      // personal disclosure, suppress it. Patterns:
+      //   "thesis on identity theft"              — the term IS the research topic
+      //   "sample fake record might read: … debt" — the term is inside a declared-
+      //                                             hypothetical example record
+      //   "sample record", "mock data", "faux record", "hypothetical example"
+      //   followed by or containing a financial term
+      //
+      // Check the full 150-char window (the sentence that contains the thesis
+      // framing may precede the sentence containing the term by more than one
+      // sentence boundary, but the window still covers it for typical prompts).
+      const topicFrame = /\b(?:thesis|dissertation|research|paper|report|assignment|coursework|study|studying|investigating)\s+(?:on|about|regarding|for|into)\b|\b(?:sample|faux|mock|hypothetical|example|test|dummy)\s+(?:fake\s+)?(?:data|record|case|scenario|example|profile|entry)\b|\b(?:might|could|would)\s+read\b|\bcritique\b|\bhow\s+realistic\b|\bfor\s+my\s+(?:thesis|research|paper|study|report)\b/i;
+      if (topicFrame.test(combined)) {
+        return false;  // Safe: financial term is a research topic or inside a declared-hypothetical example
+      }
+
+      const procedural = /\b(how\s+(?:do|to|can|should)|declare|file|compute|calculate|report|register|what\s+(?:is|are)|explain)\b/.test(sentenceLocal);
+      // A monetary amount needs a currency marker or a grouped figure. A bare run
+      // of digits is not money ("invoice number 4521", "error 500", "account
+      // 12345678"), so it must not unlock an otherwise ambiguous term.
+      const hasAmountNearby = /(?:php|₱|\$|usd|eur|€|£|gbp|¥|jpy)\s?\d|\b\d[\d,]*(?:\.\d+)?\s?(?:k|m|million|billion)?\s?(?:pesos?|php|dollars?|usd|euros?|eur|pounds?|gbp|yen|jpy)\b|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/.test(combined);
       if (procedural && !hasAmountNearby) {
         return false;  // Safe: generic financial/tax question, no value disclosed
       }
@@ -1214,8 +1332,20 @@ const TrustGazetteer = (() => {
       // monetary amount appears nearby. "Share the file" / "stock photo" /
       // "create an account" stay safe.
       const matchedTerm = fullText.substr(matchIndex, matchLength).toLowerCase();
-      if (AMBIGUOUS_FINANCIAL_SOFT.has(matchedTerm)) {
-        const personalCue = /\b(my|our|mine|i|i'm|im|i've|ive|me|we)\b/.test(nearContextLower);
+      // Multi-word glossary entries ("account number", "payment gateway",
+      // "interest rate") and currency names derived from the glossary are
+      // industry/business vocabulary. They describe a product, a system or a
+      // generic concept far more often than the writer's own finances, so they
+      // take the same personal/amount cue requirement as the ambiguous words.
+      // Unambiguous single words ("salary", "payroll", "loan") are unaffected.
+      const requiresCue = AMBIGUOUS_FINANCIAL_SOFT.has(matchedTerm) ||
+                          DERIVED_CUE_GATED.has(matchedTerm) ||
+                          /\s/.test(matchedTerm);
+      if (requiresCue) {
+        // A bare "I" or "we" is not enough: "before I share it with the group"
+        // is an ordinary verb, not the writer's own stock or account. The cue is
+        // ownership (my/our/mine) or a first-person ownership verb (I have / we own).
+        const personalCue = /\b(my|our|mine)\b|\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\b/.test(nearContextLower);
         if (!personalCue && !hasAmountNearby) {
           return false;  // Safe: general-word usage, no personal/monetary cue
         }
@@ -1227,6 +1357,57 @@ const TrustGazetteer = (() => {
       // Sensitive-Context Co-occurrence rule consider them. It never raises the
       // numeric risk on its own.
       return true;
+    }
+
+    // ── MEDICAL CUES ─────────────────────────────────────────────────────────
+    // (evaluated before the generic rules below; medical category only)
+    if (category === "medical") {
+      const matchedMed = fullText.substr(matchIndex, matchLength).toLowerCase();
+
+      // Everyday words that are also health words ("gas bill", "stress at work"):
+      // surface only when tied to a health experience, never on "my"/"I am" alone.
+      if (AMBIGUOUS_MEDICAL_SOFT.has(matchedMed)) {
+        const healthVerb = /\b(?:have|has|had|having|i've|ive|suffer(?:s|ed|ing)?(?:\s+from)?|diagnosed(?:\s+with)?|treated\s+for|experiencing|developed|developing)\s+(?:(?:a|an|some|the|severe|bad|chronic|acute|serious|mild)\s+){0,2}$/;
+        const nonHealthNoun = /^\s*(?:bills?|prices?|stoves?|stations?|tanks?|pipes?|meters?|compan(?:y|ies)|cylinders?|masks?|pedals?|at\s+work|from\s+work|of\s+(?:tomatoes|plants|wheat|rice))\b/;
+        return healthVerb.test(nearContextLower) && !nonHealthNoun.test(contextAfterLower);
+      }
+
+      // "diagnosed with <condition>": the condition itself is the indicator, so
+      // do not also surface the verb as a second chip.
+      if ((matchedMed === "diagnosed" || matchedMed === "diagnose") &&
+          /^\s+(?:with|as|for|of)\b/.test(contextAfterLower)) {
+        return false;
+      }
+
+      const HEALTH_SUBJECT = /\b(?:i|we|he|she|they|mom|mommy|mother|mama|dad|daddy|father|papa|son|daughter|wife|husband|brother|sister|baby|child|kid|friend|grandmother|grandfather|grandma|grandpa|lola|lolo|aunt|uncle|patient)\b/;
+
+      // "she has cancer", "my son had surgery", "I've been ..." : possession/
+      // occurrence verbs with a person subject in the same clause.
+      if (/\b(?:has|had|having|i've|ive)\b/.test(nearContextLower) && HEALTH_SUBJECT.test(nearContextLower)) {
+        return true;
+      }
+
+      // "living with" verb family ("struggling with", "coping with", "battling")
+      // directly before the term, with a person subject. Inline replacement for
+      // the TrustAttribution call below, which is undefined at runtime.
+      if (/\b(?:struggl\w+|cop(?:e|es|ed|ing)|deal(?:s|ing|t)?|liv(?:e|es|ed|ing)|battl\w+|fight\w*)\s+(?:with|against|from)\s+(?:(?:a|an|the|my|his|her|their|severe|chronic)\s+){0,2}$/.test(nearContextLower) &&
+          (HEALTH_SUBJECT.test(nearContextLower) || /\b(?:i'm|im)\b/.test(nearContextLower))) {
+        return true;
+      }
+
+      // Medical-encounter context: a clinician/hospital word AND a personal or
+      // family reference within the preceding window, e.g. "My mother was
+      // diagnosed ... The doctor explained the treatment plan".
+      if (/\b(?:doctor|dr\.?|nurse|physician|surgeon|specialist|oncologist|cardiologist|therapist|hospital|clinic|prescribed|admitted|ward)\b/.test(contextLower) &&
+          /\b(?:my|our|mom|mother|dad|father|son|daughter|wife|husband|brother|sister|i|we|me|us|she|he|her|his)\b/.test(contextLower)) {
+        return true;
+      }
+
+      // Testing/screening phrasing: "tested for covid", "tested positive for hiv".
+      if (/\b(?:tested|screened|checked|vaccinated)\s+(?:positive\s+|negative\s+)?(?:for|against)\s+(?:(?:a|an|the)\s+)?$/.test(nearContextLower) &&
+          HEALTH_SUBJECT.test(nearContextLower)) {
+        return true;
+      }
     }
 
     // ── RISKY HEURISTICS (Check these FIRST to catch PII patterns) ──────────
@@ -1349,13 +1530,13 @@ const TrustGazetteer = (() => {
       }
     }
 
-    // 3. Food/cuisine context
-    if (/\b(cuisine|food|restaurant|dish|cooking|recipe)\b/.test(contextAfterLower)) {
+    // 3. Food/cuisine context (NOT for religion terms - they should be detected regardless)
+    if (category !== "religion" && /\b(cuisine|food|restaurant|dish|cooking|recipe)\b/.test(contextAfterLower)) {
       return false;  // Safe: Food reference like "Filipino cuisine"
     }
 
-    // 4. Cultural/historical context
-    if (/\b(culture|history|tradition|music|art|dance|architecture)\b/.test(contextAfterLower)) {
+    // 4. Cultural/historical context (NOT for religion terms - they should be detected)
+    if (category !== "religion" && /\b(culture|history|tradition|music|art|dance|architecture)\b/.test(contextAfterLower)) {
       // But exclude if there's personal possession before
       if (!/\b(my|our|have|as\s+(?:a|an))\b/.test(contextLower)) {
         return false;  // Safe: Cultural reference like "Filipino culture"
@@ -1379,6 +1560,25 @@ const TrustGazetteer = (() => {
         // Generic mention without employment context — it's safe
         return false;  // Safe: Not a personal employment disclosure
       }
+    }
+
+    // ── DEFAULT: Religion terms should be detected (not safe by default) ───────
+    // Religion is a SENSITIVE PERSONAL INFORMATION category under RA 10173.
+    // Bare mentions (e.g., "Religion: Roman Catholic") should be detected as
+    // context indicators. They won't escalate without a personal identifier or
+    // anchor, but they should be visible to the system.
+    //
+    // However, pure educational/informational contexts should remain safe:
+    // "what are the differences between Christian and Muslim traditions" is not
+    // a disclosure about the writer's own religion.
+    if (category === "religion") {
+      // Check for clear educational framing
+      const educationalContext = /\b(difference|between|versus|vs|compare|contrast|explain|describe|history|tradition|belief|teach|learn|study|research)\b/i;
+      const hasEducationalFraming = educationalContext.test(contextBefore) && /\b(and|or)\b/i.test(contextAfter);
+      if (hasEducationalFraming && !/\b(my|our|i|me|as a)\b/i.test(contextLower)) {
+        return false;  // Safe: Educational comparison without personal reference
+      }
+      return true;  // Risky: Religion terms are generally flagged for governance evaluation
     }
 
     // ── DEFAULT: ALLOW unless explicitly risky ───────────────────────────────
@@ -1586,17 +1786,29 @@ const TrustGazetteer = (() => {
   // ensuring contextual terms are always detected.
   // ENHANCED: Context analysis to filter out non-PII references
 
+  // Build the exact-match regex for one gazetteer term. The term is regex-escaped
+  // (glossary entries contain "/", "&", "+", "(", ".") and bounded with
+  // lookarounds instead of \b when it starts or ends with a non-word character,
+  // because \b never matches next to punctuation ("401(k)", "p/e").
+  function buildTermRegex(term, flags) {
+    const pre  = /^\w/.test(term) ? "\\b" : "(?<!\\w)";
+    const post = /\w$/.test(term) ? "\\b" : "(?!\\w)";
+    return new RegExp(pre + _escapeRegex(term) + post, flags);
+  }
+
   function runGazetteerScan(text) {
     const findings = [];
     const lower = text.toLowerCase();
     const seen = new Set();  // Track already-found items to avoid duplicates
+    // Accepted financial matches with their spans, used after the scan to drop a
+    // term that only occurs inside a longer accepted financial term.
+    const financialSpans = [];
 
     for (const [category, terms] of Object.entries(GAZETTEER)) {
       for (const term of terms) {
         // ── EXACT MATCH (original behavior) ────────────────────────────────
-        const re = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "i");
         let match;
-        const globalRe = new RegExp("\\b" + term.replace(/[-]/g, "\\-") + "\\b", "gi");
+        const globalRe = buildTermRegex(term, "gi");
         
         // Check all occurrences of this term
         while ((match = globalRe.exec(text)) !== null) {
@@ -1616,6 +1828,9 @@ const TrustGazetteer = (() => {
           // These have proper structure for scoring and display
           const meta = CATEGORY_META[category] || { label: category, sanitize: () => "[REDACTED]" };
           const dedupeKey = category + ":" + match[0].toLowerCase();
+          if (category === "financial") {
+            financialSpans.push({ key: dedupeKey, start: match.index, end: match.index + match[0].length });
+          }
           
           if (!seen.has(dedupeKey)) {
             findings.push({
@@ -1708,6 +1923,21 @@ const TrustGazetteer = (() => {
           }
         }
       }
+    }
+
+    // Longest-match wins for financial terms: "debt-to-income ratio" should be one
+    // finding, not that phrase plus "debt" and "income". A term is dropped only
+    // when EVERY accepted occurrence lies inside a longer accepted term.
+    if (financialSpans.length > 1) {
+      const contained = new Map();  // key -> true while all occurrences are contained
+      for (const a of financialSpans) {
+        const inside = financialSpans.some(b =>
+          b.key !== a.key && b.start <= a.start && b.end >= a.end &&
+          (b.end - b.start) > (a.end - a.start));
+        contained.set(a.key, (contained.has(a.key) ? contained.get(a.key) : true) && inside);
+      }
+      return findings.filter(f => !(f.patternId === "gazetteer_financial" &&
+        contained.get("financial:" + f.rawMatch.toLowerCase()) === true));
     }
 
     return findings;
@@ -2028,9 +2258,15 @@ const TrustGazetteer = (() => {
     const combined = [...triggerFindings];
     
     // Add B1 findings that aren't already covered by B2 (deduplication by rawMatch)
-    const b2Matches = new Set(triggerFindings.map(f => f.rawMatch.toLowerCase().trim()));
+    //
+    // Use substring containment, not exact equality, so that a B2 trigger span
+    // such as "type 2 diabetes" suppresses the B1 bare-term finding "diabetes".
+    // Exact-match dedup missed this case because the two rawMatch strings differ.
+    const b2MatchTexts = triggerFindings.map(f => f.rawMatch.toLowerCase().trim());
     for (const b1Finding of gazetterFindings) {
-      if (!b2Matches.has(b1Finding.rawMatch.toLowerCase().trim())) {
+      const b1Text = b1Finding.rawMatch.toLowerCase().trim();
+      const coveredByB2 = b2MatchTexts.some(b2Text => b2Text === b1Text || b2Text.includes(b1Text));
+      if (!coveredByB2) {
         combined.push(b1Finding);
       }
     }

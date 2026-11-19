@@ -63,8 +63,8 @@ Table 11 groups fields into scoring units, but a unit contributes its base score
 
 | Field(s) | Eligible for scoring when |
 |---|---|
-| Job title/role (`nlp_job_title`) | The sentence has a first-person self-attribution ("I am/I'm a, an, or the [title]", "I work as", "my role is", "as the [title] of ...", or a self-introduction such as "I'm Maria Santos, a nurse" or "My name is Maria Santos, a nurse"), or the title is the value of a labeled record field (Position, Job title, Role, Designation, Occupation). |
-| Organization name (`nlp_organization`) | The sentence ties the name to the writer ("my company X", "I work at X", "I am a member of X"), or the name is the value of a labeled record field (Company, Employer, Organization, Workplace, Agency, Affiliation). |
+| Job title/role (`nlp_job_title`) | The sentence has a first-person self-attribution ("I am/I'm a, an, or the [title]", "I work as", "my role is", "as the [title] of ...", or a self-introduction such as "I'm Maria Santos, a nurse" or "My name is Maria Santos, a nurse"), or the title is linked to a detected personal name in the same sentence (an appositive comma or a short "is a" / "works at" link, such as "Marites Aquino, a call center agent" or "Carlo is a nurse"), or the title is the value of a labeled record field (Position, Job title, Role, Designation, Occupation). |
+| Organization name (`nlp_organization`) | The sentence ties the name to the writer ("my company X", "I work at X", "I am a member of X"), or the sentence links it to a detected personal name in the same way (such as "Carlo works at Ayala Corporation"), or the name is the value of a labeled record field (Company, Employer, Organization, Workplace, Agency, Affiliation). |
 | Personal Attributes: age, height, weight, eye color, blood type, sex | One of the three conditions in the personal-attribute gate below. |
 
 A labeled record needs at least two "Label: value" fields and must not be a hiring or vacancy notice.
@@ -253,6 +253,22 @@ Status: approved for the steering file. It is not yet in Manuscript Chapter 3, a
 5. **Noun-compound check.** The term is not followed by a role or event noun: class, exam, seminar, researcher, nurse, educator, awareness, research, study, program, support group. A hyphenated compound counts as one token.
 
 **Effect.** If the anchor fires, raise the preliminary classification by one level, at most once per prompt, with no score added. Exclusion phrases from the research and educational list cannot suppress it, because Step 3 covers those cases. Record which step fired or vetoed the anchor, so the reason is available to the UI.
+
+#### Organizational Affiliation Cues (codebook entry — approved in chat 2026-11-19; cues only, stays Low)
+
+Status: approved in chat 2026-11-19 as a cue expansion only. Organizational affiliation stays at Low. These cues do not raise the classification, add no score, and do not create a Rule 2 escalation. They extend first-person attribution cues for organization findings, which remain limited to "I" and "I'm" as the subject. The anchor list is implemented in `context-attribution.js` (`AFFILIATION_ANCHOR_FORMS`, `matchAffiliationAnchor`).
+
+**Preprocessing.** Same as the Medical Anchor Rule (expand I'm → I am, etc.).
+
+**Closed cue list.** The speaker is the subject. Allowed forms:
+- I graduated from
+- I studied at / I studied in
+- I attended
+- I worked at / I worked for
+- before working at / after working at
+- I am an alumnus of / I am an alumna of
+
+**Effect.** None on classification. An organization finding that matches one of these cues keeps its existing Low classification.
 
 #### Financial indicators (approved; same-sentence scope)
 

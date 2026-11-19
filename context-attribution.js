@@ -96,6 +96,28 @@
     { id: "med_anchor_adjective",    source: "\\bi\\s+am\\b" },   // "I am [condition adjective]"
   ];
 
+  // ── Organizational Affiliation Anchor codebook (requested 2026-11-19; see governance-rules.md) ──
+  // Closed cue list for organization affiliation (first-person "I" subject only). Contractions are expanded first.
+  // Cues only: organization affiliation stays Low and is not wired into evaluateCooccurrence().
+  const AFFILIATION_ANCHOR_FORMS = [
+    { id: "aff_anchor_graduated",       source: "\\bi\\s+graduated\\s+from\\b" },
+    { id: "aff_anchor_studied",         source: "\\bi\\s+studied\\s+(?:at|in)\\b" },
+    { id: "aff_anchor_attended",        source: "\\bi\\s+attended\\b" },
+    { id: "aff_anchor_worked",          source: "\\bi\\s+worked\\s+(?:at|for)\\b" },
+    { id: "aff_anchor_before_after",    source: "\\b(?:before|after)\\s+working\\s+at\\b" },
+    { id: "aff_anchor_alumnus",         source: "\\bi\\s+am\\s+an?\\s+alumn(?:us|a)\\s+of\\b" },
+  ];
+
+  // Returns the id of the first affiliation anchor found in the sentence, or null.
+  function matchAffiliationAnchor(sentence) {
+    if (!sentence) return null;
+    const s = expandAnchorContractions(sentence);
+    for (const form of AFFILIATION_ANCHOR_FORMS) {
+      if (new RegExp(form.source, "i").test(s)) return form.id;
+    }
+    return null;
+  }
+
   // Qualifiers allowed between the anchor and the term (step 4).
   const MED_QUALIFIERS = "(?:a|an|type|1|2|stage|chronic|severe|mild|had|been)";
 
@@ -435,6 +457,8 @@
     categoryForPatternId: categoryForPatternId,
     hasNationalityAnchor: hasNationalityAnchor,
     evaluateMedicalAnchor: evaluateMedicalAnchor,
+    matchAffiliationAnchor: matchAffiliationAnchor,
+    AFFILIATION_ANCHOR_FORMS: AFFILIATION_ANCHOR_FORMS,
     splitSentences: splitSentences,
     POSITIVE_PATTERNS: POSITIVE_PATTERNS,
     EXCLUSION_PATTERNS: EXCLUSION_PATTERNS,

@@ -330,11 +330,13 @@ const ORG_AFFILIATION_BEFORE_RE = new RegExp(
     "(?:company|employer|workplace|office|school|university|college|organization|team|firm|church|association|club|agency|hospital|clinic|branch|department|unit|group)\\b[^.!?\\n]*$" +
   "|" +
   "\\b(?:i|we)\\s+(?:" +
-    "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired)\\b" +
+    "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired|graduated|attended)\\b" +
     "|(?:am|was|are|were)\\s+(?:(?:a|an|the)\\s+)?" +
       "(?:(?:member|members|employee|employees|staff|student|students|intern|interns|volunteer|volunteers|alumni|alumnus|alumna|graduate|graduates)\\s+(?:of|at|with|for)\\b" +
       "|(?:hired|employed|recruited)\\s+(?:by|at)\\b)" +
   ")[^.!?\\n]*$" +
+  "|\\b(?:before|after)\\s+working\\s+(?:at|for)\\b[^.!?\\n]*$" +
+  "|\\bi['’]m\\s+(?:(?:a|an|the)\\s+)?(?:(?:member|employee|student|intern|volunteer|alumni|alumnus|alumna|graduate)\\s+(?:of|at|with|for)\\b)[^.!?\\n]*$" +
   // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
   "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
   "i"
@@ -433,11 +435,42 @@ function isAttributedPersonalAttribute(fullText, f) {
 // Job-title record label (mirrors scanner.js RECORD_JOB_LABEL_RE). A title that is the value of "Position:", "Role:", etc. is scored.
 const RECORD_JOB_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:position|job\s*title|title|role|designation|occupation)\s*[:=]\s*$/i;
 
-function isScorableFinding(f, fullText) {
+// ── Name-linked job titles and organizations (scoring gate) ─────────────────
+// A job title or organization is also scored when it is linked to a detected
+// personal name in the same sentence, through an appositive comma or a short
+// copula / employment link placed between them:
+//   "Marites Aquino, a call center agent"   (appositive)
+//   "Carlo is a nurse"                      (copula)
+//   "Carlo works at Ayala Corporation"      (employment link)
+// The gap between the name and the finding must match one of these links
+// exactly, so a sentence break, a clause, or any other word in between blocks
+// the link. Mirrors isLinkedToPersonName in scanner.js; keep the two identical.
+const PERSON_NAME_IDS = new Set(["nlp_person_name", "trigger_person_name"]);
+const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?))$/i;
+function isLinkedToPersonName(fullText, f, findings) {
+  if (!fullText || !f || !f.rawMatch || !Array.isArray(findings)) return false;
+  const names = findings
+    .filter(p => PERSON_NAME_IDS.has(p.patternId) && p.rawMatch && p.rawMatch.trim())
+    .map(p => p.rawMatch.trim().toLowerCase());
+  if (names.length === 0) return false;
+  const lower = fullText.toLowerCase();
+  const needle = f.rawMatch.trim().toLowerCase();
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    for (const name of names) {
+      for (let j = lower.indexOf(name); j !== -1 && j + name.length <= i; j = lower.indexOf(name, j + 1)) {
+        const gap = fullText.slice(j + name.length, i);
+        if (gap.length <= 40 && PERSON_LINK_GAP_RE.test(gap)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isScorableFinding(f, fullText, findings) {
   if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
-  // nlp_job_title: scored only when the detector tagged it first-person attributed (attributed === true), or it is a labeled record field value.
-  if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE);
-  if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+  // nlp_job_title: scored when first-person attributed (attributed === true), a labeled record field value, or linked to a personal name in the same sentence.
+  if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE) || isLinkedToPersonName(fullText, f, findings);
+  if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE) || isLinkedToPersonName(fullText, f, findings);
   if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
   return true;
 }
@@ -470,7 +503,7 @@ function evaluateGovernance(findings, preliminary, fullText) {
   // ── Rule 3: Low-Impact Cap ───────────────────────────────────────────────
   // Condition: every *scored* entity (BASE_SCORES > 0) has a base score of
   // exactly 2, meaning no Moderate (5) or Critical (10) entity is present.
-  const scoredFindings = findings.filter(f => isScorableFinding(f, fullText));
+  const scoredFindings = findings.filter(f => isScorableFinding(f, fullText, findings));
   const hasAnyScoredEntity = scoredFindings.length > 0;
   const allLowImpact = scoredFindings.every(
     f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -500,7 +533,7 @@ function finalClass(preliminary, governance) {
 // ── Main scoring function ─────────────────────────────────────────────────────
 
 function computeRiskScore(findings, fullText) {
-  const scorable = findings.filter(f => isScorableFinding(f, fullText));
+  const scorable = findings.filter(f => isScorableFinding(f, fullText, findings));
 
   // ── No scored entities ──────────────────────────────────────────────────
   // Normally No Detected Risk — except the Rule 2 anchor-only path: an

@@ -88,6 +88,11 @@ const TrustGazetteer = (() => {
     "copyright", "trademark", "franchise", "inventory", "affiliate",
     "associate", "compression", "consolidation", "accounting", "provision",
     "grace period", "financial literacy",
+    // Generic business and legal words from the glossary ("budget" as in a
+    // travel or project budget, "commission" as in a sales or agent fee,
+    // "settlement" as in a dispute). They are not personal finance signals,
+    // so they are removed here instead of being gated on a personal cue.
+    "budget", "budgeting", "commission", "settlement",
     // "owe", "owed", "owing" are plain verbs, not financial entities. The actual
     // disclosed information in "I owe ₱120,000 to Pag-IBIG" is the monetary
     // amount and the creditor, both of which are detected independently. Showing
@@ -108,8 +113,8 @@ const TrustGazetteer = (() => {
     "index", "growth", "savings",
     // Business/everyday words that are real finance terms only when the writer
     // ties them to themselves or a monetary amount appears nearby.
-    "budget", "budgeting", "commission", "withdrawal", "portfolio",
-    "shareholder", "settlement",
+    // ("budget", "budgeting", "commission", "settlement" are in HARD above.)
+    "withdrawal", "portfolio", "shareholder",
     // Personal-finance vocabulary added by SUPPLEMENTARY_FINANCIAL_TERMS. Common
     // verbs/nouns ("afford", "rent", "bills"), so they need a personal cue.
     // "owe"/"owed"/"owing" moved to HARD — they are verbs, not financial entities.
@@ -424,7 +429,6 @@ const TrustGazetteer = (() => {
     "pilipino", "pilipina",       // Tagalog-language spellings (different string, not a typo)
     "philipino", "philipina",     // very common one-l misspellings
     "fillipino", "fillipina",     // double-l misspellings
-    "philippino",                  // double-p misspelling
     "pinoy", "pinay",              // most common informal Filipino self-identifiers
     "chinese", "japanese", "korean", "vietnamese",
     "indonesian", "malaysian", "singaporean",

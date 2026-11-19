@@ -88,6 +88,11 @@ const TrustGazetteer = (() => {
     "copyright", "trademark", "franchise", "inventory", "affiliate",
     "associate", "compression", "consolidation", "accounting", "provision",
     "grace period", "financial literacy",
+    // Payment-card names ("Credit Card", "Debit Card", "Secured Credit Card" in the
+    // glossary) name an instrument, not a personal finance disclosure. A card
+    // number in the prompt is still caught by the credit_card pattern.
+    "credit card", "credit cards", "debit card", "debit cards",
+    "secured credit card", "prepaid card", "atm card", "bank card", "card number",
     // Generic business and legal words from the glossary ("budget" as in a
     // travel or project budget, "commission" as in a sales or agent fee,
     // "settlement" as in a dispute). They are not personal finance signals,
@@ -1830,6 +1835,13 @@ const TrustGazetteer = (() => {
         
         // Check all occurrences of this term
         while ((match = globalRe.exec(text)) !== null) {
+          // A financial word that heads a payment-card name ("credit" in "credit
+          // card", "debit" in "debit cards") names the instrument, not a finance
+          // disclosure. Skip it. The card number itself is caught by credit_card.
+          if (category === "financial" &&
+              /^\s+cards?\b/i.test(text.slice(match.index + match[0].length, match.index + match[0].length + 12))) {
+            continue;
+          }
           // NEW: Analyze context before flagging as PII
           const isRiskyContext = analyzeTermContext(text, match.index, match[0].length, category);
           
@@ -1949,6 +1961,12 @@ const TrustGazetteer = (() => {
     // carry contextOnly/contextSpans and are resolved after the merge.
     for (const [key, cand] of contextCandidates) {
       if (seen.has(key)) continue;  // a risky occurrence already reported this term
+      // Context-only financial terms take part in the longest-match check below,
+      // otherwise "credit" and "credit card" both survive when only the phrase is
+      // a safe-context candidate.
+      if (cand.category === "financial") {
+        for (const sp of cand.spans) financialSpans.push({ key: key, start: sp.start, end: sp.end });
+      }
       const meta = CATEGORY_META[cand.category] || { label: cand.category, sanitize: () => "[REDACTED]" };
       const display = cand.category === "medical" ? normalizeMedicalTerm(cand.canonical) : cand.canonical;
       findings.push({

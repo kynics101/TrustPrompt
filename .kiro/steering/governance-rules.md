@@ -1,4 +1,4 @@
----
+﻿---
 inclusion: auto
 name: governance-rules
 description: Use when implementing, modifying, debugging, reviewing, or testing TrustPrompt's privacy-disclosure risk scoring, preliminary classification, governance rules, or final risk mapping.
@@ -55,6 +55,7 @@ Examples:
 - Organization + job title + department = one Organizational Affiliation unit, score 2.
 - Age + height = one Personal Attributes unit, score 2.
 - Personal name + email = two units: Personal Name (2) + Contact Information (5).
+- The two personal-name detectors (`trigger_person_name` and `nlp_person_name`) are one Personal Name unit (base 2). When both find the same name, the prompt still counts 2, not 4. Both findings remain in the detection list for display.
 
 ### Scoring-eligibility gates (first-person attribution)
 
@@ -197,7 +198,7 @@ A critical entity has a base score of 10, which by itself falls in the Moderate 
 A supported nationality, medical, or financial context indicator is present together with either:
 
 1. At least one valid personal entity in the same prompt, such as a personal name, email address, phone number, Philippine physical address, date of birth, credit/debit card number, or one of the nine supported Philippine government-ID types listed in the detection-scope section; **or**
-2. An explicit first-person self-attribution anchor and a context indicator in the same sentence.
+2. An explicit first-person self-attribution anchor and a context indicator in the same sentence. For medical indicators, the anchor must pass the Medical Anchor Rule codebook entry below. Financial indicators cannot use this path.
 
 The self-attribution anchor is a trigger only. It is not a scored entity and does not change the numeric base score. A bare pronoun such as “I” is not sufficient by itself.
 
@@ -214,7 +215,7 @@ Before escalation, apply the deterministic contextual exclusion filter to the se
 
 The filter is conservative:
 - An exclusion phrase may suppress only the Rule 2 escalation; it must not remove findings or alter the numeric score.
-- A clear personal disclosure or attribution overrides an exclusion phrase. Examples include “I have [condition],” “I was diagnosed with [condition],” “my diagnosis is [condition],” “I take [medication],” “my salary is [amount],” and “[person] was diagnosed with [condition].”
+- A clear personal disclosure or attribution overrides an exclusion phrase. Examples include “I have [condition],” “I was diagnosed with [condition],” “my diagnosis is [condition],” “I take [medication],” and “[person] was diagnosed with [condition].” Medical anchors are limited to the Medical Anchor Rule codebook entry. Financial phrases such as “my salary is [amount]” are not anchors and do not override an exclusion phrase.
 - Absence of an exclusion phrase does not prove that the context belongs to the identified person.
 - Co-occurrence is an observable condition, not semantic confirmation that the context belongs to the detected person.
 
@@ -225,6 +226,44 @@ Raise the preliminary classification by exactly one level, at most once per prom
 `No Detected Risk → Low → Moderate → High`
 
 If the filter suppresses escalation, continue to the next governance rule without changing the findings or score.
+
+#### Medical Anchor Rule (codebook entry — approved in chat on 2026-11-18; pending manuscript amendment)
+
+Status: approved for the steering file. It is not yet in Manuscript Chapter 3, and the veto-over-attribution change needs a manuscript amendment. It applies to medical context indicators only. Evaluate the steps in order. The first failed step means the anchor does not fire.
+
+**Preprocessing.** Expand contractions (I'm → I am, I've → I have, I'd → I had). Split sentences on terminal punctuation, using an abbreviation list (Dr., approx., etc.) to avoid false splits.
+
+1. **Term eligibility.** The term comes from the condition or medication gazetteer, not general symptoms. It appears in the same sentence as the anchor. Pronouns do not resolve to earlier terms.
+2. **Closed anchor list.** The speaker is the subject. Allowed forms:
+   - I have / I had / I've had
+   - I am / I was diagnosed with; I've been diagnosed with; I got diagnosed with
+   - I am [condition adjective], where the adjective is a condition term in the gazetteer (for example, diabetic)
+   - I take / I am taking / I am on [medication]
+   - I'm living with [condition]
+   - my diagnosis is / my condition is [condition]
+3. **Vetoes.** These cannot be overridden by the attribution precedence in the exclusion filter.
+   - The anchor is inside quotation marks.
+   - The anchor is negated (not, never, no, don't, doesn't, didn't, isn't, aren't, can't).
+   - The clause is interrogative: it ends with "?" or starts with a wh-word or auxiliary (do, does, did, can, could, should, am, is, are).
+   - The anchor is the complement of an embedding verb (think, wonder, ask, know, guess).
+   - A hypothetical marker precedes the anchor in the clause: if, what if, suppose, imagine, pretend.
+   - An uncertainty marker precedes the anchor in the clause: not sure, unsure, whether, not certain.
+   - The subject is a third party, or a shared subject that includes a third party ("my mother and I").
+4. **Adjacency.** The term follows the anchor directly. Only these tokens may appear between them: a, an, type, 1, 2, stage, chronic, severe, mild, had, been. A duration phrase after the term (for example, "for years") does not affect this step.
+5. **Noun-compound check.** The term is not followed by a role or event noun: class, exam, seminar, researcher, nurse, educator, awareness, research, study, program, support group. A hyphenated compound counts as one token.
+
+**Effect.** If the anchor fires, raise the preliminary classification by one level, at most once per prompt, with no score added. Exclusion phrases from the research and educational list cannot suppress it, because Step 3 covers those cases. Record which step fired or vetoed the anchor, so the reason is available to the UI.
+
+#### Financial indicators (approved; same-sentence scope)
+
+- Financial context indicators (salary, loan, payment, debt) never use an anchor.
+- A financial indicator escalates only through Rule 2 condition 1: a valid personal entity in the same prompt. "Validated identifier" means the personal identifiers in that condition: personal name, email address, phone number, Philippine physical address, date of birth, credit/debit card number, and the nine supported Philippine government-ID types. Each must pass its existing detection and validation.
+- The contextual exclusion filter still applies to financial terms.
+- Financial terms and amounts add no score.
+- Same sentence: the personal entity must be in the same sentence as the financial term. This is approved in chat and is stricter than the manuscript's "same prompt" wording, so it is pending manuscript amendment.
+- Medical and nationality co-occurrence use the same sentence scope (approved in chat, 2026-11-18). The document-level fallback that let a name in one sentence escalate a medical term in another is removed.
+- If `context-attribution.js` fails to load, Rule 2 does not escalate and an error is logged (fail closed).
+- Context terms are reported only when they share a sentence with a Rule 2 identifier, or when the term's own personal-context check marks it risky. A medical, financial, or nationality term that is "safe" by itself and has no identifier in its sentence is dropped, as before. Without this, a term like "diabetes" in "Maria Santos has diabetes." was never reported, so Rule 2 could not see it. Scores are unchanged because context terms carry no base score.
 
 ### Rule 3 — Low-Impact Entity Cap
 

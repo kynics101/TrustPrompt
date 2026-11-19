@@ -156,39 +156,43 @@ describe("evaluateGovernance — Rule 1 (critical entity)", () => {
 
 describe("evaluateGovernance — Rule 2 (sensitive context co-occurrence)", () => {
   test("personal name (Low) + medical context → Rule 2 fires", () => {
+    const text = "Liza Mendoza has diabetes.";
     const findings = [
-      finding("trigger_person_name"),
-      finding("gazetteer_medical"),
+      finding("trigger_person_name", { rawMatch: "Liza Mendoza" }),
+      finding("gazetteer_medical", { rawMatch: "diabetes" }),
     ];
-    const gov = evaluateGovernance(findings, "low");
+    const gov = evaluateGovernance(findings, "low", text);
     expect(gov.rule).toBe("sensitive_context");
   });
 
   test("Low → raised to Moderate", () => {
+    const text = "Liza Mendoza has diabetes.";
     const findings = [
-      finding("trigger_person_name"),
-      finding("gazetteer_medical"),
+      finding("trigger_person_name", { rawMatch: "Liza Mendoza" }),
+      finding("gazetteer_medical", { rawMatch: "diabetes" }),
     ];
-    const gov = evaluateGovernance(findings, "low");
+    const gov = evaluateGovernance(findings, "low", text);
     expect(gov.result).toBe("moderate");
   });
 
   test("Moderate → raised to High", () => {
+    const text = "Send the salary to juan@example.com.";
     const findings = [
-      finding("email"),
-      finding("gazetteer_financial"),
+      finding("email", { rawMatch: "juan@example.com" }),
+      finding("gazetteer_financial", { rawMatch: "salary" }),
     ];
-    const gov = evaluateGovernance(findings, "moderate");
+    const gov = evaluateGovernance(findings, "moderate", text);
     expect(gov.rule).toBe("sensitive_context");
     expect(gov.result).toBe("high");
   });
 
   test("High + sensitive context → stays High (ceiling)", () => {
+    const text = "Send the diabetes results to juan@example.com.";
     const findings = [
-      finding("email"),
-      finding("gazetteer_medical"),
+      finding("email", { rawMatch: "juan@example.com" }),
+      finding("gazetteer_medical", { rawMatch: "diabetes" }),
     ];
-    const gov = evaluateGovernance(findings, "high");
+    const gov = evaluateGovernance(findings, "high", text);
     expect(gov.rule).toBe("sensitive_context");
     expect(gov.result).toBe("high");
   });
@@ -208,13 +212,14 @@ describe("evaluateGovernance — Rule 2 (sensitive context co-occurrence)", () =
     expect(gov.rule).not.toBe("sensitive_context");
   });
 
-  test("gazetteer_nationality_religion qualifies as sensitive context indicator", () => {
-    expect(SENSITIVE_CONTEXT_IDS.has("gazetteer_nationality_religion")).toBe(true);
+  test("gazetteer_nationality qualifies as sensitive context indicator", () => {
+    expect(SENSITIVE_CONTEXT_IDS.has("gazetteer_nationality")).toBe(true);
+    const text = "Maria Santos is Filipino.";
     const findings = [
-      finding("trigger_person_name"),
-      finding("gazetteer_nationality_religion"),
+      finding("trigger_person_name", { rawMatch: "Maria Santos" }),
+      finding("gazetteer_nationality", { rawMatch: "Filipino" }),
     ];
-    const gov = evaluateGovernance(findings, "low");
+    const gov = evaluateGovernance(findings, "low", text);
     expect(gov.rule).toBe("sensitive_context");
   });
 });
@@ -416,11 +421,12 @@ describe("computeRiskScore — Table 17 worked examples", () => {
   });
 
   test("name + medical context → Moderate via Rule 2 (2.00 pre-gov Low, raised)", () => {
+    const text = "Liza Mendoza has diabetes.";
     const findings = [
-      finding("trigger_person_name"),
-      finding("gazetteer_medical"),
+      finding("trigger_person_name", { rawMatch: "Liza Mendoza" }),
+      finding("gazetteer_medical", { rawMatch: "diabetes" }),
     ];
-    const { riskLevel, governance } = computeRiskScore(findings);
+    const { riskLevel, governance } = computeRiskScore(findings, text);
     expect(riskLevel).toBe("moderate");
     expect(governance).toBe("sensitive_context");
   });
@@ -464,7 +470,7 @@ describe("BASE_SCORES (Table 10)", () => {
   ];
   const moderateIds = ["email", "ph_mobile", "phone_intl", "ph_address", "source_code"];
   const lowIds      = ["ipv4", "ipv6", "mac_address", "trigger_person_name", "nlp_organization", "nlp_job_title"];
-  const contextIds  = ["gazetteer_medical", "gazetteer_financial", "trigger_health", "trigger_financial", "gazetteer_nationality_religion"];
+  const contextIds  = ["gazetteer_medical", "gazetteer_financial", "trigger_health", "trigger_financial", "gazetteer_nationality"];
 
   test.each(criticalIds)("%s has base score 10", (id) => {
     expect(BASE_SCORES[id]).toBe(10);

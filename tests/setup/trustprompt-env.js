@@ -105,10 +105,6 @@ const LOAD_ORDER = [
   "terms-names-extra.js",
   "context-attribution.js",
   "validator-wrapper-worker.js",
-  "terms-medical.js",
-  "terms-financial.js",
-  "terms-organizations.js",
-  "terms-identity.js",
   "gazetteer.js",
   "linguistic-detector.js",
 ];
@@ -151,6 +147,7 @@ globalThis.__TP_ENGINE__ = {
   suppressPlaceholders,
   runPathA,
   mergeAndDedupe,
+  resolveContextOnly,
 };
 `;
 
@@ -183,15 +180,16 @@ function scan(rawText) {
   const { masked, textRegex, textNLP } = normalizer.normalize(rawText);
 
   const pathA = engine.runPathA(textRegex);
-  const pathB = gazetteer.scan(textNLP);
+  const textGazetteer = normalizer.normalizePath_B(rawText);  // same text production passes to the gazetteer
+  const pathB = gazetteer.scan(textGazetteer);
   const pathC = (linguistic && typeof linguistic.scan === "function")
     ? (() => { try { return linguistic.scan(textNLP); } catch { return []; } })()
     : [];
 
-  const merged   = engine.mergeAndDedupe(pathA, pathB, pathC);
+  const merged   = engine.resolveContextOnly(engine.mergeAndDedupe(pathA, pathB, pathC), textGazetteer);
   const findings = engine.suppressPlaceholders(merged);
 
-  const { score, riskLevel, governance } = engine.computeRiskScore(findings);
+  const { score, riskLevel, governance } = engine.computeRiskScore(findings, rawText);
 
   const elapsedMs = Number((process.hrtime.bigint() - t0) / 1_000_000n);
 

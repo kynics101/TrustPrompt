@@ -41,7 +41,8 @@ importScripts(
   _url("validator-wrapper-worker.js"),
   _url("gazetteer.js"),
   _url("ph-address-db.js"),
-  _url("linguistic-detector.js")
+  _url("linguistic-detector.js"),
+  _url("context-attribution.js")
 );
 
 // ── NER Model Caching (Performance Optimization) ──────────────────────────────
@@ -127,7 +128,7 @@ const BASE_SCORES = {
   trigger_financial:   0,  // Context indicator, not scored
   gazetteer_medical:   0,  // Context indicator, not scored
   gazetteer_financial: 0,  // Context indicator, not scored
-  gazetteer_nationality_religion: 0,  // Ethnic origin context — no independent score
+  gazetteer_nationality: 0,  // Nationality context — no independent score
   nlp_person_name:     2,  // PATH C linguistic
   nlp_job_title:       2,  // PATH C linguistic
   nlp_organization:    2,  // PATH C linguistic
@@ -171,7 +172,7 @@ const ENTITY_TIER = {
   trigger_financial:   "contextual",
   gazetteer_medical:   "contextual",
   gazetteer_financial: "contextual",
-  gazetteer_nationality_religion: "contextual",  // Ethnic origin context indicator
+  gazetteer_nationality: "contextual",  // Nationality context indicator
   nlp_person_name:     "limited",  // PATH C linguistic
   nlp_job_title:       "limited",  // PATH C linguistic
   nlp_organization:    "limited",  // PATH C linguistic
@@ -195,7 +196,7 @@ function isRule2TriggerEntity(patternId) {
 const SENSITIVE_CONTEXT_IDS = new Set([
   "gazetteer_medical",
   "gazetteer_financial",
-  "gazetteer_nationality_religion",  // Ethnic origin — Rule 2 context indicator
+  "gazetteer_nationality",  // Nationality — Rule 2 context indicator (religion is NOT a context indicator)
   "trigger_health",
   "trigger_financial",
 ]);
@@ -211,6 +212,12 @@ const RISK_ORDER = { none: 0, low: 1, moderate: 2, high: 3 };
 //   Contact Information       → email and/or phone number  (base 5)
 //   Organizational Affiliation → org name, job title, dept  (base 2)
 const SCORING_UNIT_GROUPS = {
+  // One personal-name entity type. The NLP and trigger detectors can both find
+  // the same name; they count as one unit (base 2), once per prompt.
+  personal_name: new Set([
+    "nlp_person_name",
+    "trigger_person_name",
+  ]),
   contact_information: new Set([
     "email",
     "ph_mobile",
@@ -224,6 +231,7 @@ const SCORING_UNIT_GROUPS = {
 };
 
 const SCORING_UNIT_BASE = {
+  personal_name:              2,
   contact_information:        5,
   organizational_affiliation: 2,
 };
@@ -240,110 +248,35 @@ function scoringUnitBase(unitKey) {
   return BASE_SCORES[unitKey] ?? 0;
 }
 
-// ── Rule 2 — First-person self-attribution anchor (mirror of scanner.js) ──────
+// ── Rule 2 — Sentence-level co-occurrence (shared with scanner.js) ───────────
 //
-// Explicit first-person self-attribution acts ONLY as an alternative Rule 2
-// trigger. It is never scored and never changes the numeric base score.
-const FIRST_PERSON_ANCHORS = [
-  /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
-  /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
-  /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-  /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
-  /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
-  /\bi\s+(?:earn|owe|make)\b/i,
-  /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
-  /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-  // Contraction forms of the "I am" anchors above ("I'm" = "I am").
-  /\bi['’]m\s+diagnosed\b/i,
-  /\bi['’]m\s+(?:taking|on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-  /\bi['’]m\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-];
-
-// ── Rule 2 — Contextual exclusion filter (mirror of scanner.js) ───────────────
-//
-// Deterministic non-disclosure patterns. When the relevant sentence matches one
-// of these and NO attribution pattern overrides it, the Rule 2 escalation is
-// suppressed. Only the escalation is suppressed — identifiers, context terms,
-// and the numeric base score are unchanged.
-const EXCLUSION_PATTERNS = [
-  // Research / academic reference
-  /\b(?:researching|studying|investigating|conducting\s+research|school\s+project|thesis|dissertation|assignment|coursework|research\s+(?:on|about|paper)|for\s+my\s+(?:thesis|research|paper|study|report))\b/i,
-  // Declared-hypothetical / sample data framing (mirrors context-attribution.js excl_sample_data)
-  /\b(?:sample\s+(?:fake\s+)?(?:record|data|entry|case|profile|example)|faux\s+(?:record|data|patient|entry|example)|mock\s+(?:record|data)|example\s+(?:record|data)|test\s+(?:data|case)|dummy\s+(?:data|record)|(?:might|could|would)\s+read\b|critique\s+(?:how|the)|how\s+realistic|this\s+is\s+(?:example|sample|test|dummy|faux|mock)\s+(?:data|record)?)\b/i,
-  // Educational / informational inquiry
-  /\b(?:what\s+is|what\s+are|explain|define|definition\s+of|how\s+does|how\s+do|causes?\s+of|symptoms?\s+of|tell\s+me\s+about)\b/i,
-  // General discussion
-  /\b(?:commonly\s+affects|refers?\s+to|is\s+defined\s+as|are\s+defined\s+as|examples?\s+of|generally\s+known\s+as)\b/i,
-  // Hypothetical reference
-  /\b(?:imagine\s+if|suppose\s+that|for\s+example|hypothetically|let's\s+say|what\s+if)\b/i,
-];
-
-// ── Rule 2 — Positive attribution override patterns (mirror of scanner.js) ────
-//
-// A clear personal disclosure/attribution overrides any exclusion phrase in the
-// same sentence and keeps the Rule 2 escalation.
-const ATTRIBUTION_PATTERNS = [
-  /\bi\s+(?:have|had)\b/i,
-  /\bi\s+(?:was|were|got|am|been)\s+diagnosed\s+(?:with|for)?\b/i,
-  /\bmy\s+diagnosis\s+is\b/i,
-  /\bi\s+(?:take|am\s+taking|am\s+on)\b/i,
-  /\bmy\s+(?:salary|income|wage|debt|loan)\s+(?:is|was)\b/i,
-  /\b[A-Z][a-z]+\s+(?:was|were|got|is|has\s+been)\s+diagnosed\s+(?:with|for)?\b/,
-  /\b[A-Z][a-z]+(?:'s)?\s+(?:salary|income|diagnosis|condition)\s+(?:is|was)\b/,
-];
-
-function splitSentences(text) {
-  if (!text || typeof text !== "string") return [];
-  return text
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function findSentenceContaining(fullText, needle) {
-  if (!fullText || !needle) return fullText || "";
-  const sentences = splitSentences(fullText);
-  const lowNeedle = String(needle).toLowerCase();
-  for (const s of sentences) {
-    if (s.toLowerCase().includes(lowNeedle)) return s;
+// The decision logic lives in context-attribution.js, loaded via importScripts.
+// It is the only copy of the Rule 2 codebook (Medical Anchor Rule, nationality
+// attribution, exclusion filter). Do not duplicate it here.
+// Gazetteer context-only candidates are kept only when a Rule 2 identifier
+// shares the sentence. If the shared module is missing, candidates are dropped.
+function resolveContextOnly(findings, scannedText) {
+  if (typeof ContextAttribution === "undefined") {
+    return findings.filter(f => !f.contextOnly);
   }
-  return fullText;
+  const triggers = findings
+    .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
+    .map(f => f.rawMatch);
+  return ContextAttribution.resolveContextOnlyFindings(findings, scannedText, triggers);
 }
 
-function hasFirstPersonAnchor(text) {
-  if (!text) return false;
-  return FIRST_PERSON_ANCHORS.some(re => re.test(text));
-}
-
-function matchesExclusion(text) {
-  if (!text) return false;
-  return EXCLUSION_PATTERNS.some(re => re.test(text));
-}
-
-function matchesAttribution(text) {
-  if (!text) return false;
-  return ATTRIBUTION_PATTERNS.some(re => re.test(text));
-}
-
-function shouldSuppressContextEscalation(findings, fullText) {
-  if (!fullText) return false;
-
-  const contextFindings = findings.filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
-  const sentences = [];
-  for (const cf of contextFindings) {
-    const sentence = findSentenceContaining(fullText, cf.rawMatch);
-    if (sentence) sentences.push(sentence);
+function evaluateSentenceCooccurrence(findings, fullText) {
+  if (typeof ContextAttribution === "undefined") {
+    console.error("[TrustPrompt/worker] context-attribution.js not loaded; Rule 2 does not escalate");
+    return { escalate: false, rule: "module_missing", patternId: null, category: null, polarity: null, term: null, sentence: null };
   }
-  if (sentences.length === 0) sentences.push(fullText);
-
-  for (const sentence of sentences) {
-    const excluded   = matchesExclusion(sentence);
-    const attributed = matchesAttribution(sentence);
-    if (!excluded || attributed) {
-      return false;
-    }
-  }
-  return true;
+  const triggerTexts = findings
+    .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
+    .map(f => f.rawMatch);
+  const contexts = findings
+    .map(f => ({ text: f.rawMatch, category: ContextAttribution.categoryForPatternId(f.patternId) }))
+    .filter(c => c.category);
+  return ContextAttribution.evaluateCooccurrence(fullText, { triggerTexts: triggerTexts, contexts: contexts });
 }
 
 // ── STEP 2: Distinct entity-type multiplier ───────────────────────────────────
@@ -515,25 +448,14 @@ function evaluateGovernance(findings, preliminary, fullText) {
     return { rule: "critical_entity", result: "high" };
   }
 
-  // ── Rule 2: (scored entity OR first-person anchor) + sensitive context ───
-  // Condition 1: at least one scored entity (BASE_SCORES > 0) OR an explicit
-  //              first-person self-attribution anchor (trigger only, unscored).
-  const hasScoredEntity = findings.some(
-    f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)
-  );
-  const hasAnchor = hasFirstPersonAnchor(fullText);
-  const triggerPresent = hasScoredEntity || hasAnchor;
-
-  // Condition 2: at least one non-scoring context indicator present
+  // ── Rule 2: sensitive context + same-sentence co-occurrence ──────────────
+  // Decision in evaluateSentenceCooccurrence (context-attribution.js).
   const hasSensitiveContext = findings.some(
     f => SENSITIVE_CONTEXT_IDS.has(f.patternId)
   );
-  if (triggerPresent && hasSensitiveContext) {
-    // Contextual exclusion filter — suppress escalation for academic,
-    // informational, general-discussion, or hypothetical references unless an
-    // explicit attribution overrides the exclusion.
-    const suppress = shouldSuppressContextEscalation(findings, fullText);
-    if (!suppress) {
+  if (hasSensitiveContext) {
+    const cooc = evaluateSentenceCooccurrence(findings, fullText);
+    if (cooc.escalate) {
       const raised = RISK_ORDER[preliminary] < RISK_ORDER["high"]
         ? Object.keys(RISK_ORDER).find(k => RISK_ORDER[k] === RISK_ORDER[preliminary] + 1)
         : "high";
@@ -582,9 +504,8 @@ function computeRiskScore(findings, fullText) {
   // with a sensitive context indicator must still be evaluated so governance
   // can raise No Detected Risk → Low (e.g. "I was diagnosed with diabetes").
   if (scorable.length === 0) {
-    const hasAnchor = hasFirstPersonAnchor(fullText);
     const hasSensitiveContext = findings.some(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
-    if (!(hasAnchor && hasSensitiveContext)) {
+    if (!hasSensitiveContext) {
       return { score: 0, riskLevel: "none", governance: "none" };
     }
     const preliminary = "none";
@@ -731,7 +652,7 @@ function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeF
   // Using only rawMatch as the key was the root cause of the multiplier bug:
   // if Path B detects "John" as trigger_person_name and Path C detects "John"
   // as nlp_person_name, the old key would collapse both into ONE finding,
-  // reducing distinctTypeCount by 1 and applying the wrong (lower) multiplier.
+  // both findings survive for display; scoring counts them as one personal-name unit.
   //
   // With the composite key, each (patternId, rawMatch) pair is kept independently.
   // Two paths detecting the same raw text as the same entity type are still
@@ -856,7 +777,7 @@ self.onmessage = async function (e) {
     })()
   ]);
   
-  const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, []);
+  const merged        = resolveContextOnly(mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, []), textGazetteer);
   const findings      = suppressPlaceholders(merged);  // TASK-4.4
 
   const { score, riskLevel, governance } = computeRiskScore(findings, rawText);

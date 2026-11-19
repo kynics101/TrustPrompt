@@ -1203,6 +1203,12 @@ const TrustScanner = (() => {
   // Any patternId not listed here forms its own scoring unit keyed by its
   // own patternId (1:1), preserving existing behaviour for all other types.
   const SCORING_UNIT_GROUPS = {
+    // One personal-name entity type. The NLP and trigger detectors can both find
+    // the same name; they count as one unit (base 2), once per prompt.
+    personal_name: new Set([
+      "nlp_person_name",
+      "trigger_person_name",
+    ]),
     contact_information: new Set([
       "email",
       "ph_mobile",
@@ -1233,6 +1239,7 @@ const TrustScanner = (() => {
 
   // Base score assigned to a grouped scoring unit (counted once per unit).
   const SCORING_UNIT_BASE = {
+    personal_name:              2,
     contact_information:        5,
     organizational_affiliation: 2,
     personal_attribute:         2,
@@ -1255,77 +1262,42 @@ const TrustScanner = (() => {
     return BASE_SCORES[unitKey] ?? 0;
   }
 
-  // ── Rule 2 — First-person self-attribution anchor ────────────────────────
-  //
-  // An explicit first-person phrase in which the speaker attributes a
-  // condition or amount to themselves (e.g. "I was diagnosed", "my salary
-  // is"). The anchor acts ONLY as an alternative trigger for Rule 2 — it is
-  // not scored and never changes the numeric base score. This lets a prompt
-  // such as "I was diagnosed with diabetes" (no scored entity) still raise
-  // from No Detected Risk → Low when a sensitive context term is present.
-  //
-  // The list is intentionally narrow to avoid treating the bare pronoun "I"
-  // as an anchor; each phrase expresses explicit self-attribution.
-  //
-  // The canonical anchor set now lives in trust-attribution.js, modelled as a
-  // grammatical pattern family (first-person subject + living-with verb +
-  // with/from) rather than a hand-maintained verb whitelist. We prefer the
-  // shared module when it is loaded (BEFORE this file in manifest.json) and
-  // fall back to this inline list so scanning still works if it is absent. The
-  // fallback mirrors the original eight patterns to preserve behaviour.
-  const FIRST_PERSON_ANCHORS =
-    (typeof TrustAttribution !== "undefined" && TrustAttribution.FIRST_PERSON_ANCHORS)
-      ? TrustAttribution.FIRST_PERSON_ANCHORS
-      : [
-          /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
-          /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
-          /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-          /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
-          /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
-          /\bi\s+(?:earn|owe|make)\b/i,
-          /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
-          /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-          // Contraction forms of the "I am" anchors above ("I'm" = "I am").
-          /\bi['’]m\s+diagnosed\b/i,
-          /\bi['’]m\s+(?:taking|on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-          /\bi['’]m\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-        ];
-
   // ── Rule 2 — Sentence-level co-occurrence (context-attribution.js) ───────
   //
-  // The positive-attribution and exclusion codebook, the sentence split, and
-  // the per-sentence decision live in context-attribution.js (loaded before
-  // this file; see manifest.json). This file supplies the eligible
-  // identifiers and sensitive context findings from the scan.
+  // The Medical Anchor Rule, the nationality attribution path, the exclusion
+  // codebook and the per-sentence decision live in context-attribution.js.
+  // That file is the only copy of the Rule 2 logic and is shared with
+  // trust-worker.js.
   //
-  // Decision per sentence containing BOTH an eligible identifier (or anchor)
-  // AND a context term:
-  //   positive pattern  → escalate (overrides exclusion)
-  //   exclusion pattern → suppress escalation for that sentence only
-  //   otherwise         → escalate
+  // Scope by context category (approved codebook):
+  //   medical     -> medical anchor in the same sentence, or a trigger in the prompt
+  //   financial   -> a trigger in the SAME sentence only; anchors do not apply
+  //   nationality -> a trigger or a nationality anchor in the same sentence
   // Suppression never removes findings or changes base scores.
+  // Gazetteer context-only candidates are kept only when a Rule 2 identifier
+  // shares the sentence. If the shared module is missing, candidates are dropped.
+  function resolveContextOnly(findings, scannedText) {
+    if (typeof ContextAttribution === "undefined") {
+      return findings.filter(f => !f.contextOnly);
+    }
+    const triggers = findings
+      .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
+      .map(f => f.rawMatch);
+    return ContextAttribution.resolveContextOnlyFindings(findings, scannedText, triggers);
+  }
+
   function evaluateSentenceCooccurrence(findings, fullText) {
     if (typeof ContextAttribution === "undefined") {
-      console.warn("[TrustPrompt/governance] context-attribution.js not loaded; Rule 2 escalates without the exclusion filter");
-      return { escalate: true, rule: "module_missing", patternId: null, category: null, polarity: null, sentence: null };
+      console.error("[TrustPrompt/governance] context-attribution.js not loaded; Rule 2 does not escalate");
+      return { escalate: false, rule: "module_missing", patternId: null, category: null, polarity: null, term: null, sentence: null };
     }
     const triggerTexts = findings
       .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
       .map(f => f.rawMatch);
-    const contextTexts = findings
-      .filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId))
-      .map(f => f.rawMatch);
-    return ContextAttribution.evaluateCooccurrence(fullText, {
-      triggerTexts: triggerTexts,
-      contextTexts: contextTexts,
-      hasAnchor: sentence => hasFirstPersonAnchor(sentence),
-    });
-  }
-
-  // Returns true if any first-person self-attribution anchor appears in text.
-  function hasFirstPersonAnchor(text) {
-    if (!text) return false;
-    return FIRST_PERSON_ANCHORS.some(re => re.test(text));
+    const contexts = findings
+      .map(f => ({ text: f.rawMatch, category: ContextAttribution.categoryForPatternId(f.patternId) }))
+      .filter(c => c.category);
+    return ContextAttribution.evaluateCooccurrence(fullText, { triggerTexts: triggerTexts, contexts: contexts });
   }
 
   // ── STEP 2: Distinct entity-type multiplier (Table 12) ───────────────────
@@ -1386,16 +1358,14 @@ const TrustScanner = (() => {
     }
 
     // ── Rule 2: (scored entity OR first-person anchor) + sensitive context ──
-    // Condition 1: at least one scored entity (BASE_SCORES > 0, any tier) OR
-    //              an explicit first-person self-attribution anchor. The
-    //              anchor is a trigger only; it is never scored.
+    // Condition 1: a scored personal identifier, or a medical or nationality
+    //              anchor in the same sentence. Decided in evaluateSentenceCooccurrence.
+    //              Anchors are never scored.
     const hasScoredEntity = findings.some(
       f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)
     );
-    const hasAnchor = hasFirstPersonAnchor(fullText);
     const scoredEntityTypes = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)).map(f => f.patternId);
-    const triggerPresent = hasScoredEntity || hasAnchor;
-    console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "hasAnchor:", hasAnchor, "types:", scoredEntityTypes.join(", "));
+    console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "types:", scoredEntityTypes.join(", "));
 
     // Condition 2: at least one non-scoring context indicator present
     const hasSensitiveContext = findings.some(
@@ -1403,7 +1373,7 @@ const TrustScanner = (() => {
     );
     console.log("[TrustPrompt/governance] Rule 2 condition 2 - hasSensitiveContext:", hasSensitiveContext);
 
-    if (triggerPresent && hasSensitiveContext) {
+    if (hasSensitiveContext) {
       // Sentence-level co-occurrence, then positive-over-exclusion decision.
       // Logs the pattern (positive or exclusion) that decided the outcome.
       const cooc = evaluateSentenceCooccurrence(findings, fullText);
@@ -1635,15 +1605,13 @@ const TrustScanner = (() => {
     // diabetes"). We therefore only short-circuit when there is also no
     // anchor + context pairing to consider.
     if (scorable.length === 0) {
-      const hasAnchor = hasFirstPersonAnchor(fullText);
       const hasSensitiveContext = findings.some(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
       console.log(
         "[TrustPrompt/scorer] no scored entities — anchor-only check:",
-        "hasAnchor:", hasAnchor,
         "| hasSensitiveContext:", hasSensitiveContext,
         "| context findings:", findings.filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId)).map(f => f.patternId).join(", ") || "(none)"
       );
-      if (!(hasAnchor && hasSensitiveContext)) {
+      if (!hasSensitiveContext) {
         return { score: 0, riskLevel: "none", governance: "none" };
       }
 
@@ -3973,7 +3941,7 @@ const TrustScanner = (() => {
   // Deduplication key is (patternId + rawMatch) — NOT rawMatch alone.
   // This preserves distinct entity types that happen to match the same raw text
   // (e.g. Path B sees "John" as trigger_person_name, Path C as nlp_person_name —
-  // both must survive so the multiplier reflects 2 distinct types, not 1).
+  // both survive for display; scoring counts them as one personal-name unit).
   // When the SAME (patternId, rawMatch) pair appears in multiple paths, the
   // finding with the highest risk level is preserved (RISK_ORDER wins).
   // Special handling: UMID takes precedence over SSS for overlapping matches.
@@ -4456,7 +4424,7 @@ const TrustScanner = (() => {
         }
       }
       
-      const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings);
+      const merged        = resolveContextOnly(mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings), textGazetteer);
       console.log("[TrustPrompt/scanner] After merge:", merged.length, "findings - source_code count:", merged.filter(f => f.patternId === 'source_code').length);
       if (merged.length > 0) {
         console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch}`));

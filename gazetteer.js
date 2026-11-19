@@ -1796,6 +1796,16 @@ const TrustGazetteer = (() => {
     return new RegExp(pre + _escapeRegex(term) + post, flags);
   }
 
+  // Safe-context candidates. A sensitive term whose personal-context check says
+  // "safe" is kept as a candidate with its spans instead of being dropped. It is
+  // reported later only if a personal identifier shares its sentence
+  // (ContextAttribution.resolveContextOnlyFindings).
+  function rememberContextCandidate(map, category, original, canonical, start, end, matchType) {
+    const key = category + ":" + original.toLowerCase();
+    if (!map.has(key)) map.set(key, { category: category, original: original, canonical: canonical, matchType: matchType, spans: [] });
+    map.get(key).spans.push({ start: start, end: end });
+  }
+
   function runGazetteerScan(text) {
     const findings = [];
     const lower = text.toLowerCase();
@@ -1803,6 +1813,7 @@ const TrustGazetteer = (() => {
     // Accepted financial matches with their spans, used after the scan to drop a
     // term that only occurs inside a longer accepted financial term.
     const financialSpans = [];
+    const contextCandidates = new Map();  // safe-context candidates (see rememberContextCandidate)
 
     for (const [category, terms] of Object.entries(GAZETTEER)) {
       for (const term of terms) {
@@ -1816,6 +1827,7 @@ const TrustGazetteer = (() => {
           const isRiskyContext = analyzeTermContext(text, match.index, match[0].length, category);
           
           if (!isRiskyContext) {
+            rememberContextCandidate(contextCandidates, category, match[0], match[0], match.index, match.index + match[0].length, "exact");
             // Context analysis indicates this is safe/educational, skip it
             console.log(
               '[TrustPrompt/PATH_B/B1] Filtered safe context: "' + match[0] + 
@@ -1883,6 +1895,7 @@ const TrustGazetteer = (() => {
                 const isRiskyContext = analyzeTermContext(text, charIndex, fuzzyMatch.matchText.length, category);
                 
                 if (!isRiskyContext) {
+                  rememberContextCandidate(contextCandidates, category, fuzzyMatch.matchText, fuzzyMatch.canonical, charIndex, charIndex + fuzzyMatch.matchText.length, "fuzzy");
                   console.log(
                     '[TrustPrompt/PATH_B/B1] Filtered safe context (fuzzy): "' + fuzzyMatch.matchText + 
                     '" in category "' + category + '"'
@@ -1923,6 +1936,28 @@ const TrustGazetteer = (() => {
           }
         }
       }
+    }
+
+    // Safe-context candidates whose term has no risky occurrence elsewhere. They
+    // carry contextOnly/contextSpans and are resolved after the merge.
+    for (const [key, cand] of contextCandidates) {
+      if (seen.has(key)) continue;  // a risky occurrence already reported this term
+      const meta = CATEGORY_META[cand.category] || { label: cand.category, sanitize: () => "[REDACTED]" };
+      const display = cand.category === "medical" ? normalizeMedicalTerm(cand.canonical) : cand.canonical;
+      findings.push({
+        patternId:   "gazetteer_" + cand.category,
+        label:       meta.label,
+        risk:        "low",
+        rawMatch:    display,
+        originalMatch: cand.original,
+        safeVersion: meta.sanitize ? meta.sanitize(display) : "[REDACTED]",
+        source:      "B1_gazetteer_context",
+        validated:   false,
+        matchType:   cand.matchType,
+        normalizedTerm: cand.category === "medical" ? display : undefined,
+        contextOnly: true,
+        contextSpans: cand.spans,
+      });
     }
 
     // Longest-match wins for financial terms: "debt-to-income ratio" should be one

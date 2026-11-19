@@ -1080,7 +1080,7 @@ const TrustScanner = (() => {
     trigger_person_name: 2,
     trigger_age:         2,
     trigger_dob:         2,
-    trigger_employer:    2,
+    trigger_employer:    0,  // not scored: employer mentions are detected but add no score or unit
     trigger_location:    2,
     trigger_religion:    2,
     nlp_person_name:     2,  // PATH C linguistic
@@ -1138,7 +1138,7 @@ const TrustScanner = (() => {
     trigger_person_name: "limited",
     trigger_age:         "limited",
     trigger_dob:         "limited",
-    trigger_employer:    "limited",
+    trigger_employer:    "contextual",
     trigger_location:    "limited",
     trigger_religion:    "limited",
     gazetteer_religion:  "limited",
@@ -1215,7 +1215,6 @@ const TrustScanner = (() => {
       "phone_intl",
     ]),
     organizational_affiliation: new Set([
-      "trigger_employer",
       "nlp_organization",
       "nlp_job_title",
     ]),
@@ -4441,16 +4440,6 @@ const TrustScanner = (() => {
       
       console.log(`[TrustPrompt/scanner] ★★★ ABOUT TO SCORE: findings.length=${findings.length}, source_code count=${findings.filter(f => f.patternId === 'source_code').length}`);
       let { score, riskLevel, governance } = computeRiskScore(findings, rawText);
-      // ── Job titles that stand in a statement about real people (detector flag lowQualifying) ─────────────────────────────────────
-      // Such a title may only lift a prompt from "none" to "low". A prompt that is already Low or higher is not changed at all: its score,
-      // its risk level and its governance rule stay as computed above. (isScorable and the attributed gate are untouched.)
-      {
-        const lowJobs = findings.filter(f => f.patternId === "nlp_job_title" && f.lowQualifying === true);
-        if (riskLevel === "none" && lowJobs.length > 0) {
-          riskLevel = "low"; score = BASE_SCORES.nlp_job_title; governance = "job_title_statement";
-          console.log("[TrustPrompt/scanner] job title in a statement about real people: none -> low (" + lowJobs.map(f => f.rawMatch).join(", ") + ")");
-        }
-      }
       console.log(`[TrustPrompt/scanner] ★★★ SCORING RESULT: score=${score}, riskLevel=${riskLevel}`);
 
       // Calculate final category counts from the deduplicated findings array
@@ -4473,14 +4462,13 @@ const TrustScanner = (() => {
       // update the ID pattern labels to explicitly show "[Source Code]" context
       // This helps users understand their ID was found within code, not just prose.
       // ── Console-only findings ───────────────────────────────────────────────────────────────────────────────────────
-      // A job title that is not scored (not first-person, see isScorable) and that does not qualify for the Low rule (detector flag
-      // lowQualifying) is NOT listed in the in-page panel or the side panel; it stays in the console with the reason. A title that qualifies
-      // is listed as a normal Low finding, also when the prompt is already Low or higher. The score and risk level were computed above and
-      // are not touched by this filter.
-      const consoleOnly = findings.filter(f => f.patternId === "nlp_job_title" && !isScorable(f) && f.lowQualifying !== true);
+      // A job title that is not scored (not first-person and not a labeled record field, see isScorable) is NOT listed in the in-page
+      // panel or the side panel; it stays in the console with the reason. The score and risk level were computed above and are not
+      // touched by this filter.
+      const consoleOnly = findings.filter(f => f.patternId === "nlp_job_title" && !isScorable(f));
       if (consoleOnly.length > 0) {
         console.log("[TrustPrompt/scanner] CONSOLE ONLY (not listed in the panel): " + consoleOnly.map(f =>
-          `${f.patternId}:${f.rawMatch} (job title is not first-person and not in a statement about real people)`).join("; "));
+          `${f.patternId}:${f.rawMatch} (job title is not first-person or a labeled record field)`).join("; "));
       }
       const panelFindings = findings.filter(f => !consoleOnly.includes(f));
 

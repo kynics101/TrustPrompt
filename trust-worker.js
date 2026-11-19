@@ -120,7 +120,7 @@ const BASE_SCORES = {
   trigger_person_name: 2,
   trigger_age:         2,
   trigger_dob:         2,
-  trigger_employer:    2,
+  trigger_employer:    0,  // not scored: employer mentions are detected but add no score or unit
   trigger_location:    2,
   trigger_religion:    2,  // Religion triggers are limited-tier
 
@@ -165,7 +165,7 @@ const ENTITY_TIER = {
   trigger_person_name: "limited",
   trigger_age:         "limited",
   trigger_dob:         "limited",
-  trigger_employer:    "limited",
+  trigger_employer:    "contextual",
   trigger_location:    "limited",
   trigger_religion:    "limited",  // Religion triggers are limited-tier
   trigger_health:      "contextual",
@@ -224,7 +224,6 @@ const SCORING_UNIT_GROUPS = {
     "phone_intl",
   ]),
   organizational_affiliation: new Set([
-    "trigger_employer",
     "nlp_organization",
     "nlp_job_title",
   ]),
@@ -431,8 +430,13 @@ function isAttributedPersonalAttribute(fullText, f) {
   return false;
 }
 
+// Job-title record label (mirrors scanner.js RECORD_JOB_LABEL_RE). A title that is the value of "Position:", "Role:", etc. is scored.
+const RECORD_JOB_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:position|job\s*title|title|role|designation|occupation)\s*[:=]\s*$/i;
+
 function isScorableFinding(f, fullText) {
   if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
+  // nlp_job_title: scored only when the detector tagged it first-person attributed (attributed === true), or it is a labeled record field value.
+  if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE);
   if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
   if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
   return true;

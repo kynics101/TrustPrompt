@@ -1345,7 +1345,10 @@ const TrustGazetteer = (() => {
         // A bare "I" or "we" is not enough: "before I share it with the group"
         // is an ordinary verb, not the writer's own stock or account. The cue is
         // ownership (my/our/mine) or a first-person ownership verb (I have / we own).
-        const personalCue = /\b(my|our|mine)\b|\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\b/.test(nearContextLower);
+        // The cue must govern the term: the possessive or ownership verb sits within two words before it.
+        // A clause-wide match let "our family dinners are ... arguments about taxes" count "our" as the writer's.
+        const personalCue = /\b(?:my|our|mine)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower) ||
+                            /\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower);
         if (!personalCue && !hasAmountNearby) {
           return false;  // Safe: general-word usage, no personal/monetary cue
         }

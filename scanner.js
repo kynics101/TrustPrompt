@@ -1080,7 +1080,7 @@ const TrustScanner = (() => {
     trigger_person_name: 2,
     trigger_age:         2,
     trigger_dob:         2,
-    trigger_employer:    2,
+    trigger_employer:    0,  // not scored: employer mentions are detected but add no score or unit
     trigger_location:    2,
     trigger_religion:    2,
     nlp_person_name:     2,  // PATH C linguistic
@@ -1138,7 +1138,7 @@ const TrustScanner = (() => {
     trigger_person_name: "limited",
     trigger_age:         "limited",
     trigger_dob:         "limited",
-    trigger_employer:    "limited",
+    trigger_employer:    "contextual",
     trigger_location:    "limited",
     trigger_religion:    "limited",
     gazetteer_religion:  "limited",
@@ -1203,13 +1203,18 @@ const TrustScanner = (() => {
   // Any patternId not listed here forms its own scoring unit keyed by its
   // own patternId (1:1), preserving existing behaviour for all other types.
   const SCORING_UNIT_GROUPS = {
+    // One personal-name entity type. The NLP and trigger detectors can both find
+    // the same name; they count as one unit (base 2), once per prompt.
+    personal_name: new Set([
+      "nlp_person_name",
+      "trigger_person_name",
+    ]),
     contact_information: new Set([
       "email",
       "ph_mobile",
       "phone_intl",
     ]),
     organizational_affiliation: new Set([
-      "trigger_employer",
       "nlp_organization",
       "nlp_job_title",
     ]),
@@ -1233,6 +1238,7 @@ const TrustScanner = (() => {
 
   // Base score assigned to a grouped scoring unit (counted once per unit).
   const SCORING_UNIT_BASE = {
+    personal_name:              2,
     contact_information:        5,
     organizational_affiliation: 2,
     personal_attribute:         2,
@@ -1255,77 +1261,42 @@ const TrustScanner = (() => {
     return BASE_SCORES[unitKey] ?? 0;
   }
 
-  // ── Rule 2 — First-person self-attribution anchor ────────────────────────
-  //
-  // An explicit first-person phrase in which the speaker attributes a
-  // condition or amount to themselves (e.g. "I was diagnosed", "my salary
-  // is"). The anchor acts ONLY as an alternative trigger for Rule 2 — it is
-  // not scored and never changes the numeric base score. This lets a prompt
-  // such as "I was diagnosed with diabetes" (no scored entity) still raise
-  // from No Detected Risk → Low when a sensitive context term is present.
-  //
-  // The list is intentionally narrow to avoid treating the bare pronoun "I"
-  // as an anchor; each phrase expresses explicit self-attribution.
-  //
-  // The canonical anchor set now lives in trust-attribution.js, modelled as a
-  // grammatical pattern family (first-person subject + living-with verb +
-  // with/from) rather than a hand-maintained verb whitelist. We prefer the
-  // shared module when it is loaded (BEFORE this file in manifest.json) and
-  // fall back to this inline list so scanning still works if it is absent. The
-  // fallback mirrors the original eight patterns to preserve behaviour.
-  const FIRST_PERSON_ANCHORS =
-    (typeof TrustAttribution !== "undefined" && TrustAttribution.FIRST_PERSON_ANCHORS)
-      ? TrustAttribution.FIRST_PERSON_ANCHORS
-      : [
-          /\bi\s+(?:was|were|got|am|been)\s+diagnosed\b/i,
-          /\bi\s+(?:have|had|suffer\s+from|was\s+treated\s+for)\b/i,
-          /\bi\s+(?:take|am\s+taking|am\s+on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-          /\bmy\s+(?:diagnosis|condition|illness|disease|medication|treatment|prescription)\b/i,
-          /\bmy\s+(?:salary|income|wage|pay|debt|loan|mortgage)\s+(?:is|was|of|amounts?)\b/i,
-          /\bi\s+(?:earn|owe|make)\b/i,
-          /\bmy\s+(?:ethnicity|nationality|religion|race)\s+(?:is|was)\b/i,
-          /\bi\s+am\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-          // Contraction forms of the "I am" anchors above ("I'm" = "I am").
-          /\bi['’]m\s+diagnosed\b/i,
-          /\bi['’]m\s+(?:taking|on)\b.*\b(?:medication|meds|medicine|treatment|dose)\b/i,
-          /\bi['’]m\s+(?:a|an)\b.*\b(?:catholic|muslim|christian|buddhist|filipino|ilocano|cebuano|bicolano|tagalog|kapampangan|bisaya)\b/i,
-        ];
-
   // ── Rule 2 — Sentence-level co-occurrence (context-attribution.js) ───────
   //
-  // The positive-attribution and exclusion codebook, the sentence split, and
-  // the per-sentence decision live in context-attribution.js (loaded before
-  // this file; see manifest.json). This file supplies the eligible
-  // identifiers and sensitive context findings from the scan.
+  // The Medical Anchor Rule, the nationality attribution path, the exclusion
+  // codebook and the per-sentence decision live in context-attribution.js.
+  // That file is the only copy of the Rule 2 logic and is shared with
+  // trust-worker.js.
   //
-  // Decision per sentence containing BOTH an eligible identifier (or anchor)
-  // AND a context term:
-  //   positive pattern  → escalate (overrides exclusion)
-  //   exclusion pattern → suppress escalation for that sentence only
-  //   otherwise         → escalate
+  // Scope by context category (approved codebook):
+  //   medical     -> medical anchor in the same sentence, or a trigger in the prompt
+  //   financial   -> a trigger in the SAME sentence only; anchors do not apply
+  //   nationality -> a trigger or a nationality anchor in the same sentence
   // Suppression never removes findings or changes base scores.
+  // Gazetteer context-only candidates are kept only when a Rule 2 identifier
+  // shares the sentence. If the shared module is missing, candidates are dropped.
+  function resolveContextOnly(findings, scannedText) {
+    if (typeof ContextAttribution === "undefined") {
+      return findings.filter(f => !f.contextOnly);
+    }
+    const triggers = findings
+      .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
+      .map(f => f.rawMatch);
+    return ContextAttribution.resolveContextOnlyFindings(findings, scannedText, triggers);
+  }
+
   function evaluateSentenceCooccurrence(findings, fullText) {
     if (typeof ContextAttribution === "undefined") {
-      console.warn("[TrustPrompt/governance] context-attribution.js not loaded; Rule 2 escalates without the exclusion filter");
-      return { escalate: true, rule: "module_missing", patternId: null, category: null, polarity: null, sentence: null };
+      console.error("[TrustPrompt/governance] context-attribution.js not loaded; Rule 2 does not escalate");
+      return { escalate: false, rule: "module_missing", patternId: null, category: null, polarity: null, term: null, sentence: null };
     }
     const triggerTexts = findings
       .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
       .map(f => f.rawMatch);
-    const contextTexts = findings
-      .filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId))
-      .map(f => f.rawMatch);
-    return ContextAttribution.evaluateCooccurrence(fullText, {
-      triggerTexts: triggerTexts,
-      contextTexts: contextTexts,
-      hasAnchor: sentence => hasFirstPersonAnchor(sentence),
-    });
-  }
-
-  // Returns true if any first-person self-attribution anchor appears in text.
-  function hasFirstPersonAnchor(text) {
-    if (!text) return false;
-    return FIRST_PERSON_ANCHORS.some(re => re.test(text));
+    const contexts = findings
+      .map(f => ({ text: f.rawMatch, category: ContextAttribution.categoryForPatternId(f.patternId) }))
+      .filter(c => c.category);
+    return ContextAttribution.evaluateCooccurrence(fullText, { triggerTexts: triggerTexts, contexts: contexts });
   }
 
   // ── STEP 2: Distinct entity-type multiplier (Table 12) ───────────────────
@@ -1386,16 +1357,14 @@ const TrustScanner = (() => {
     }
 
     // ── Rule 2: (scored entity OR first-person anchor) + sensitive context ──
-    // Condition 1: at least one scored entity (BASE_SCORES > 0, any tier) OR
-    //              an explicit first-person self-attribution anchor. The
-    //              anchor is a trigger only; it is never scored.
+    // Condition 1: a scored personal identifier, or a medical or nationality
+    //              anchor in the same sentence. Decided in evaluateSentenceCooccurrence.
+    //              Anchors are never scored.
     const hasScoredEntity = findings.some(
       f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)
     );
-    const hasAnchor = hasFirstPersonAnchor(fullText);
     const scoredEntityTypes = findings.filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId)).map(f => f.patternId);
-    const triggerPresent = hasScoredEntity || hasAnchor;
-    console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "hasAnchor:", hasAnchor, "types:", scoredEntityTypes.join(", "));
+    console.log("[TrustPrompt/governance] Rule 2 condition 1 - hasScoredEntity:", hasScoredEntity, "types:", scoredEntityTypes.join(", "));
 
     // Condition 2: at least one non-scoring context indicator present
     const hasSensitiveContext = findings.some(
@@ -1403,7 +1372,7 @@ const TrustScanner = (() => {
     );
     console.log("[TrustPrompt/governance] Rule 2 condition 2 - hasSensitiveContext:", hasSensitiveContext);
 
-    if (triggerPresent && hasSensitiveContext) {
+    if (hasSensitiveContext) {
       // Sentence-level co-occurrence, then positive-over-exclusion decision.
       // Logs the pattern (positive or exclusion) that decided the outcome.
       const cooc = evaluateSentenceCooccurrence(findings, fullText);
@@ -1428,7 +1397,7 @@ const TrustScanner = (() => {
     // Use the same scoring-eligibility gate as computeRiskScore so a
     // non-attributed nlp_job_title (detected but not scored) does not count as
     // a scored entity for the Low-Impact Cap.
-    const scoredFindings = findings.filter(f => isScorable(f, fullText));
+    const scoredFindings = findings.filter(f => isScorable(f, fullText, findings));
     const hasAnyScoredEntity = scoredFindings.length > 0;
     const allLowImpact = scoredFindings.every(
       f => (BASE_SCORES[f.patternId] ?? 0) === 2
@@ -1484,11 +1453,13 @@ const TrustScanner = (() => {
     "|" +
     // first person + affiliation verb: "I work at", "we serve", "I am a member of", "I was hired by"
     "\\b(?:i|we)\\s+(?:" +
-      "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired)\\b" +
+      "(?:work|worked|works|working|serve|served|study|studied|intern|interned|volunteer|volunteered|teach|taught|belong|belonged|joined|employed|hired|graduated|attended)\\b" +
       "|(?:am|was|are|were)\\s+(?:(?:a|an|the)\\s+)?" +
         "(?:(?:member|members|employee|employees|staff|student|students|intern|interns|volunteer|volunteers|alumni|alumnus|alumna|graduate|graduates)\\s+(?:of|at|with|for)\\b" +
         "|(?:hired|employed|recruited)\\s+(?:by|at)\\b)" +
     ")[^.!?\\n]*$" +
+    "|\\b(?:before|after)\\s+working\\s+(?:at|for)\\b[^.!?\\n]*$" +
+    "|\\bi['’]m\\s+(?:(?:a|an|the)\\s+)?(?:(?:member|employee|student|intern|volunteer|alumni|alumnus|alumna|graduate)\\s+(?:of|at|with|for)\\b)[^.!?\\n]*$" +
     // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
     // (a named person's employer, a profile line)
     "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
@@ -1612,16 +1583,47 @@ const TrustScanner = (() => {
     return false;
   }
 
-  function isScorable(f, fullText) {
+  // ── Name-linked job titles and organizations (scoring gate) ───────────────
+  // A job title or organization is also scored when it is linked to a detected
+  // personal name in the same sentence, through an appositive comma or a short
+  // copula / employment link placed between them:
+  //   "Marites Aquino, a call center agent"   (appositive)
+  //   "Carlo is a nurse"                      (copula)
+  //   "Carlo works at Ayala Corporation"      (employment link)
+  // The gap between the name and the finding must match one of these links
+  // exactly, so a sentence break, a clause, or any other word in between blocks
+  // the link.
+  const PERSON_NAME_IDS = new Set(["nlp_person_name", "trigger_person_name"]);
+  const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?))$/i;
+  function isLinkedToPersonName(fullText, f, findings) {
+    if (!fullText || !f || !f.rawMatch || !Array.isArray(findings)) return false;
+    const names = findings
+      .filter(p => PERSON_NAME_IDS.has(p.patternId) && p.rawMatch && p.rawMatch.trim())
+      .map(p => p.rawMatch.trim().toLowerCase());
+    if (names.length === 0) return false;
+    const lower = fullText.toLowerCase();
+    const needle = f.rawMatch.trim().toLowerCase();
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      for (const name of names) {
+        for (let j = lower.indexOf(name); j !== -1 && j + name.length <= i; j = lower.indexOf(name, j + 1)) {
+          const gap = fullText.slice(j + name.length, i);
+          if (gap.length <= 40 && PERSON_LINK_GAP_RE.test(gap)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function isScorable(f, fullText, findings) {
     if ((BASE_SCORES[f.patternId] ?? 0) <= 0) return false;
-    if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE);
-    if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE);
+    if (f.patternId === "nlp_job_title") return f.attributed === true || isRecordFieldValue(fullText, f.rawMatch, RECORD_JOB_LABEL_RE) || isLinkedToPersonName(fullText, f, findings);
+    if (f.patternId === "nlp_organization") return isAttributedOrganization(fullText, f.rawMatch) || isRecordFieldValue(fullText, f.rawMatch, RECORD_ORG_LABEL_RE) || isLinkedToPersonName(fullText, f, findings);
     if (PERSONAL_ATTRIBUTE_IDS.has(f.patternId)) return isAttributedPersonalAttribute(fullText, f);
     return true;
   }
 
   function computeRiskScore(findings, fullText) {
-    const scorable = findings.filter(f => isScorable(f, fullText));
+    const scorable = findings.filter(f => isScorable(f, fullText, findings));
     
     console.log("[TrustPrompt/scorer] computeRiskScore called with", findings.length, "findings");
     console.log("[TrustPrompt/scorer] Scorable findings:", scorable.map(f => f.patternId).join(", "));
@@ -1635,15 +1637,13 @@ const TrustScanner = (() => {
     // diabetes"). We therefore only short-circuit when there is also no
     // anchor + context pairing to consider.
     if (scorable.length === 0) {
-      const hasAnchor = hasFirstPersonAnchor(fullText);
       const hasSensitiveContext = findings.some(f => SENSITIVE_CONTEXT_IDS.has(f.patternId));
       console.log(
         "[TrustPrompt/scorer] no scored entities — anchor-only check:",
-        "hasAnchor:", hasAnchor,
         "| hasSensitiveContext:", hasSensitiveContext,
         "| context findings:", findings.filter(f => SENSITIVE_CONTEXT_IDS.has(f.patternId)).map(f => f.patternId).join(", ") || "(none)"
       );
-      if (!(hasAnchor && hasSensitiveContext)) {
+      if (!hasSensitiveContext) {
         return { score: 0, riskLevel: "none", governance: "none" };
       }
 
@@ -3973,7 +3973,7 @@ const TrustScanner = (() => {
   // Deduplication key is (patternId + rawMatch) — NOT rawMatch alone.
   // This preserves distinct entity types that happen to match the same raw text
   // (e.g. Path B sees "John" as trigger_person_name, Path C as nlp_person_name —
-  // both must survive so the multiplier reflects 2 distinct types, not 1).
+  // both survive for display; scoring counts them as one personal-name unit).
   // When the SAME (patternId, rawMatch) pair appears in multiple paths, the
   // finding with the highest risk level is preserved (RISK_ORDER wins).
   // Special handling: UMID takes precedence over SSS for overlapping matches.
@@ -4456,7 +4456,7 @@ const TrustScanner = (() => {
         }
       }
       
-      const merged        = mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings);
+      const merged        = resolveContextOnly(mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings), textGazetteer);
       console.log("[TrustPrompt/scanner] After merge:", merged.length, "findings - source_code count:", merged.filter(f => f.patternId === 'source_code').length);
       if (merged.length > 0) {
         console.log("[TrustPrompt/scanner] Merged findings detail:", merged.map(f => `${f.patternId}:${f.rawMatch}`));
@@ -4473,16 +4473,6 @@ const TrustScanner = (() => {
       
       console.log(`[TrustPrompt/scanner] ★★★ ABOUT TO SCORE: findings.length=${findings.length}, source_code count=${findings.filter(f => f.patternId === 'source_code').length}`);
       let { score, riskLevel, governance } = computeRiskScore(findings, rawText);
-      // ── Job titles that stand in a statement about real people (detector flag lowQualifying) ─────────────────────────────────────
-      // Such a title may only lift a prompt from "none" to "low". A prompt that is already Low or higher is not changed at all: its score,
-      // its risk level and its governance rule stay as computed above. (isScorable and the attributed gate are untouched.)
-      {
-        const lowJobs = findings.filter(f => f.patternId === "nlp_job_title" && f.lowQualifying === true);
-        if (riskLevel === "none" && lowJobs.length > 0) {
-          riskLevel = "low"; score = BASE_SCORES.nlp_job_title; governance = "job_title_statement";
-          console.log("[TrustPrompt/scanner] job title in a statement about real people: none -> low (" + lowJobs.map(f => f.rawMatch).join(", ") + ")");
-        }
-      }
       console.log(`[TrustPrompt/scanner] ★★★ SCORING RESULT: score=${score}, riskLevel=${riskLevel}`);
 
       // Calculate final category counts from the deduplicated findings array
@@ -4505,14 +4495,13 @@ const TrustScanner = (() => {
       // update the ID pattern labels to explicitly show "[Source Code]" context
       // This helps users understand their ID was found within code, not just prose.
       // ── Console-only findings ───────────────────────────────────────────────────────────────────────────────────────
-      // A job title that is not scored (not first-person, see isScorable) and that does not qualify for the Low rule (detector flag
-      // lowQualifying) is NOT listed in the in-page panel or the side panel; it stays in the console with the reason. A title that qualifies
-      // is listed as a normal Low finding, also when the prompt is already Low or higher. The score and risk level were computed above and
-      // are not touched by this filter.
-      const consoleOnly = findings.filter(f => f.patternId === "nlp_job_title" && !isScorable(f) && f.lowQualifying !== true);
+      // A job title that is not scored (not first-person and not a labeled record field, see isScorable) is NOT listed in the in-page
+      // panel or the side panel; it stays in the console with the reason. The score and risk level were computed above and are not
+      // touched by this filter.
+      const consoleOnly = findings.filter(f => f.patternId === "nlp_job_title" && !isScorable(f, rawText, findings));
       if (consoleOnly.length > 0) {
         console.log("[TrustPrompt/scanner] CONSOLE ONLY (not listed in the panel): " + consoleOnly.map(f =>
-          `${f.patternId}:${f.rawMatch} (job title is not first-person and not in a statement about real people)`).join("; "));
+          `${f.patternId}:${f.rawMatch} (job title is not first-person, a labeled record field, or linked to a personal name)`).join("; "));
       }
       const panelFindings = findings.filter(f => !consoleOnly.includes(f));
 

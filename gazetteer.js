@@ -88,6 +88,16 @@ const TrustGazetteer = (() => {
     "copyright", "trademark", "franchise", "inventory", "affiliate",
     "associate", "compression", "consolidation", "accounting", "provision",
     "grace period", "financial literacy",
+    // Payment-card names ("Credit Card", "Debit Card", "Secured Credit Card" in the
+    // glossary) name an instrument, not a personal finance disclosure. A card
+    // number in the prompt is still caught by the credit_card pattern.
+    "credit card", "credit cards", "debit card", "debit cards",
+    "secured credit card", "prepaid card", "atm card", "bank card", "card number",
+    // Generic business and legal words from the glossary ("budget" as in a
+    // travel or project budget, "commission" as in a sales or agent fee,
+    // "settlement" as in a dispute). They are not personal finance signals,
+    // so they are removed here instead of being gated on a personal cue.
+    "budget", "budgeting", "commission", "settlement",
     // "owe", "owed", "owing" are plain verbs, not financial entities. The actual
     // disclosed information in "I owe ₱120,000 to Pag-IBIG" is the monetary
     // amount and the creditor, both of which are detected independently. Showing
@@ -108,8 +118,8 @@ const TrustGazetteer = (() => {
     "index", "growth", "savings",
     // Business/everyday words that are real finance terms only when the writer
     // ties them to themselves or a monetary amount appears nearby.
-    "budget", "budgeting", "commission", "withdrawal", "portfolio",
-    "shareholder", "settlement",
+    // ("budget", "budgeting", "commission", "settlement" are in HARD above.)
+    "withdrawal", "portfolio", "shareholder",
     // Personal-finance vocabulary added by SUPPLEMENTARY_FINANCIAL_TERMS. Common
     // verbs/nouns ("afford", "rent", "bills"), so they need a personal cue.
     // "owe"/"owed"/"owing" moved to HARD — they are verbs, not financial entities.
@@ -424,7 +434,6 @@ const TrustGazetteer = (() => {
     "pilipino", "pilipina",       // Tagalog-language spellings (different string, not a typo)
     "philipino", "philipina",     // very common one-l misspellings
     "fillipino", "fillipina",     // double-l misspellings
-    "philippino",                  // double-p misspelling
     "pinoy", "pinay",              // most common informal Filipino self-identifiers
     "chinese", "japanese", "korean", "vietnamese",
     "indonesian", "malaysian", "singaporean",
@@ -1345,7 +1354,10 @@ const TrustGazetteer = (() => {
         // A bare "I" or "we" is not enough: "before I share it with the group"
         // is an ordinary verb, not the writer's own stock or account. The cue is
         // ownership (my/our/mine) or a first-person ownership verb (I have / we own).
-        const personalCue = /\b(my|our|mine)\b|\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\b/.test(nearContextLower);
+        // The cue must govern the term: the possessive or ownership verb sits within two words before it.
+        // A clause-wide match let "our family dinners are ... arguments about taxes" count "our" as the writer's.
+        const personalCue = /\b(?:my|our|mine)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower) ||
+                            /\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower);
         if (!personalCue && !hasAmountNearby) {
           return false;  // Safe: general-word usage, no personal/monetary cue
         }
@@ -1796,6 +1808,16 @@ const TrustGazetteer = (() => {
     return new RegExp(pre + _escapeRegex(term) + post, flags);
   }
 
+  // Safe-context candidates. A sensitive term whose personal-context check says
+  // "safe" is kept as a candidate with its spans instead of being dropped. It is
+  // reported later only if a personal identifier shares its sentence
+  // (ContextAttribution.resolveContextOnlyFindings).
+  function rememberContextCandidate(map, category, original, canonical, start, end, matchType) {
+    const key = category + ":" + original.toLowerCase();
+    if (!map.has(key)) map.set(key, { category: category, original: original, canonical: canonical, matchType: matchType, spans: [] });
+    map.get(key).spans.push({ start: start, end: end });
+  }
+
   function runGazetteerScan(text) {
     const findings = [];
     const lower = text.toLowerCase();
@@ -1803,6 +1825,7 @@ const TrustGazetteer = (() => {
     // Accepted financial matches with their spans, used after the scan to drop a
     // term that only occurs inside a longer accepted financial term.
     const financialSpans = [];
+    const contextCandidates = new Map();  // safe-context candidates (see rememberContextCandidate)
 
     for (const [category, terms] of Object.entries(GAZETTEER)) {
       for (const term of terms) {
@@ -1812,10 +1835,18 @@ const TrustGazetteer = (() => {
         
         // Check all occurrences of this term
         while ((match = globalRe.exec(text)) !== null) {
+          // A financial word that heads a payment-card name ("credit" in "credit
+          // card", "debit" in "debit cards") names the instrument, not a finance
+          // disclosure. Skip it. The card number itself is caught by credit_card.
+          if (category === "financial" &&
+              /^\s+cards?\b/i.test(text.slice(match.index + match[0].length, match.index + match[0].length + 12))) {
+            continue;
+          }
           // NEW: Analyze context before flagging as PII
           const isRiskyContext = analyzeTermContext(text, match.index, match[0].length, category);
           
           if (!isRiskyContext) {
+            rememberContextCandidate(contextCandidates, category, match[0], match[0], match.index, match.index + match[0].length, "exact");
             // Context analysis indicates this is safe/educational, skip it
             console.log(
               '[TrustPrompt/PATH_B/B1] Filtered safe context: "' + match[0] + 
@@ -1883,6 +1914,7 @@ const TrustGazetteer = (() => {
                 const isRiskyContext = analyzeTermContext(text, charIndex, fuzzyMatch.matchText.length, category);
                 
                 if (!isRiskyContext) {
+                  rememberContextCandidate(contextCandidates, category, fuzzyMatch.matchText, fuzzyMatch.canonical, charIndex, charIndex + fuzzyMatch.matchText.length, "fuzzy");
                   console.log(
                     '[TrustPrompt/PATH_B/B1] Filtered safe context (fuzzy): "' + fuzzyMatch.matchText + 
                     '" in category "' + category + '"'
@@ -1923,6 +1955,34 @@ const TrustGazetteer = (() => {
           }
         }
       }
+    }
+
+    // Safe-context candidates whose term has no risky occurrence elsewhere. They
+    // carry contextOnly/contextSpans and are resolved after the merge.
+    for (const [key, cand] of contextCandidates) {
+      if (seen.has(key)) continue;  // a risky occurrence already reported this term
+      // Context-only financial terms take part in the longest-match check below,
+      // otherwise "credit" and "credit card" both survive when only the phrase is
+      // a safe-context candidate.
+      if (cand.category === "financial") {
+        for (const sp of cand.spans) financialSpans.push({ key: key, start: sp.start, end: sp.end });
+      }
+      const meta = CATEGORY_META[cand.category] || { label: cand.category, sanitize: () => "[REDACTED]" };
+      const display = cand.category === "medical" ? normalizeMedicalTerm(cand.canonical) : cand.canonical;
+      findings.push({
+        patternId:   "gazetteer_" + cand.category,
+        label:       meta.label,
+        risk:        "low",
+        rawMatch:    display,
+        originalMatch: cand.original,
+        safeVersion: meta.sanitize ? meta.sanitize(display) : "[REDACTED]",
+        source:      "B1_gazetteer_context",
+        validated:   false,
+        matchType:   cand.matchType,
+        normalizedTerm: cand.category === "medical" ? display : undefined,
+        contextOnly: true,
+        contextSpans: cand.spans,
+      });
     }
 
     // Longest-match wins for financial terms: "debt-to-income ratio" should be one

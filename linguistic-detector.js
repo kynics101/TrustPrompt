@@ -631,9 +631,10 @@ const TrustLinguisticDetector = (() => {
       'was a ', 'was an ', 'was the ',       // ★ FIX: Added "was" for past tense
       'were a ', 'were an ', 'were the ',    // ★ FIX: Added "were" for past plural
       'works as ', 'employed as ', 'works for ',
-      'worked as ', 'work as ',              // ★ FIX: Added past and base forms
+      'worked as ', 'work as ', 'working as ', // ★ FIX: Added past and base forms ("working as" is the progressive, e.g. "I have been working as a nurse")
       'my ', 'your ', 'their ', 'her ', 'his ', 'our ',
       'be a ', 'become a ', 'hired as ',
+      'been a ', 'been an ', 'been the ',     // "I have been a nurse for six years"
       ...JOB_BECAME_TRIGGERS,
       "i'm a ", "i'm an ", "i'm the ",       // ★ FIX: Added "i'm an" variant; "i'm the" mirrors "am the"
       "you're a ", "you're an ",             // ★ FIX: Added "you're an" variant
@@ -3946,8 +3947,9 @@ const TrustLinguisticDetector = (() => {
   const FIRST_PERSON_JOB_ATTRIBUTION = [
     // "I am a/an [title]" / "I'm a/an [title]" (with optional adverb hedges)
     /\bi(?:['\u2019]m|\s+am)\s+(?:(?:a|an|the)\s+)?(?:(?:sometimes|also|currently|usually|still|now|mostly|mainly|actually|really|just|part[- ]time|full[- ]time)\s+)*(?:a|an|the)\s+/i,
-    // "I work/working/worked as a/an [title]" / "I serve as a/an/the [title]"
-    /\bi\s+(?:work(?:ing|ed)?|serv(?:e|ing))\s+as\s+(?:a|an|the)\s+/i,
+    // "I work/working/worked as a/an [title]" / "I serve as a/an/the [title]",
+    // also with "have (been)" / "'ve (been)": "I have been working as a registered nurse"
+    /\bi(?:\s+have|['\u2019]ve)?(?:\s+been)?\s+(?:work(?:ing|ed)?|serv(?:e|ing))\s+as\s+(?:a|an|the)\s+/i,
     // "I am/was employed as a/an [title]"
     /\bi\s+(?:am|was)\s+employed\s+as\s+(?:a|an)\s+/i,
     // "my role/position/title/occupation/job is [title]"
@@ -7184,6 +7186,30 @@ const TrustLinguisticDetector = (() => {
     }
   }
 
+  // Log-only place-name report. Tries 4-word down to 1-word windows at each word (longest first, so
+  // "Tarlac City" wins over "Tarlac") and checks each against PH_ADDRESS_DB.isPlaceNameExact. A place
+  // name alone is not a street address, so this adds no finding and changes no score or risk level.
+  function logPlaceNames(text) {
+    try {
+      if (!text || typeof PH_ADDRESS_DB === 'undefined' || !PH_ADDRESS_DB || !PH_ADDRESS_DB.isPlaceNameExact) return [];
+      const words = [];
+      const re = /[\p{L}\p{M}][\p{L}\p{M}.'’-]*/gu;
+      for (let m; (m = re.exec(text)) !== null;) words.push(m[0].replace(/[.'’-]+$/, ''));
+      const found = [];
+      for (let i = 0; i < words.length;) {
+        let hit = 0;
+        for (let n = Math.min(4, words.length - i); n >= 1; n--) {
+          if (PH_ADDRESS_DB.isPlaceNameExact(words.slice(i, i + n).join(' '))) { hit = n; break; }
+        }
+        // a lowercase one-word hit under 5 letters ("car" = CAR region) is far more likely an ordinary word
+        if (hit === 1 && words[i].length < 5 && words[i] === words[i].toLowerCase()) hit = 0;
+        if (hit) { found.push(words.slice(i, i + hit).join(' ')); i += hit; } else { i++; }
+      }
+      if (found.length) console.log('[TrustPrompt/PATH_C] Place names detected (log only, not scored):', found.join(', '));
+      return found;
+    } catch (_) { return []; }
+  }
+
   function scan(textNLP) {
     G_SUPPRESSED = [];
     const prep = t => repairHyphenatedNameSplit(maskSalutationFragments(t));
@@ -7920,6 +7946,30 @@ const TrustLinguisticDetector = (() => {
     } catch (error) {
       console.error('[TrustPrompt/PATH_C] Scan error:', error);
     }
+
+    // One person, one finding: a person name that is only a word or run of words from a longer
+    // person name in the same text ("Maria", "Santos" inside "Maria Santos") is the same person.
+    {
+      const words = s => s.trim().toLowerCase().replace(/[.,;:!?'"’]+/g, ' ').split(/\s+/).filter(Boolean);
+      const isWordRun = (shortW, longW) => {
+        if (shortW.length === 0 || shortW.length >= longW.length) return false;
+        for (let i = 0; i + shortW.length <= longW.length; i++) {
+          if (shortW.every((w, k) => w === longW[i + k])) return true;
+        }
+        return false;
+      };
+      const personFindings = findings.filter(f => f.patternId === 'nlp_person_name' && f.rawMatch);
+      const kept = findings.filter(f => {
+        if (f.patternId !== 'nlp_person_name' || !f.rawMatch) return true;
+        const own = words(f.rawMatch);
+        return !personFindings.some(o => o !== f && o.rawMatch && isWordRun(own, words(o.rawMatch)));
+      });
+      findings.length = 0; findings.push(...kept);
+    }
+
+    // Place names (cities, provinces, regions) are not scored and not returned as findings, but they are
+    // reported here so a lone city such as "Tarlac City" is visible in the console log.
+    logPlaceNames(textNLP);
 
     console.log('[TrustPrompt/PATH_C] ★★★ SCAN FUNCTION RETURNING ★★★');
     console.log('[TrustPrompt/PATH_C] Total findings from scan():', findings.length);

@@ -269,7 +269,8 @@ describe("Detection — Path B Gazetteer (context indicators)", () => {
   });
 
   test("financial term 'salary' is detected as gazetteer_financial", () => {
-    const { findings } = scan("His monthly salary is undisclosed.");
+    // Financial terms need a personal cue (my/our/I have) or an amount to surface.
+    const { findings } = scan("My monthly salary is undisclosed.");
     const f = findById(findings, "gazetteer_financial");
     expect(f).toBeTruthy();
   });

@@ -186,6 +186,7 @@ const TrustValidator = (() => {
    * don't flag "Street Fighter" or "Avenue Q" as addresses.
    */
   function isPHAddress(raw) {
+    PH_ADDRESS_DB.logPlaceMatch(raw);
     return PH_ADDRESS_DB.matchesAny(raw);
   }
 

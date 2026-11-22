@@ -168,6 +168,7 @@ const TrustValidatorWorker = (() => {
 
     // ── Tier 1: full gazetteer check ─────────────────────────────────────
     if (validatorName === "isPHAddress") {
+      PH_ADDRESS_DB.logPlaceMatch(rawMatch);
       return { passed: PH_ADDRESS_DB.matchesAny(rawMatch), tier: "1_gazetteer" };
     }
     // Bare PH place-name (province/city/region) — strict word-boundary lookup.

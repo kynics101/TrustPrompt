@@ -67,22 +67,24 @@ const TrustWorkerBridge = (() => {
   //   3. Main thread             (always works)
 
   function initWorker() {
-    // DISABLED: Web workers with Chromium MV3 have too many restrictions
-    // when loading extension URLs (blob importScripts fails on most origins).
-    // 
-    // Better strategy: Run scanning on main thread via TrustScanner.
-    // This is fast enough and avoids all the worker complexity.
-    //
-    // Main-thread scanning is ~200-400ms per scan, which is acceptable
-    // because:
-    //   1. Most scanning happens during idle time (debounce)
-    //   2. User experience is smooth if badge updates in <500ms
-    //   3. No worker overhead or context switching needed
-    //
-    // If performance becomes critical, use Service Worker instead of Web Worker.
-    
-    console.log("[TrustPrompt/bridge] Web Worker disabled - using main thread scanning");
-    workerAlive = false;
+    try {
+      const workerCode = `
+        importScripts('${chrome.runtime.getURL("worker-data-bundle.js")}');
+        importScripts('${chrome.runtime.getURL("trust-worker.js")}');
+      `;
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      worker = new Worker(blobUrl);
+      worker.blobUrl = blobUrl;
+      worker.addEventListener('message', onWorkerMessage);
+      worker.addEventListener('error', onWorkerError);
+      workerAlive = true;
+      console.log("[TrustPrompt/bridge] ✅ Web Worker initialized");
+    } catch (err) {
+      console.warn("[TrustPrompt/bridge] Worker init failed:", err.message);
+      console.log("[TrustPrompt/bridge] Falling back to main-thread scanning");
+      workerAlive = false;
+    }
   }
 
   function onWorkerMessage(e) {

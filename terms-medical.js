@@ -2619,6 +2619,7 @@ const MEDICAL_TERMS_DATA = [
   "dextroscoliosis",
   "dextrosuria",
   "diabetes",
+  "diabetic",
   "diabrosis",
   "diacetemia",
   "diacetonuria",

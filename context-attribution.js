@@ -261,10 +261,19 @@
     const before = sentence.slice(0, start);
 
     if ((before.match(/["“”]/g) || []).length % 2 === 1) return "quoted";
-    if (/\?\s*$/.test(sentence) || INTERROGATIVE_START_RE.test(sentence)) return "interrogative";
     if (EMBEDDING_BEFORE_RE.test(before)) return "embedding_verb";
 
     const { clause, boundaryWord, prefix } = clauseBefore(before);
+
+    // Interrogative test runs on the clause that holds the anchor, not the whole
+    // sentence. That clause runs from the last boundary before the anchor to the
+    // next boundary after it. "I am diabetic, what foods must I eat?" has a
+    // declarative anchor clause ("I am diabetic") and is not vetoed.
+    const nextBoundary = new RegExp(CLAUSE_BOUNDARY_RE.source, "i").exec(sentence.slice(end));
+    const afterClause = nextBoundary ? sentence.slice(end, end + nextBoundary.index) : sentence.slice(end);
+    const anchorClause = clause + sentence.slice(start, end) + afterClause;
+    if (/\?\s*$/.test(anchorClause) || INTERROGATIVE_START_RE.test(anchorClause)) return "interrogative";
+
     if (NEGATION_RE.test(clause)) return "negated";
     if (HYPOTHETICAL_RE.test(clause)) return "hypothetical";
     if (UNCERTAIN_RE.test(clause)) return "uncertain";

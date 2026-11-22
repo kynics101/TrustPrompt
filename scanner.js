@@ -1082,6 +1082,7 @@ const TrustScanner = (() => {
     trigger_dob:         2,
     trigger_employer:    0,  // not scored: employer mentions are detected but add no score or unit
     trigger_location:    2,
+    location_field:      0,  // labeled "Location:" place — shown, not scored
     trigger_religion:    2,
     nlp_person_name:     2,  // PATH C linguistic
     nlp_job_title:       2,  // PATH C linguistic
@@ -1294,7 +1295,13 @@ const TrustScanner = (() => {
       .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
       .map(f => f.rawMatch);
     const contexts = findings
-      .map(f => ({ text: f.rawMatch, category: ContextAttribution.categoryForPatternId(f.patternId) }))
+      .map(f => {
+        const category = ContextAttribution.categoryForPatternId(f.patternId);
+        // Medical rawMatch is the canonical form ("diabetic" -> "diabetes"). The
+        // anchor check needs the word the user typed, so use originalMatch.
+        const typed = category === "medical" && typeof f.originalMatch === "string" ? f.originalMatch.trim() : "";
+        return { text: typed || f.rawMatch, category: category };
+      })
       .filter(c => c.category);
     return ContextAttribution.evaluateCooccurrence(fullText, { triggerTexts: triggerTexts, contexts: contexts });
   }
@@ -1462,7 +1469,7 @@ const TrustScanner = (() => {
     "|\\bi['’]m\\s+(?:(?:a|an|the)\\s+)?(?:(?:member|employee|student|intern|volunteer|alumni|alumnus|alumna|graduate)\\s+(?:of|at|with|for)\\b)[^.!?\\n]*$" +
     // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
     // (a named person's employer, a profile line)
-    "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
+    "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|agent|leader|operator|technician|clerk|cashier|assistant|associate|administrator|mechanic|electrician|welder|driver|guard|cook|chef|developer|programmer|designer|trainer|tutor|pharmacist|dentist|therapist|caregiver|counselor|counsellor|advisor|adviser|minister|pastor|reporter|editor|writer|researcher|scientist|professor|lecturer|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
     "i"
   );
   function isAttributedOrganization(fullText, name) {
@@ -1594,20 +1601,76 @@ const TrustScanner = (() => {
   // exactly, so a sentence break, a clause, or any other word in between blocks
   // the link.
   const PERSON_NAME_IDS = new Set(["nlp_person_name", "trigger_person_name"]);
-  const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?))$/i;
+  const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?|(?:a|an)\s+))$/i;
+  // Coordinated title in the same appositive: "Name, a graphic designer and illustrator".
+  // The gap is ", a <title words> and " (or "or"). Third-person words block the link.
+  const COORDINATED_TITLE_GAP_RE = /^\s*,\s*(?:a|an|the)\s+(?!.*\b(?:my|his|her|their|our|your|he|she|they|we|you|who|whom|whose|which)\b)[^,.;:!?]*?\s+(?:and|or)\s+$/i;
+  // Possessive appositive: "Ms. Charlene Dizon, my former teacher". Only the gap itself is accepted.
+  const POSSESSIVE_TITLE_GAP_RE = /^\s*,\s*my\s+(?:(?:former|current|late|old)\s+)?$/i;
+  // Organization after the name with "of" / "from": "Armando Dizon of Tarlac National High School".
+  // Organizations only. A job title is never linked this way.
+  const ORG_OF_GAP_RE = /^\s+(?:of|from)\s+(?:the\s+)?$/i;
+  // Title before the name: "teacher Rey Bautista", "Principal Mr. Armando Dizon".
+  // Only whitespace and an optional honorific may separate them.
+  const PRE_NOMINAL_GAP_RE = /^\s+(?:(?:mr|mrs|ms|miss|mx|dr|prof|engr|atty|sir|madam)\.?\s+)?$/i;
+    // Sentence bounds for the same-sentence link. A period ends a sentence only when it is not part of
+  // an honorific or abbreviation ("our principal, Mr. Armando Dizon, announced").
+  const LINK_ABBREV_RE = /\b(?:mr|mrs|ms|mx|dr|prof|jr|sr|st|atty|engr|gen|rev|fr|dept|vs|etc)\.$/i;
+  function isLinkSentenceEnd(text, k) {
+    if (text[k] === "." && LINK_ABBREV_RE.test(text.slice(Math.max(0, k - 12), k + 1))) return false;
+    return k + 1 >= text.length || /\s/.test(text[k + 1]);
+  }
+  function linkSentenceBounds(text, pos) {
+    const isEnd = (c, k) => c === "\n" || ((c === "." || c === "!" || c === "?") && isLinkSentenceEnd(text, k));
+    let start = 0;
+    for (let k = pos - 1; k >= 0; k--) { if (isEnd(text[k], k)) { start = k + 1; break; } }
+    let end = text.length;
+    for (let k = pos; k < text.length; k++) { if (isEnd(text[k], k)) { end = k; break; } }
+    return [start, end];
+  }
   function isLinkedToPersonName(fullText, f, findings) {
     if (!fullText || !f || !f.rawMatch || !Array.isArray(findings)) return false;
     const names = findings
       .filter(p => PERSON_NAME_IDS.has(p.patternId) && p.rawMatch && p.rawMatch.trim())
       .map(p => p.rawMatch.trim().toLowerCase());
     if (names.length === 0) return false;
+    // Markdown table row: a name and a job title or organization in the same "| ... |" row
+    // describe one record ("| Gina Ramos | Safety Officer | Mabuhay Steelworks Inc. |").
+    const rowNeedle = f.rawMatch.trim().toLowerCase();
+    if (fullText.split("\n").some(line => {
+      const row = line.trim().toLowerCase();
+      return row.startsWith("|") && row.includes(rowNeedle) && names.some(n => row.includes(n));
+    })) return true;
+    // Same sentence (framework section 2): a detected personal name and this finding share one sentence,
+    // in either order, with any words between them.
     const lower = fullText.toLowerCase();
     const needle = f.rawMatch.trim().toLowerCase();
     for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      const [s, e] = linkSentenceBounds(fullText, i);
       for (const name of names) {
+        for (let j = lower.indexOf(name, s); j !== -1 && j + name.length <= e; j = lower.indexOf(name, j + 1)) {
+          if (j + name.length <= i || j >= i + needle.length) return true;
+        }
+      }
+    }
+    const isOrg = f.patternId === "nlp_organization";
+    for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+      const end = i + needle.length;
+      // The finding must start on a word boundary, so "nurse" does not match inside "nursery".
+      const startsWord = i === 0 || !/[\p{L}\p{N}]/u.test(lower.charAt(i - 1));
+      for (const name of names) {
+        // Name before the finding: "Carlo is a nurse", "Carlo works at X", "Carlo of X" (organizations).
         for (let j = lower.indexOf(name); j !== -1 && j + name.length <= i; j = lower.indexOf(name, j + 1)) {
           const gap = fullText.slice(j + name.length, i);
-          if (gap.length <= 40 && PERSON_LINK_GAP_RE.test(gap)) return true;
+          if (gap.length <= 40 && (PERSON_LINK_GAP_RE.test(gap) || COORDINATED_TITLE_GAP_RE.test(gap) || POSSESSIVE_TITLE_GAP_RE.test(gap) || (isOrg && ORG_OF_GAP_RE.test(gap)))) return true;
+        }
+        // Finding before the name: "teacher Rey Bautista", "Principal Armando Dizon".
+        if (startsWord) {
+          for (let k = lower.indexOf(name, end); k !== -1; k = lower.indexOf(name, k + 1)) {
+            const gap = fullText.slice(end, k);
+            if (gap.length > 20) break;
+            if (PRE_NOMINAL_GAP_RE.test(gap)) return true;
+          }
         }
       }
     }

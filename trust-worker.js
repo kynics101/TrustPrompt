@@ -50,6 +50,11 @@ importScripts(
 // This eliminates 1-2 second model loading time on subsequent scans.
 // 
 // Impact: 1st scan: 2800ms, 2nd+ scans: 600ms (75% faster!)
+//
+// PRE-WARM on worker startup: We immediately call ensureNRModelCached() without
+// waiting for the first message. This moves the 1-2 second model load to worker
+// initialization time, BEFORE the user's first scan. Subsequent scans hit the
+// cached model and are blazing fast (600ms).
 
 let nrModelCached = false;
 let nrModelError = false;
@@ -73,6 +78,13 @@ const ensureNRModelCached = async () => {
     nrModelError = true;
   }
 };
+
+// Immediately start pre-warming the model when worker loads (non-blocking)
+// This runs in the background so the first scan won't pay the model-loading penalty
+(async () => {
+  console.log('[TrustPrompt/worker] ⏳ Starting NER model pre-warm in background...');
+  await ensureNRModelCached();
+})();
 
 // ── Data Availability Check ──────────────────────────────────────────────────────
 // The worker-data-bundle.js should have been imported via blob, making these
@@ -122,6 +134,7 @@ const BASE_SCORES = {
   trigger_dob:         2,
   trigger_employer:    0,  // not scored: employer mentions are detected but add no score or unit
   trigger_location:    2,
+  location_field:      0,  // labeled "Location:" place — shown, not scored
   trigger_religion:    2,  // Religion triggers are limited-tier
 
   trigger_health:      0,  // Context indicator, not scored
@@ -273,7 +286,13 @@ function evaluateSentenceCooccurrence(findings, fullText) {
     .filter(f => (BASE_SCORES[f.patternId] ?? 0) > 0 && isRule2TriggerEntity(f.patternId))
     .map(f => f.rawMatch);
   const contexts = findings
-    .map(f => ({ text: f.rawMatch, category: ContextAttribution.categoryForPatternId(f.patternId) }))
+    .map(f => {
+      const category = ContextAttribution.categoryForPatternId(f.patternId);
+      // Medical rawMatch is the canonical form ("diabetic" -> "diabetes"). The
+      // anchor check needs the word the user typed, so use originalMatch.
+      const typed = category === "medical" && typeof f.originalMatch === "string" ? f.originalMatch.trim() : "";
+      return { text: typed || f.rawMatch, category: category };
+    })
     .filter(c => c.category);
   return ContextAttribution.evaluateCooccurrence(fullText, { triggerTexts: triggerTexts, contexts: contexts });
 }
@@ -338,7 +357,7 @@ const ORG_AFFILIATION_BEFORE_RE = new RegExp(
   "|\\b(?:before|after)\\s+working\\s+(?:at|for)\\b[^.!?\\n]*$" +
   "|\\bi['’]m\\s+(?:(?:a|an|the)\\s+)?(?:(?:member|employee|student|intern|volunteer|alumni|alumnus|alumna|graduate)\\s+(?:of|at|with|for)\\b)[^.!?\\n]*$" +
   // a job title right before "at" / "with": "Head of Operations at X", "IT Manager at X"
-  "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
+  "|\\b(?:manager|director|head|officer|engineer|analyst|specialist|coordinator|supervisor|lead|chief|president|consultant|executive|staff|employee|representative|teacher|nurse|doctor|accountant|secretary|worker|agent|leader|operator|technician|clerk|cashier|assistant|associate|administrator|mechanic|electrician|welder|driver|guard|cook|chef|developer|programmer|designer|trainer|tutor|pharmacist|dentist|therapist|caregiver|counselor|counsellor|advisor|adviser|minister|pastor|reporter|editor|writer|researcher|scientist|professor|lecturer|ceo|cto|cfo|coo)\\b[^.!?\\n]*\\b(?:at|with|of)\\s+$",
   "i"
 );
 function isAttributedOrganization(fullText, name) {
@@ -446,20 +465,76 @@ const RECORD_JOB_LABEL_RE = /(?:^|[\n.;|,]|\s)\s*(?:position|job\s*title|title|r
 // exactly, so a sentence break, a clause, or any other word in between blocks
 // the link. Mirrors isLinkedToPersonName in scanner.js; keep the two identical.
 const PERSON_NAME_IDS = new Set(["nlp_person_name", "trigger_person_name"]);
-const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?))$/i;
+const PERSON_LINK_GAP_RE = /^(?:\s*,\s*(?:(?:a|an|the)\s+)?|\s+(?:(?:is|was|are|were)\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served)\s+as\s+(?:(?:a|an|the)\s+)?|(?:works?|worked|serves?|served|employed|hired|joined)\s+(?:at|with|for|by)\s+(?:the\s+)?|(?:is|was)\s+(?:at|with|of|from)\s+(?:the\s+)?|(?:a|an)\s+))$/i;
+// Coordinated title in the same appositive: "Name, a graphic designer and illustrator".
+// The gap is ", a <title words> and " (or "or"). Third-person words block the link.
+const COORDINATED_TITLE_GAP_RE = /^\s*,\s*(?:a|an|the)\s+(?!.*\b(?:my|his|her|their|our|your|he|she|they|we|you|who|whom|whose|which)\b)[^,.;:!?]*?\s+(?:and|or)\s+$/i;
+// Possessive appositive: "Ms. Charlene Dizon, my former teacher". Only the gap itself is accepted.
+const POSSESSIVE_TITLE_GAP_RE = /^\s*,\s*my\s+(?:(?:former|current|late|old)\s+)?$/i;
+// Organization after the name with "of" / "from": "Armando Dizon of Tarlac National High School".
+// Organizations only. A job title is never linked this way.
+const ORG_OF_GAP_RE = /^\s+(?:of|from)\s+(?:the\s+)?$/i;
+// Title before the name: "teacher Rey Bautista", "Principal Mr. Armando Dizon".
+// Only whitespace and an optional honorific may separate them.
+const PRE_NOMINAL_GAP_RE = /^\s+(?:(?:mr|mrs|ms|miss|mx|dr|prof|engr|atty|sir|madam)\.?\s+)?$/i;
+// Sentence bounds for the same-sentence link. A period ends a sentence only when it is not part of
+// an honorific or abbreviation ("our principal, Mr. Armando Dizon, announced").
+const LINK_ABBREV_RE = /\b(?:mr|mrs|ms|mx|dr|prof|jr|sr|st|atty|engr|gen|rev|fr|dept|vs|etc)\.$/i;
+function isLinkSentenceEnd(text, k) {
+  if (text[k] === "." && LINK_ABBREV_RE.test(text.slice(Math.max(0, k - 12), k + 1))) return false;
+  return k + 1 >= text.length || /\s/.test(text[k + 1]);
+}
+function linkSentenceBounds(text, pos) {
+  const isEnd = (c, k) => c === "\n" || ((c === "." || c === "!" || c === "?") && isLinkSentenceEnd(text, k));
+  let start = 0;
+  for (let k = pos - 1; k >= 0; k--) { if (isEnd(text[k], k)) { start = k + 1; break; } }
+  let end = text.length;
+  for (let k = pos; k < text.length; k++) { if (isEnd(text[k], k)) { end = k; break; } }
+  return [start, end];
+}
 function isLinkedToPersonName(fullText, f, findings) {
   if (!fullText || !f || !f.rawMatch || !Array.isArray(findings)) return false;
   const names = findings
     .filter(p => PERSON_NAME_IDS.has(p.patternId) && p.rawMatch && p.rawMatch.trim())
     .map(p => p.rawMatch.trim().toLowerCase());
   if (names.length === 0) return false;
+  // Markdown table row: a name and a job title or organization in the same "| ... |" row
+  // describe one record ("| Gina Ramos | Safety Officer | Mabuhay Steelworks Inc. |").
+  const rowNeedle = f.rawMatch.trim().toLowerCase();
+  if (fullText.split("\n").some(line => {
+    const row = line.trim().toLowerCase();
+    return row.startsWith("|") && row.includes(rowNeedle) && names.some(n => row.includes(n));
+  })) return true;
+  // Same sentence (framework section 2): a detected personal name and this finding share one sentence,
+  // in either order, with any words between them.
   const lower = fullText.toLowerCase();
   const needle = f.rawMatch.trim().toLowerCase();
   for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const [s, e] = linkSentenceBounds(fullText, i);
     for (const name of names) {
+      for (let j = lower.indexOf(name, s); j !== -1 && j + name.length <= e; j = lower.indexOf(name, j + 1)) {
+        if (j + name.length <= i || j >= i + needle.length) return true;
+      }
+    }
+  }
+  const isOrg = f.patternId === "nlp_organization";
+  for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+    const end = i + needle.length;
+    // The finding must start on a word boundary, so "nurse" does not match inside "nursery".
+    const startsWord = i === 0 || !/[\p{L}\p{N}]/u.test(lower.charAt(i - 1));
+    for (const name of names) {
+      // Name before the finding: "Carlo is a nurse", "Carlo works at X", "Carlo of X" (organizations).
       for (let j = lower.indexOf(name); j !== -1 && j + name.length <= i; j = lower.indexOf(name, j + 1)) {
         const gap = fullText.slice(j + name.length, i);
-        if (gap.length <= 40 && PERSON_LINK_GAP_RE.test(gap)) return true;
+        if (gap.length <= 40 && (PERSON_LINK_GAP_RE.test(gap) || COORDINATED_TITLE_GAP_RE.test(gap) || POSSESSIVE_TITLE_GAP_RE.test(gap) || (isOrg && ORG_OF_GAP_RE.test(gap)))) return true;
+      }
+      // Finding before the name: "teacher Rey Bautista", "Principal Armando Dizon".
+      if (startsWord) {
+        for (let k = lower.indexOf(name, end); k !== -1; k = lower.indexOf(name, k + 1)) {
+          const gap = fullText.slice(end, k);
+          if (gap.length > 20) break;
+          if (PRE_NOMINAL_GAP_RE.test(gap)) return true;
+        }
       }
     }
   }
@@ -628,11 +703,24 @@ function suppressPlaceholders(findings) {
 // TASK-4.3: JWT validation is now handled by validator-wrapper-worker.js
 //   _isJWT() which does a structural decode check (base64url → JSON).
 
+// OPTIMIZATION 1: Initialize regex caching at worker load time
+function _initializePatternRegexes() {
+  for (const pattern of TRUSTPROMPT_PATTERNS) {
+    if (pattern.regex && !pattern._compiled) {
+      pattern._compiled = pattern.regex;
+    }
+  }
+}
+
 function runPathA(normalisedText) {
   const findings = [];
   for (const pattern of TRUSTPROMPT_PATTERNS) {
-    if (!pattern.regex) continue; // ph_mobile and any future regex-less patterns skip Path A
-    const re = new RegExp(pattern.regex.source, pattern.regex.flags);
+    if (!pattern._compiled) continue;
+    
+    // OPTIMIZATION: Use cached compiled regex; reset lastIndex
+    const re = pattern._compiled;
+    re.lastIndex = 0;
+    
     let match;
     while ((match = re.exec(normalisedText)) !== null) {
       const raw = match[0];
@@ -682,90 +770,127 @@ const CREDENTIAL_CONTAINMENT_IDS = new Set([
 ]);
 
 function mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, sourceCodeFindings = []) {
-  // ── Deduplicate per (patternId × rawMatch) pair ──────────────────────────────
-  //
-  // KEY DESIGN: the deduplication key is "patternId:rawMatch" — NOT rawMatch alone.
-  //
-  // Using only rawMatch as the key was the root cause of the multiplier bug:
-  // if Path B detects "John" as trigger_person_name and Path C detects "John"
-  // as nlp_person_name, the old key would collapse both into ONE finding,
-  // both findings survive for display; scoring counts them as one personal-name unit.
-  //
-  // With the composite key, each (patternId, rawMatch) pair is kept independently.
-  // Two paths detecting the same raw text as the same entity type are still
-  // collapsed (higher-risk one wins), but two paths detecting the same raw text
-  // as DIFFERENT entity types both survive — correctly contributing two distinct
-  // types to the multiplier calculation.
+  const allFindings = [...pathAFindings, ...pathBFindings, ...pathCFindings, ...sourceCodeFindings];
+
+  // OPTIMIZATION 2: Pre-compute normalized metadata on each finding
+  for (const f of allFindings) {
+    if (!f._dedupCache) {
+      f._dedupCache = {
+        key: f.patternId + ":" + f.rawMatch.trim().toLowerCase(),
+        rawTrimmed: f.rawMatch.trim(),
+        rawLower: f.rawMatch.trim().toLowerCase(),
+        length: f.rawMatch.length
+      };
+    }
+  }
+
+  // ── Deduplicate per (patternId × rawMatch) pair using cached keys ──
   const seen = new Map();
-  for (const f of [...pathAFindings, ...pathBFindings, ...pathCFindings, ...sourceCodeFindings]) {
-    const key = f.patternId + ":" + f.rawMatch.trim().toLowerCase();
-    const ex  = seen.get(key);
-    if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) seen.set(key, f);
+  for (const f of allFindings) {
+    const key = f._dedupCache.key;
+    const ex = seen.get(key);
+    if (!ex || RISK_ORDER[f.risk] > RISK_ORDER[ex.risk]) {
+      seen.set(key, f);
+    }
   }
 
   // ── ph_address overlap resolution (longest span wins) ────────────────────────
-  // Keep only the longest ph_address span; drop any whose text is a proper
-  // substring of another ph_address finding, or that is contained within an
-  // organization name.
   const merged = [...seen.values()];
   return merged.filter(f => {
     // ── Credential containment: one secret, two matches ─────────────────────
-    // Same rule as scanner.js: keep only the widest span per credential type when
-    // a bare vendor-prefix match is a substring of a labelled match for one secret.
     if (CREDENTIAL_CONTAINMENT_IDS.has(f.patternId)) {
-      const selfText = f.rawMatch.trim();
       const hasWiderSpan = merged.some(other =>
         other !== f &&
         other.patternId === f.patternId &&
-        other.rawMatch.trim() !== selfText &&
-        other.rawMatch.trim().includes(selfText)
+        other._dedupCache.rawTrimmed !== f._dedupCache.rawTrimmed &&
+        other._dedupCache.rawLower.includes(f._dedupCache.rawLower)
       );
       if (hasWiderSpan) return false;
     }
 
     if (f.patternId === 'ph_address') {
-      const self = f.rawMatch.trim().toLowerCase();
+      const self = f._dedupCache.rawLower;
       const hasLongerAddress = merged.some(other =>
         other !== f &&
         other.patternId === 'ph_address' &&
-        other.rawMatch.trim().toLowerCase() !== self &&
-        other.rawMatch.trim().toLowerCase().includes(self)
+        other._dedupCache.rawLower !== self &&
+        other._dedupCache.rawLower.includes(self)
       );
       if (hasLongerAddress) return false;
       const hasOrgParent = merged.some(other =>
         other.patternId === 'nlp_organization' &&
-        other.rawMatch.trim().toLowerCase() !== self &&
-        other.rawMatch.trim().toLowerCase().includes(self)
+        other._dedupCache.rawLower !== self &&
+        other._dedupCache.rawLower.includes(self)
       );
       if (hasOrgParent) return false;
     }
 
-    // ── Address fragment mis-tagged as a person/organization ───────────────────
-    // Path C often tags street/barangay tokens inside an address as a person name
-    // or organization — e.g. "Mabini St", "San Roque" inside "45 Mabini St.,
-    // Brgy. San Roque, Cainta". Drop these duplicates so the score does not
-    // aggregate; the full address is already one ph_address entity.
     if (f.patternId === 'nlp_person_name' || f.patternId === 'nlp_organization') {
-      const frag = f.rawMatch.trim().toLowerCase();
+      const frag = f._dedupCache.rawLower;
       const insideAddress = merged.some(other =>
         other.patternId === 'ph_address' &&
-        other.rawMatch.trim().toLowerCase().includes(frag)
+        other._dedupCache.rawLower.includes(frag)
       );
       if (insideAddress) return false;
     }
 
-    // Financial and health context words inside an organization name are part of
-    // the name, not a disclosure about the writer (mirrors scanner.js).
     if (f.patternId === 'gazetteer_financial' || f.patternId === 'gazetteer_medical' ||
         f.patternId === 'trigger_financial' || f.patternId === 'trigger_health') {
-      const term = f.rawMatch.trim().toLowerCase();
+      const term = f._dedupCache.rawLower;
       const inOrganization = merged.some(other =>
         other.patternId === 'nlp_organization' && other.rawMatch &&
-        other.rawMatch.trim().toLowerCase().includes(term));
+        other._dedupCache.rawLower.includes(term)
+      );
       if (inOrganization) return false;
     }
     return true;
   });
+}
+
+// ── Helper: Decide if Path C should run ────────────────────────────────────────
+// Path C (NLP/Linguistic) is expensive (~600ms) but essential for detecting names,
+// job titles, and organizations. For short prompts, we can skip it and save time.
+//
+// Decision logic:
+//   < 50 words:   SKIP Path C entirely (save 600ms)
+//   50-150 words: RUN Path C only if Path A+B found ambiguous/incomplete results
+//   > 150 words:  ALWAYS run Path C (narrative text likely has untriggered entities)
+
+function shouldRunPathC(rawText, pathAFindings, pathBFindings) {
+  const wordCount = rawText.trim().split(/\s+/).length;
+  
+  // Always run for longer prompts (more likely to have narrative entities)
+  if (wordCount > 150) {
+    console.log(`[TrustPrompt/worker] Text is ${wordCount} words → RUN Path C (long text)`);
+    return true;
+  }
+  
+  // Skip entirely for very short prompts
+  if (wordCount < 50) {
+    console.log(`[TrustPrompt/worker] Text is ${wordCount} words → SKIP Path C (short prompt, save 600ms)`);
+    return false;
+  }
+  
+  // For medium-length prompts (50-150 words), run Path C only if needed
+  // Run if we found very few entities or only keywords/context indicators
+  const hasHighRiskFindings = pathAFindings.some(f => 
+    BASE_SCORES[f.patternId] >= 10 ||  // Critical entities (cards, IDs, APIs)
+    BASE_SCORES[f.patternId] === 5      // Significant entities (emails, addresses)
+  );
+  
+  const hasEntityNames = 
+    pathAFindings.some(f => f.patternId === 'trigger_person_name' || f.patternId === 'nlp_person_name') ||
+    pathBFindings.some(f => f.patternId === 'trigger_person_name' || f.patternId === 'nlp_person_name');
+  
+  // If we already found high-risk or person-name entities, Path C is optional
+  if (hasHighRiskFindings || hasEntityNames) {
+    console.log(`[TrustPrompt/worker] Text is ${wordCount} words + found entities → SKIP Path C (conditional)`);
+    return false;
+  }
+  
+  // Otherwise, run Path C to catch missed names/titles/orgs
+  console.log(`[TrustPrompt/worker] Text is ${wordCount} words + ambiguous results → RUN Path C (conditional)`);
+  return true;
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -776,10 +901,9 @@ self.onmessage = async function (e) {
 
   const t0 = performance.now();
 
-  // ── Pre-cache NER model on first scan (Performance Optimization) ──────────────
-  // This loads the transformer model into worker memory, making subsequent scans
-  // ~75% faster (2800ms → 600ms). The cache persists across scans.
-  await ensureNRModelCached();
+  // NER model is pre-warming in background. For short prompts where we might
+  // skip Path C entirely, this doesn't matter. For longer prompts that need
+  // Path C, the model will likely be ready or nearly ready.
 
   // Use path-specific normalization for each detection method
   const masked = TrustNormalizer.sharedLayer(rawText);
@@ -787,32 +911,49 @@ self.onmessage = async function (e) {
   const textGazetteer = TrustNormalizer.normalizePath_B(rawText);
   const textNLP = TrustNormalizer.normalizePath_C(rawText);
 
-  const pathAFindings = runPathA(textRegex);
-  
-  // ── Parallelize Path B and Path C (Performance Optimization) ──────────────
-  // Instead of sequential: await Path B, then Path C
-  // Run them in parallel: Promise.all() both at the same time
-  // This can reduce 1000ms+ of latency if both paths are slow
-  
-  const [pathBFindings, pathCFindings] = await Promise.all([
-    // Path B: Gazetteer scan (async)
-    TrustGazetteer.scan(textGazetteer),
-    
-    // Path C: Linguistic detection (async, already model-cached)
+  // ── RUN PATH A and PATH B in parallel (always) ──────────────────────────────
+  const [pathAFindings, pathBFindings] = await Promise.all([
+    // Path A: Regex detection (sync wrapped in async for parallelization)
     (async () => {
+      try {
+        const results = runPathA(textRegex);
+        return results;
+      } catch (pathAError) {
+        console.error("[TrustPrompt/worker] PATH A error:", pathAError);
+        return [];
+      }
+    })(),
+    
+    // Path B: Gazetteer scan (async)
+    (async () => {
+      try {
+        if (typeof TrustGazetteer === 'undefined' || !TrustGazetteer || typeof TrustGazetteer.scan !== 'function') {
+          return [];
+        }
+        return await TrustGazetteer.scan(textGazetteer);
+      } catch (pathBError) {
+        console.error("[TrustPrompt/worker] PATH B error:", pathBError);
+        return [];
+      }
+    })()
+  ]);
+
+  // ── CONDITIONALLY RUN PATH C based on text length and A+B results ───────────
+  let pathCFindings = [];
+  if (shouldRunPathC(rawText, pathAFindings, pathBFindings)) {
+    try {
       if (typeof TrustLinguisticDetector !== 'undefined' && 
           TrustLinguisticDetector && 
           typeof TrustLinguisticDetector.scan === 'function') {
-        try {
-          return await TrustLinguisticDetector.scan(textNLP);
-        } catch (pathCError) {
-          console.error("[TrustPrompt/worker] PATH C error:", pathCError);
-          return [];
-        }
+        pathCFindings = await TrustLinguisticDetector.scan(textNLP);
       }
-      return [];
-    })()
-  ]);
+    } catch (pathCError) {
+      console.error("[TrustPrompt/worker] PATH C error:", pathCError);
+      pathCFindings = [];
+    }
+  } else {
+    console.log("[TrustPrompt/worker] Path C skipped (short text or low-risk results)");
+  }
   
   const merged        = resolveContextOnly(mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, []), textGazetteer);
   const findings      = suppressPlaceholders(merged);  // TASK-4.4
@@ -829,7 +970,7 @@ self.onmessage = async function (e) {
     score,
     governance,
     normalisedText:  masked,
-    wasCapsConverted: false,  // With path-specific normalization, we don't track this globally
+    wasCapsConverted: false,
     elapsedMs
   });
 };

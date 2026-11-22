@@ -226,6 +226,15 @@ const PH_ADDRESS_DB = (() => {
     return PLACE_SET.has(key) || EXTRA_SET.has(key);
   }
 
-  return { matchesAny, findMatches, matchesWhole, isPlaceNameExact };
+  // Debug log, enabled by running `globalThis.TRUSTPROMPT_DEBUG = true` in the console.
+  // Logs only the category and count of place-name matches, never the matched text
+  // or the prompt.
+  function logPlaceMatch(text) {
+    if (!globalThis.TRUSTPROMPT_DEBUG) return;
+    const count = findMatches(text).length;
+    if (count > 0) console.log('[TrustPrompt/DEBUG] ph_address: place-name match (' + count + ')');
+  }
+
+  return { matchesAny, findMatches, matchesWhole, isPlaceNameExact, logPlaceMatch };
 
 })();

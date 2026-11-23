@@ -8369,7 +8369,7 @@ if (typeof globalThis !== 'undefined') {
   console.log('[STARTUP] TrustLinguisticDetector assigned to globalThis immediately');
 }
   
-  window.testLinguisticDetector = function() {
+if (typeof window !== 'undefined') window.testLinguisticDetector = function() {
     const testText = 'i am kyleen. professor';
     console.log('[TEST] Running testLinguisticDetector...');
     console.log('[TEST] Input:', testText);

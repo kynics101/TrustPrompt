@@ -1271,7 +1271,8 @@ const TrustScanner = (() => {
   //
   // Scope by context category (approved codebook):
   //   medical     -> medical anchor in the same sentence, or a trigger in the prompt
-  //   financial   -> a trigger in the SAME sentence only; anchors do not apply
+  //   financial   -> a figure-bearing first-person disclosure in the same sentence
+  //                  (Financial Disclosure Anchor), or a trigger in the SAME sentence
   //   nationality -> a trigger or a nationality anchor in the same sentence
   // Suppression never removes findings or changes base scores.
   // Gazetteer context-only candidates are kept only when a Rule 2 identifier
@@ -1899,7 +1900,7 @@ const TrustScanner = (() => {
     // Street") carries a residence/delivery cue, treat it as a real disclosure.
     if (patternId === 'ph_address') {
       const cueWindow = (fullText.slice(Math.max(0, matchIndex - 60), matchIndex) + " " + rawMatch).toLowerCase();
-      if (/\b(?:i\s+(?:live|stay|reside)|we\s+(?:live|stay|reside)|my\s+(?:home\s+|office\s+|work\s+|current\s+|permanent\s+)?address|address\s*(?:is|:)|residing\s+(?:at|in)|located\s+at|deliver(?:\s+it)?\s+to|ship(?:\s+it)?\s+to|send\s+it\s+to|mail\s+(?:it\s+)?to|my\s+(?:house|home|apartment|condo|office)\s+is\s+(?:at|in))\b/.test(cueWindow)) {
+      if (/\b(?:i\s+(?:live|stay|reside)|we\s+(?:live|stay|reside)|(?:living|staying|residing)\s+(?:at|in)|my\s+(?:home\s+|office\s+|work\s+|current\s+|permanent\s+)?address|address\s*(?:is|:)|residing\s+(?:at|in)|located\s+at|deliver(?:\s+it)?\s+to|ship(?:\s+it)?\s+to|send\s+it\s+to|mail\s+(?:it\s+)?to|my\s+(?:house|home|apartment|condo|office)\s+is\s+(?:at|in))\b/.test(cueWindow)) {
         return false;  // do NOT filter
       }
     }

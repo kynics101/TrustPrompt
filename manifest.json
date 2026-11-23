@@ -124,7 +124,9 @@
         "organization-detector-enhanced.js",
         "linguistic-detector.js",
         "ph-address-db.js",
+        "validator-wrapper.js",
         "validator-wrapper-worker.js",
+        "scanner.js",
         "worker-data-bundle.js",
         "trust-worker.js"
       ],

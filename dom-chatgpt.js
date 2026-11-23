@@ -23,6 +23,11 @@ const TP_CHATGPT = (() => {
   let pendingScanPromise = null;
   let lastResult         = null;
 
+  // ── Consent gate ─────────────────────────────────────────────────────────
+  // TrustPrompt does nothing on this page until the user allows it and it is
+  // not paused (see consent-state.js). Every listener below checks this flag.
+  let tpActive = false;
+
   // ── Scan token system (for interruption handling) ──────────────────────────
   let scanToken = 0;
   let activeScanToken = null;
@@ -130,6 +135,7 @@ const TP_CHATGPT = (() => {
   // adopted as the prompt box. This is our "keyboard / mouse event" fallback.
 
   function onProximityEvent(e) {
+    if (!tpActive) return;
     if (promptBox && isVisible(promptBox)) return; // already have a valid box
     const t = e.target;
     if (!t || !(t.tagName === "TEXTAREA" || t.contentEditable === "true")) return;
@@ -506,6 +512,7 @@ const TP_CHATGPT = (() => {
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
 
   function onInput() {
+    if (!tpActive) return;
     console.log("[TP/chatgpt] onInput triggered");
     
     // If scan is done, check if text has changed
@@ -571,6 +578,7 @@ const TP_CHATGPT = (() => {
     
     // Attach Enter key handler with proper blocking
     el.addEventListener("keydown", (e) => {
+      if (!tpActive) return; // inactive: let the keystroke through untouched
       // ── INTERRUPTION: Shift+Enter during SCANNING interrupts scan ──────────
       // Plain Enter during SCANNING still blocks (prevents submission)
       if (scanState === STATE.SCANNING) {
@@ -720,6 +728,7 @@ const TP_CHATGPT = (() => {
 
   // Central helper: switch to a new prompt box, tear down old UI, re-attach
   function adoptPromptBox(el) {
+    if (!tpActive) return;
     if (el === promptBox) return;
     promptBox = el;
     scanState  = STATE.IDLE;
@@ -742,6 +751,7 @@ const TP_CHATGPT = (() => {
 
   // ── Submit intercept — Enter key ──────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
+    if (!tpActive) return;
     if (e.key !== "Enter" || e.shiftKey) return;
     if (!promptBox || !isVisible(promptBox)) return;
     
@@ -758,6 +768,7 @@ const TP_CHATGPT = (() => {
 
   // ── Submit intercept — send button click ──────────────────────────────────
   document.addEventListener("click", (e) => {
+    if (!tpActive) return;
     const btn = e.target.closest("button");
     if (!btn) return;
     const lbl = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
@@ -788,6 +799,7 @@ const TP_CHATGPT = (() => {
   // ── 6. MUTATION OBSERVER + INIT ──────────────────────────────────────────
 
   const observer = new MutationObserver(() => {
+    if (!tpActive) return;
     // Debounce the re-resolution check — React can fire hundreds of mutations
     // per interaction; we only need to act once the storm settles.
     clearTimeout(observerDebounce);
@@ -808,6 +820,7 @@ const TP_CHATGPT = (() => {
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
   function init() {
+    if (!tpActive) return;
     // Hide scrollbar on ChatGPT's prompt textarea/contenteditable — it's
     // unnecessary in a single-input box and adds visual clutter.
     if (!document.getElementById("tp-chatgpt-no-scroll")) {
@@ -848,7 +861,51 @@ const TP_CHATGPT = (() => {
     }
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else setTimeout(init, 1200); // Increased delay to ensure page is fully loaded
+  // ── CONSENT GATE: start and stop ─────────────────────────────────────────
+  // Scanning starts only when consent is "allowed" and not paused. Turning it
+  // off clears the scan state and removes the TrustPrompt UI from the page.
+  function setActive(active) {
+    if (active === tpActive) return;
+    tpActive = active;
+    if (active) {
+      console.log("[TP/chatgpt] TrustPrompt active — starting");
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+      else setTimeout(init, 1200); // Delay so the page finishes loading
+    } else {
+      console.log("[TP/chatgpt] TrustPrompt inactive — stopping");
+      deactivate();
+    }
+  }
+
+  function deactivate() {
+    clearTimeout(debounceTimer);
+    clearTimeout(observerDebounce);
+    activeScanToken = null;
+    scanState  = STATE.IDLE;
+    allowSubmit = true;
+    lastResult = null;
+    lastScannedText = "";
+    TrustUI.teardown();
+    if (promptBox) {
+      // Undo any read-only lock left by an in-flight scan. Does not move focus.
+      promptBox.readOnly = false;
+      if (promptBox.tagName !== "TEXTAREA") promptBox.contentEditable = "true";
+      promptBox.removeAttribute("data-tp-readonly");
+      promptBox.style.pointerEvents = "";
+      promptBox.style.opacity = "";
+    }
+    updateSendButtonState();
+  }
+
+  // Fail closed: if consent-state.js did not load, TrustPrompt stays inactive.
+  if (typeof TrustPromptConsent === "undefined") {
+    console.warn("[TP/chatgpt] consent-state.js missing — staying inactive");
+  } else {
+    TrustPromptConsent.getState().then(s => setActive(TrustPromptConsent.isActive(s)));
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[TrustPromptConsent.STORAGE_KEY]) return;
+      TrustPromptConsent.getState().then(s => setActive(TrustPromptConsent.isActive(s)));
+    });
+  }
 
 })();

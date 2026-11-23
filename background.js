@@ -2,19 +2,19 @@
 // TrustPrompt — service worker.
 //
 // Responsibilities:
-//   1. Open the side panel when the user clicks the toolbar icon.
+//   1. Consent and pause state for the content scripts, popup, and badge (see consent-state.js).
 //   2. Relay SCAN_RESULT / SCAN_SCANNING / SCAN_CLEARED messages from the
 //      content script to the side panel.
 //   3. Update the browser action badge colour based on risk level.
 //   4. Fetch detection rules from Firebase Hosting (cached, read-only).
 
+importScripts("consent-state.js");
 console.log("[TrustPrompt/bg] service worker started");
 
 // ── 1. OPEN SIDE PANEL ON ICON CLICK ─────────────────────────────────────────
 
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch(err => console.warn("[TrustPrompt/bg] setPanelBehavior failed:", err));
+// The toolbar icon now opens the popup (manifest default_popup). The popup's
+// "Open side panel" item opens the side panel from a user click.
 
 // ── 2. FIREBASE RULES FETCH ───────────────────────────────────────────────────
 
@@ -39,6 +39,12 @@ let cachedRules    = null;
 let rulesFetchedAt = 0;
 
 async function fetchRules() {
+  // Make no network request until the user has allowed TrustPrompt.
+  const state = await TrustPromptConsent.getState();
+  if (!TrustPromptConsent.isActive(state)) {
+    console.log("[TrustPrompt/bg] TrustPrompt not active — skipping rules fetch");
+    return null;
+  }
   // Remote rules disabled or not configured → silently use bundled defaults.
   if (!isValidRulesUrl(FIREBASE_RULES_URL)) {
     console.log("[TrustPrompt/bg] remote rules not configured — using bundled defaults");
@@ -194,9 +200,41 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     highRiskAutoOpened.delete(tabId);
     const url = tab.url || "";
     if (/chatgpt\.com|chat\.openai\.com|claude\.ai/.test(url)) {
-      setBadge(tabId, "active");
+      // Show the grey "ON" badge only while TrustPrompt is allowed and not paused.
+      TrustPromptConsent.getState().then(state => {
+        if (TrustPromptConsent.isActive(state)) setBadge(tabId, "active");
+      });
     } else {
       chrome.action.setBadgeText({ text: "", tabId });
     }
+  }
+});
+
+// ── 6. CONSENT CHANGES ─────────────────────────────────────────────────────
+// When the user allows, declines, pauses, or resumes, update the badge on every
+// open AI tab right away. Inactive means no badge at all.
+const AI_TAB_URLS = ["https://claude.ai/*", "https://chatgpt.com/*", "https://chat.openai.com/*"];
+
+chrome.storage.onChanged.addListener(async (changes, area) => {
+  if (area !== "local" || !changes[TrustPromptConsent.STORAGE_KEY]) return;
+  const active = TrustPromptConsent.isActive(await TrustPromptConsent.getState());
+  const tabs = await chrome.tabs.query({ url: AI_TAB_URLS });
+  for (const tab of tabs) {
+    if (active) {
+      setBadge(tab.id, "active");
+    } else {
+      chrome.action.setBadgeText({ text: "", tabId: tab.id });
+    }
+  }
+  if (active) fetchRules(); // first fetch after the user allows TrustPrompt
+  console.log("[TrustPrompt/bg] consent changed — active:", active, "tabs:", tabs.length);
+});
+
+// ── 7. FIRST-INSTALL DISCLOSURE ───────────────────────────────────────────
+// Open the disclosure page once, on a fresh install. Consent starts as "pending",
+// so TrustPrompt stays inactive until the user answers on that page.
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") });
   }
 });

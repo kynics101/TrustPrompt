@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to TrustPrompt</title>
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <main class="card">
+    <img class="page-logo" src="icons/icon-128.png" width="64" height="64" alt="TrustPrompt logo">
+    <h1>Welcome to TrustPrompt</h1>
+    <p class="lead">TrustPrompt checks what you type in ChatGPT or Claude and warns you if it spots personal or sensitive information, before you send it.</p>
+    <p id="step-indicator" class="step-indicator" aria-live="polite">Step 1 of 3</p>
+
+    <section class="step" data-step="1">
+      <h2>What the badge colors mean</h2>
+      <p>The badge appears near the prompt box.</p>
+      <ul class="legend">
+        <li><span class="dot gray"></span><strong>Gray:</strong> Waiting or still typing</li>
+        <li><span class="dot green"></span><strong>Green:</strong> No detected privacy risk</li>
+        <li><span class="dot yellow"></span><strong>Yellow:</strong> Low risk</li>
+        <li><span class="dot orange"></span><strong>Orange:</strong> Moderate risk (see the side panel)</li>
+        <li><span class="dot red"></span><strong>Red:</strong> High risk (see the side panel and masked version)</li>
+      </ul>
+    </section>
+
+    <section class="step" data-step="2" hidden>
+      <h2>What to know</h2>
+      <ul class="know">
+        <li><strong>It can see your typing.</strong> While it is on, TrustPrompt reads everything in the ChatGPT or Claude prompt box, including text you have not sent or have deleted. It stops when you pause it, decline it, or uninstall it.</li>
+        <li><strong>Checking happens on your device.</strong> TrustPrompt does not send your text anywhere and does not save your prompts.</li>
+        <li><strong>It can miss things.</strong> "No Detected Privacy Risk" does not mean your prompt is safe.</li>
+        <li><strong>You decide.</strong> TrustPrompt only advises. You can always send your original prompt.</li>
+        <li><strong>Sending is final.</strong> Once you send a prompt, TrustPrompt cannot take it back. Your own OpenAI or Anthropic account rules apply, and free-tier prompts may be kept or used for training.</li>
+      </ul>
+    </section>
+
+    <section class="step" data-step="3" hidden>
+      <h2>Your choice</h2>
+      <p>Do you allow TrustPrompt to check your prompts in ChatGPT and Claude?</p>
+      <div class="choice">
+       
+        <button id="btn-decline" type="button" class="secondary">I don't allow</button>
+         <button id="btn-allow" type="button" class="primary">I allow</button>
+      </div>
+      <p id="choice-result" class="result" aria-live="polite"></p>
+
+      <div class="study">
+        <h3>If you're in the study</h3>
+        <p>Use made-up details only. Do not click "Send Anyway." Just watch the badge and side panel, then answer the questionnaire. Full details are in the <a href="https://drive.google.com/file/d/1oPgcg6xiuuFTiaVDM50c76oKLaxYO5vR/view?usp=sharing">Informed Consent Form</a>.</p>
+      </div>
+
+      <div class="uninstall" id="uninstall">
+        <h3>How to uninstall</h3>
+        <p>Open your browser's extensions page, find TrustPrompt, and click Remove. Do this too if it stops working properly.</p>
+      </div>
+    </section>
+
+    <footer class="nav">
+      <button id="btn-back" type="button" class="secondary" hidden>Back</button>
+      <button id="btn-next" type="button" class="primary">Next</button>
+    </footer>
+
+    <footer class="contact">
+      <p>Questions? Please contact: Juliana Gabriella Sergio at julianagabriella.sergio.cics@ust.edu.ph · <span>
+         or if you have ethical concerns, please contact: UST CICSREC at cicsrec.cics@ust.edu.ph </span>
+</p>
+      <p>Version <span id="version"></span> · Updated November 2026 </p>
+    </footer>
+  </main>
+  <script src="consent-state.js"></script>
+  <script src="onboarding.js"></script>
+</body>
+</html>

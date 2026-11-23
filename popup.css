@@ -1,0 +1,112 @@
+/* popup.css: toolbar popup, styled after a Mailvelope-style menu */
+
+[hidden] { display: none !important; }
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 320px;
+  background: #ffffff;
+  color: #1f2328;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.brand { display: flex; align-items: center; gap: 8px; }
+
+.logo {
+  width: 28px;
+  height: 28px;
+}
+
+.brand-name { font-size: 15px; font-weight: 700; }
+
+.header-actions { display: flex; gap: 4px; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #57606a;
+  cursor: pointer;
+}
+.icon-btn:hover { background: #f0f2f5; }
+
+.status { padding: 12px 14px; border-bottom: 1px solid #e5e7eb; }
+
+.status-line { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+
+.status-detail { margin: 4px 0 0; color: #57606a; font-size: 13px; }
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.dot.running { background: #388e3c; }
+.dot.paused { background: #f9a825; }
+.dot.off { background: #9e9e9e; }
+
+.menu { list-style: none; margin: 0; padding: 0; }
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 1px solid #eef0f3;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.item:hover { background: #f6f8fa; }
+
+.item-icon { color: #1f6feb; flex-shrink: 0; margin-top: 2px; }
+
+.item-text { display: flex; flex-direction: column; }
+.item-title { font-weight: 600; }
+.item-desc { color: #57606a; font-size: 12px; }
+
+.popup-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.footer-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2328;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.footer-btn:hover { background: #f6f8fa; }
+
+button:focus-visible {
+  outline: 3px solid #9ec5fe;
+  outline-offset: 1px;
+}

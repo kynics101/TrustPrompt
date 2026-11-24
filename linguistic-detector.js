@@ -7280,23 +7280,54 @@ const TrustLinguisticDetector = (() => {
 
   // item 1: a spoken e-mail address ("marites at gmail dot com") is not a person
   function obSpokenEmailSpans(text) {
-    const spans = [], re = /[\w.+-]+\s+at\s+[\w-]+(?:\s+dot\s+[\w-]+)+/gi;
+    // local part: one word, or words joined by "dot" ("juan dot cruz"); quotes and apostrophes around it are not part of the span
+    const spans = [], re = /[\w+-]+(?:\s+dot\s+[\w+-]+)*\s+at\s+[\w-]+(?:\s+dot\s+[\w-]+)+/gi;
     let m; while ((m = re.exec(text)) !== null) spans.push([m.index, m.index + m[0].length]);
     return spans;
   }
+  // "<name> at <word> dot <word>": a finding that ends right before this tail is the local part of a spoken address, whatever its length
+  const OB_SPOKEN_TAIL_RE = /^["'”’)\]]?\s+at\s+[\w-]+(?:\s+dot\s+[\w-]+)+/i;
+  // "<word> dot <word>" directly before or after a finding: the finding is a piece of a spoken local part ("dot cruz")
+  // the sentence around a spoken address talks about the way of saying it (generic / example), not about the user's own address
+  const OB_GENERIC_SPOKEN_RE = /\b(?:if\s+(?:he|she|they|someone|somebody|a\s+person|one|you|people|anyone)\s+(?:says?|said|dictates?|spells?|reads?)|how\s+(?:do|does|should|can|could|would|to)\s+(?:i|you|we|one|people)?\s*(?:say|spell|read|dictate|pronounce|write)|(?:say|saying|spell|spelling|read|reading|dictate|dictating|pronounce|pronouncing)\s+(?:out|aloud|it|an?\s+e-?mail|the\s+(?:e-?mail|address|@))|out\s+loud|aloud|over\s+the\s+phone|instead\s+of\s+(?:using|typing|the)|the\s+@\s*(?:sign|symbol)|symbols?|for\s+example|for\s+instance|e\.g\.|such\s+as|(?:is|are)\s+it\s+(?:ok|okay|safe|fine|correct|valid)|will\s+(?:they|he|she|the\s+person)\s+understand)\b/i;
+  function obGenericSpokenSentence(text, s, e) {
+    let a = s; while (a > 0 && !/[.?!\n]/.test(text[a - 1])) a--;
+    let z = e; while (z < text.length && !/[.?!\n]/.test(text[z])) z++;
+    return OB_GENERIC_SPOKEN_RE.test(text.slice(a, z + 1));
+  }
+  const OB_DOT_JOIN_BEFORE_RE = /\bdot\s+$/i, OB_DOT_JOIN_AFTER_RE = /^\s+dot\b/i;
 
-  // item 7: the topic of a question about naming
+  // naming topic (second version): a first-person statement in the prompt keeps the name; otherwise a name that stands right next to a
+  // naming word, or in a "short for / be named / how common is" frame, is the topic of the question and not a person
+  const OB_FIRST_PERSON_STMT_RE = /\b(?:my\s+(?:full\s+|first\s+|last\s+|real\s+)?name\s+is|call\s+me|i\s+am|i['’]m|i\s+was\s+named|my\s+(?:friend|classmate|cousin|brother|sister|mother|mom|mother-in-law|father|dad|teacher|boss|colleague|neighbou?r|daughter|son|wife|husband|aunt|uncle|student|patient|client|landlord|landlady)\b)/i;
+  const OB_NAMING_NOUN = String.raw`(?:first\s+|last\s+|given\s+|family\s+|middle\s+|baby\s+|pet\s+|real\s+|common\s+|popular\s+|filipino\s+|spanish\s+|chinese\s+)?(?:names?|surnames?|nicknames?)`;
+  const OB_NAMING_BEFORE_RES = [
+    new RegExp(String.raw`\b${OB_NAMING_NOUN}\s*(?:of\s+|like\s+|such\s+as\s+|called\s+)?["'“‘]?$`, 'i'),                      // "the name X", "surname X", "names like X"
+    /\b(?:meaning|origin|origins|etymology|pronunciation|spelling|popularity)\s+of\s+(?:the\s+)?(?:(?:first|last|given|family)\s+)?(?:name\s+)?["'“‘]?$/i,
+    /\b(?:short\s+for|nickname\s+for|diminutive\s+of|derived\s+from|variant\s+of|spelled\s+like|same\s+as)\s+["'“‘]?$/i,
+    /\b(?:to\s+be|be|being)\s+named\s+["'“‘]?$/i,                                                                             // "is named X" states a fact, "to be named X" asks about naming
+    /\b(?:whether|if|is|are|was|were|does|do|did|check\s+if|check\s+whether)\s+["'“‘]?$/i,                                       // narrowed below: needs a naming noun after
+    /\bhow\s+(?:common|popular|rare|unusual|old|frequent)\s+(?:is|are)\s+(?:the\s+)?["'“‘]?$/i,
+    /\b(?:more|less|most|least)\s+(?:common|popular)\s+(?:as\s+an?\s+\w+\s*,?\s*)?["'“‘]?$/i,
+  ];
+  const OB_NAMING_AFTER_RE = new RegExp(String.raw`^["'”’]?[,\s]+(?:(?:is|are|was|were|as|sounds?|really|actually|still|more|less|very|so|too|also|even|a|an|the|common|real|rare|popular|good|nice|valid|filipino|spanish|chinese|boy['’]s|girl['’]s|unisex|male|female|first|last|given|family|baby|pet)\s+){0,8}${OB_NAMING_NOUN}\b`, 'i');
+  const OB_NAMING_AFTER2_RE = /^["'”’]?\s+(?:short\s+for|mean|means|come\s+from|comes\s+from|originat\w*|derive\w*|sound\s+like|stand\s+for|stands\s+for)\b/i;
   function obNamingTopic(text, s, e) {
-    const before = obSentenceBefore(text, s);
-    const after = text.slice(e, e + 60).replace(/[.?!\n][\s\S]*$/, '');
-    if (/\bmy\s+name\b|\bcall\s+me\b|\bi\s+am\b|\bi['’]m\b/i.test(before)) return false;
-    if (/\b(?:what|how|where|why|when|does|do|did|is|are|which|can|could)\b[^.?!]*\b(?:name|surname|nickname)s?\s+["'“‘]?$/i.test(before) ||
-        /\b(?:meaning|origin|origins|etymology|pronunciation|spelling|popularity)\s+of\s+(?:the\s+)?(?:(?:first|last|given|family)\s+)?(?:name\s+)?["'“‘]?$/i.test(before)) {
+    if (OB_FIRST_PERSON_STMT_RE.test(text.replace(/\s+/g, ' '))) return false;
+    const line0 = text.lastIndexOf('\n', s - 1) + 1;
+    const before = text.slice(Math.max(line0, s - 90), s);
+    let after = text.slice(e, e + 90).replace(/\n[\s\S]*$/, '');
+    // a name that ends in an abbreviation keeps its dot in the text ("Roberto Villanueva Jr. Is a common name"): step over it
+    if (after[0] === '.' && /(?:^|\s)(?:jr|sr|ii|iii|iv|ma|mr|mrs|ms|dr)$/i.test(text.slice(Math.max(0, e - 4), e))) after = after.slice(1);
+    const nounAfter = new RegExp(String.raw`^["'”’]?[,\s]+(?:[\w'’-]+\s+){0,8}?${OB_NAMING_NOUN}\b`, 'i').test(after);
+    for (const re of OB_NAMING_BEFORE_RES) {
+      if (!re.test(before)) continue;
+      // the bare "is / whether / if" frames count only when a naming noun follows the name ("is X a common name")
+      if (/\b(?:whether|if|is|are|was|were|does|do|did)\s+["'“‘]?$/i.test(before) && re === OB_NAMING_BEFORE_RES[4] && !(nounAfter || OB_NAMING_AFTER2_RE.test(after))) continue;
       return true;
     }
-    if (/(?:^|\b)(?:is|are|was|were)\s+["'“‘]?$/i.test(before) &&
-        /^["'”’]?\s+(?:a|an|the)\s+(?:[\w-]+\s+){0,3}?(?:name|surname|nickname)\b/i.test(after)) return true;
-    if (/(?:^|\b)(?:is|are|was|were)\s+["'“‘]?$/i.test(before) && /^["'”’]?\s+(?:a|an)\s+(?:[\w-]+\s+){0,3}?(?:names?)\b/i.test(after)) return true;
+    if (OB_NAMING_AFTER_RE.test(after) && /\b(?:is|are|was|were|does|do|did|whether|if|check|how|what|which|why)\b/i.test(before + ' ' + after.slice(0, 40))) return true;
+    if (OB_NAMING_AFTER2_RE.test(after) && /\b(?:name|surname|nickname|does|what|how|is)\b/i.test(before)) return true;
     return false;
   }
 
@@ -7319,11 +7350,13 @@ const TrustLinguisticDetector = (() => {
   }
   const obTok = w => String(w).toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
-  function applyOwnerObservations(findings, text) {
+  function applyOwnerObservations(findings, text, opts) {
     if (!Array.isArray(findings) || !text) return findings;
     const cloneWith = (f, raw) => Object.assign({}, f, { rawMatch: raw });
     let out = [];
-    const spoken = obSpokenEmailSpans(text), breaks = obBreakPairs(text);
+    // line-break pairs: the caller's own list (scanner.js passes the pairs of the raw text) wins over the normalizer's last-call record,
+    // which a second scan that starts before this one ends would overwrite
+    const spoken = obSpokenEmailSpans(text), breaks = (opts && opts.breaks && opts.breaks.size ? opts.breaks : null) || obBreakPairs(text);
     const progCtx = obProgrammingContext(text);
     for (let f of findings) {
       let raw = String(f.rawMatch || '').trim(); const id = f.patternId;
@@ -7331,7 +7364,14 @@ const TrustLinguisticDetector = (() => {
       // item 6: a person marker or particle that the sentence-case step capitalised at the start of the span ("Si Marites Dumalagan", "Kay Ligaya Mercado")
       if (id === OB_TYPE.P) { const t0 = raw.split(/\s+/); if (t0.length >= 2 && /^\p{Lu}/u.test(t0[0]) && /^(?:si|ni|kay|ang|ng|nang|mga|sa|po)$/i.test(t0[0])) { raw = t0.slice(1).join(' '); f = cloneWith(f, raw); } }
       // item 1
-      if (spoken.length && obAllOcc(text, f, (s, e) => spoken.some(([a, b]) => s >= a && e <= b))) continue;
+      if (id === OB_TYPE.P) {
+        // a name that overlaps a spoken address, ends right before "at <domain> dot <tld>", or sits next to a "dot" is a piece of the address
+        // a fragment of the address itself ("dot cruz", "juan dot") is never a person, whatever the sentence says
+        if (spoken.length && (/(?:^|\s)dot(?:\s|$)/i.test(raw) || obAllOcc(text, f, (s, e) => spoken.some(([a, b]) => s < b && e > a) && OB_DOT_JOIN_BEFORE_RE.test(text.slice(Math.max(0, s - 6), s))))) continue;
+        // only a generic or example sentence ("if he says ...", "how do I say ...") drops the name; a first-person or instruction sentence keeps it
+        if (obAllOcc(text, f, (s, e) => obGenericSpokenSentence(text, s, e) && (spoken.some(([a, b]) => s < b && e > a) || OB_SPOKEN_TAIL_RE.test(text.slice(e, e + 80)) ||
+            OB_DOT_JOIN_BEFORE_RE.test(text.slice(Math.max(0, s - 6), s)) || (OB_DOT_JOIN_AFTER_RE.test(text.slice(e, e + 6)) && OB_SPOKEN_TAIL_RE.test(text.slice(e).replace(/^(?:\s+dot\s+[\w'’-]+)+/i, '')))))) continue;
+      } else if (spoken.length && obAllOcc(text, f, (s, e) => spoken.some(([a, b]) => s >= a && e <= b))) continue;
       if (id === OB_TYPE.P) {
         const toks = raw.split(/\s+/);
         // item 4
@@ -7395,6 +7435,26 @@ const TrustLinguisticDetector = (() => {
       out.push(f);
     }
 
+    // organization overlap: when two organization spans share a word of the text ("Tarlac State University" and "University College" in
+    // "... Tarlac State University College of Education"), the span that is not accepted is dropped. Accepted: more words, then a
+    // dictionary organization, then the earlier one. This does not need the line break.
+    {
+      const orgs = out.filter(f => f.patternId === OB_TYPE.O && f.rawMatch).map(f => {
+        const occ = obOccurrences(text, f.rawMatch);
+        return { f, occ, n: String(f.rawMatch).trim().split(/\s+/).length, known: obKnownOrg(String(f.rawMatch)) };
+      });
+      const drop = new Set();
+      for (let i = 0; i < orgs.length; i++) for (let j = i + 1; j < orgs.length; j++) {
+        const A = orgs[i], B = orgs[j];
+        if (drop.has(A.f) || drop.has(B.f) || String(A.f.rawMatch).toLowerCase() === String(B.f.rawMatch).toLowerCase()) continue;
+        const hit = A.occ.some(([a0, a1]) => B.occ.some(([b0, b1]) => a0 < b1 && b0 < a1));
+        if (!hit) continue;
+        const aWins = A.n !== B.n ? A.n > B.n : (A.known !== B.known ? A.known : A.occ[0][0] <= B.occ[0][0]);
+        drop.add(aWins ? B.f : A.f);
+      }
+      if (drop.size) out = out.filter(f => !drop.has(f));
+    }
+
     // item 5: a title next to a named person (before or after the name) is a Low finding
     const people = out.filter(f => f.patternId === OB_TYPE.P && f.rawMatch);
     if (people.length) {
@@ -7432,9 +7492,9 @@ const TrustLinguisticDetector = (() => {
     return out;
   }
 
-  function scan(textNLP) {
+  function scan(textNLP, opts) {
     const res = scanBase(textNLP);
-    try { return applyOwnerObservations(res, textNLP); } catch (err) { console.error('[TrustPrompt/PATH_C] owner observations error:', err && err.message); return res; }
+    try { return applyOwnerObservations(res, textNLP, opts); } catch (err) { console.error('[TrustPrompt/PATH_C] owner observations error:', err && err.message); return res; }
   }
 
   function scanBase(textNLP) {
@@ -8657,7 +8717,20 @@ const TrustLinguisticDetector = (() => {
   // Expose a wait function that returns immediately (for backwards compatibility)
   const waitForCSVInit = () => Promise.resolve(true);
 
-  return { scan, waitForCSVInit, getSuppressed: () => G_SUPPRESSED.slice() };
+  // Build stamp: a short hash of the code that decides a scan (the source text of its main functions), so a console line shows which
+  // detector a browser is really running (a stale extension build has a different hash).
+  let _buildId = null;
+  function buildId() {
+    if (_buildId) return _buildId;
+    let h = 0x811c9dc5;
+    for (const fn of [scan, scanBase, scanCore, applyOwnerObservations, obNamingTopic, extractAppositiveRoleConstruct, refinePersonCandidates, findOrganizationsStructural]) {
+      const src = String(fn);
+      for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    }
+    return (_buildId = h.toString(16).padStart(8, '0'));
+  }
+
+  return { scan, waitForCSVInit, buildId, getSuppressed: () => G_SUPPRESSED.slice() };
 
 })();
 

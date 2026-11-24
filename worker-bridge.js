@@ -166,7 +166,11 @@ const TrustWorkerBridge = (() => {
    * @param {string} rawText
    * @returns {Promise<{ findings, riskLevel, score, normalisedText, wasCapsConverted, elapsedMs }>}
    */
+  // debug mode: localStorage "tp-debug" = "1" (the scanner then logs the raw text and the composer structure)
+  function tpDebug() { try { return localStorage.getItem("tp-debug") === "1"; } catch (_) { return false; } }
+
   function scan(rawText) {
+    if (tpDebug()) console.log("[TrustPrompt/raw/bridge] " + JSON.stringify(rawText));
     if (!rawText || !rawText.trim()) {
       return Promise.resolve({
         findings: [], riskLevel: "none", score: 0,
@@ -197,7 +201,7 @@ const TrustWorkerBridge = (() => {
         scanOnMainThread(rawText).then(resolve, reject);
       };
       pending.set(scanId, { resolve, reject: fallback, timer });
-      worker.postMessage({ type: "SCAN", rawText, scanId });
+      worker.postMessage({ type: "SCAN", rawText, scanId, debug: tpDebug() });
     });
   }
 

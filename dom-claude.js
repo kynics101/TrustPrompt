@@ -171,8 +171,17 @@ const TP_CLAUDE = (() => {
 
   // ── 2. TEXT HELPERS ───────────────────────────────────────────────────────
 
+  // Reads the composer with innerText (a textarea: value). In a rich-text composer every line is a block element, so innerText returns
+  // "\n" for a soft break and "\n\n" between paragraphs: the line breaks survive, and normalizePath_C collapses them later.
+  // Debug mode (localStorage "tp-debug" = "1") logs what was read, with the element structure, as JSON.
   function extractText(el) {
-    return (!el ? "" : (el.tagName === "TEXTAREA" ? el.value : el.innerText)) || "";
+    const t = (!el ? "" : (el.tagName === "TEXTAREA" ? el.value : el.innerText)) || "";
+    try {
+      if (el && localStorage.getItem("tp-debug") === "1") {
+        console.log("[TrustPrompt/composer] " + JSON.stringify({ tag: el.tagName, innerText: t, textContent: el.textContent, p: el.querySelectorAll("p").length, br: el.querySelectorAll("br").length, div: el.querySelectorAll("div").length }));
+      }
+    } catch (_) { /* debug only */ }
+    return t;
   }
 
   function buildSafeText(orig, findings) {

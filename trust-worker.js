@@ -51,8 +51,9 @@ importScripts(
 );
 
 self.onmessage = async function (e) {
-  const { type, rawText, scanId } = e.data || {};
+  const { type, rawText, scanId, debug } = e.data || {};
   if (type !== "SCAN") return;
+  self.TP_DEBUG = debug === true;
 
   try {
     const r = await TrustScanner.scan(rawText);

@@ -198,7 +198,7 @@ A critical entity has a base score of 10, which by itself falls in the Moderate 
 A supported nationality, medical, or financial context indicator is present together with either:
 
 1. At least one valid personal entity in the same prompt, such as a personal name, email address, phone number, Philippine physical address, date of birth, credit/debit card number, or one of the nine supported Philippine government-ID types listed in the detection-scope section; **or**
-2. An explicit first-person self-attribution anchor and a context indicator in the same sentence. For medical indicators, the anchor must pass the Medical Anchor Rule codebook entry below. Financial indicators cannot use this path.
+2. An explicit first-person self-attribution anchor and a context indicator in the same sentence. For medical indicators, the anchor must pass the Medical Anchor Rule codebook entry below. For financial indicators, the figure-bearing disclosure must pass the Financial Disclosure Anchor codebook entry below.
 
 The self-attribution anchor is a trigger only. It is not a scored entity and does not change the numeric base score. A bare pronoun such as “I” is not sufficient by itself.
 
@@ -215,7 +215,7 @@ Before escalation, apply the deterministic contextual exclusion filter to the se
 
 The filter is conservative:
 - An exclusion phrase may suppress only the Rule 2 escalation; it must not remove findings or alter the numeric score.
-- A clear personal disclosure or attribution overrides an exclusion phrase. Examples include “I have [condition],” “I was diagnosed with [condition],” “my diagnosis is [condition],” “I take [medication],” and “[person] was diagnosed with [condition].” Medical anchors are limited to the Medical Anchor Rule codebook entry. Financial phrases such as “my salary is [amount]” are not anchors and do not override an exclusion phrase.
+- A clear personal disclosure or attribution overrides an exclusion phrase. Examples include “I have [condition],” “I was diagnosed with [condition],” “my diagnosis is [condition],” “I take [medication],” and “[person] was diagnosed with [condition].” Medical anchors are limited to the Medical Anchor Rule codebook entry. Financial phrases are not anchors, except the Financial Disclosure Anchor codebook entry below, which requires a figure. A bare “my salary” or “my loan” with no figure is not an anchor.
 - Absence of an exclusion phrase does not prove that the context belongs to the identified person.
 - Co-occurrence is an observable condition, not semantic confirmation that the context belongs to the detected person.
 
@@ -270,10 +270,38 @@ Status: approved in chat 2026-11-19 as a cue expansion only. Organizational affi
 
 **Effect.** None on classification. An organization finding that matches one of these cues keeps its existing Low classification.
 
+#### Financial Disclosure Anchor (codebook entry — approved in chat 2026-11-23; manuscript amendment pending)
+
+Status: approved in chat 2026-11-23 for the steering file. It is not yet in Manuscript Chapter 3. Implemented in `context-attribution.js` (`evaluateFinancialAnchor`, step 1b of `evaluateCooccurrence`).
+
+**Purpose.** A first-person financial disclosure that states a figure escalates on its own. A bare "my + financial term" with no figure does not fire, so general questions are not escalated.
+
+**Scope.** Financial context indicators only, and only terms from the personal financial allowlist (`PERSONAL_FINANCIAL_TERMS`). Generic glossary vocabulary is excluded. No score is added.
+
+**Preprocessing.** Same as the Medical Anchor Rule: expand contractions, then split sentences.
+
+**Closed anchor frames.** Every frame needs an amount. The speaker is the subject.
+
+| Frame | Pattern (term = allowlist term) | Example |
+|---|---|---|
+| F1. Possessive state with amount | `my <term> (is\|was\|are\|were\|comes to\|totals\|stands at) <AMOUNT>` | "my monthly salary is 30,000 pesos" |
+| F2. Ownership with amount | `I (owe\|owed\|have\|had\|earn\|earned\|make\|made\|pay\|paid) <AMOUNT> (in\|on\|of\|to)? <term>` | "I owe 120,000 pesos on my car loan" |
+| F3. Term with amount after | `<term> of <AMOUNT>`, with `my` or `I` within 6 words before the term | "my car loan of 250,000" |
+
+**AMOUNT** is a currency marker (₱, PHP, P, peso, pesos, $, USD) next to a number, or a grouped figure ("30,000", "1.2 million"). A bare number without a currency marker or grouping is not an amount.
+
+**Adjacency.** Between the anchor and the term, only these tokens may appear: a, an, the, my, our, current, monthly, annual, remaining, outstanding, total, GCash, credit, car, home, personal, student.
+
+**Vetoes.** The Medical Anchor vetoes apply (quoted, embedding verb, interrogative, negated, hypothetical, uncertainty, third-party or shared subject). Negation is also checked inside the frame, so "I don't have a loan of 50,000" is vetoed. Exclusion phrases do not suppress this entry, because the vetoes cover the non-disclosure cases.
+
+**Effect.** Raise the preliminary classification by one level (No Detected Risk → Low when no scored entity is present), at most once per prompt, with no score added. Record the frame and any veto so the UI can show why.
+
+**Decisions.** A personal state with no figure ("I am drowning in debt") does not fire. A relation with no figure ("my salary barely covers my loan") does not fire.
+
 #### Financial indicators (approved; same-sentence scope)
 
-- Financial context indicators (salary, loan, payment, debt) never use an anchor.
-- A financial indicator escalates only through Rule 2 condition 1: a valid personal entity in the same prompt. "Validated identifier" means the personal identifiers in that condition: personal name, email address, phone number, Philippine physical address, date of birth, credit/debit card number, and the nine supported Philippine government-ID types. Each must pass its existing detection and validation.
+- Financial context indicators use an anchor only through the Financial Disclosure Anchor entry above, which requires a figure. A bare "my + term" never fires.
+- A financial indicator escalates through Rule 2 condition 1: a valid personal entity in the same prompt. "Validated identifier" means the personal identifiers in that condition: personal name, email address, phone number, Philippine physical address, date of birth, credit/debit card number, and the nine supported Philippine government-ID types. Each must pass its existing detection and validation.
 - The contextual exclusion filter still applies to financial terms.
 - Financial terms and amounts add no score.
 - Same sentence: the personal entity must be in the same sentence as the financial term. This is approved in chat and is stricter than the manuscript's "same prompt" wording, so it is pending manuscript amendment.
@@ -349,6 +377,11 @@ Use these as minimum scoring/governance sanity checks; expand the test suite fro
 | Five distinct Low-impact units | 10 × 2.00 = 20.00; Rule 3 | Moderate |
 | Financial/medical/nationality context only | No scored unit; no Rule 2 trigger | No Detected Risk |
 | “I was diagnosed with diabetes” | Score 0; anchor + medical context; Rule 2 | Low |
+| “My monthly salary is 30,000 pesos.” (Financial Disclosure Anchor F1) | Score 0; financial anchor; Rule 2 | Low |
+| “I owe 120,000 pesos on my car loan.” (F2) | Score 0; financial anchor; Rule 2 | Low |
+| “I'm drowning in debt and my monthly salary barely covers my GCash loan.” (no figure) | Score 0; no anchor; no scored entity | No Detected Risk |
+| “How should I pay my loan of 50,000 pesos?” (interrogative veto) | Score 0; anchor vetoed | No Detected Risk |
+| “I don't have a loan of 50,000 pesos.” (negated veto) | Score 0; anchor vetoed | No Detected Risk |
 | Personal name + medical context, with clear personal attribution | Numeric score remains based on scored unit(s); Rule 2 raises one level | One level above preliminary |
 | Academic/informational/hypothetical reference with no attribution override | Rule 2 escalation suppressed; score/findings unchanged | Preliminary classification retained |
 | "I'm 25 years old." (personal-attribute gate) | One Personal Attributes unit: 2 x 1.00 = 2.00 | Low |

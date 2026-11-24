@@ -120,17 +120,17 @@ const TrustGazetteer = (() => {
     "credit rating", "credit limit", "net worth", "take-home pay", "net pay",
     "gross pay", "monthly income", "annual income", "monthly salary",
     "outstanding balance", "loan balance", "debt-to-income ratio", "tax refund",
-    "13th month pay",
+    "13th month pay", "loan amortization",
     // Single words with general use. Each needs a personal or amount cue.
     "credit", "wages", "bills", "rent", "savings", "taxes", "expenses",
     "afford", "retirement", "pension", "bonus", "overtime", "mortgage",
-    "unpaid", "bankrupt",
+    "unpaid", "bankrupt", "installment", "instalment",
   ];
   // Single words from PERSONAL_FINANCIAL_TERMS that need a personal or amount cue.
   const AMBIGUOUS_FINANCIAL_SOFT = new Set([
     "credit", "wages", "bills", "rent", "savings", "taxes", "expenses",
     "afford", "retirement", "pension", "bonus", "overtime", "mortgage",
-    "unpaid", "bankrupt",
+    "unpaid", "bankrupt", "installment", "instalment",
   ]);
   // Builds the financial lists from the allowlist. HARD entries are removed.
   function loadFinancialLists() {
@@ -232,6 +232,9 @@ const TrustGazetteer = (() => {
   const AMBIGUOUS_MEDICAL_SOFT = new Set([
     "stress", "gas", "strain", "cuts", "burns", "moles", "worms", "boils",
     "chills", "corns", "burnout", "wounds", "lice",
+    // "treatment" is also used for workplace and other non-health senses
+    // ("special treatment at work", "equal treatment"); it needs a health verb.
+    "treatment", "treatments",
   ]);
   function mergeSupplementaryMedical() {
     // Drop non-medical entries first so every rebuild path gets the same list.
@@ -488,7 +491,6 @@ const TrustGazetteer = (() => {
   // have been removed — they are handled by the religion gazetteer path only.
   const NATIONALITY_PHRASES = [
     // Citizenship and status
-    "dual citizen",                // RA 9225 Filipino dual citizenship
     "dual nationality",
     "naturalized filipino",
     "naturalized citizen",
@@ -907,8 +909,9 @@ const TrustGazetteer = (() => {
   const FUZZY_THRESHOLD = 0.90; // ≥ 0.90 similarity required for medical and nationality terms
 
   // Gazetteer categories that get typo-tolerant (fuzzy) matching in runGazetteerScan().
-  // Other categories stay exact-match only.
-  const FUZZY_CATEGORIES = new Set(["medical", "nationality"]);
+  // Other categories stay exact-match only. Financial covers only the personal
+  // allowlist (PERSONAL_FINANCIAL_TERMS), so this does not widen to the glossary.
+  const FUZZY_CATEGORIES = new Set(["medical", "nationality", "financial"]);
 
   /**
    * True when a fuzzy-matched word is a truncation or extension of the term
@@ -1439,7 +1442,7 @@ const TrustGazetteer = (() => {
       // Everyday words that are also health words ("gas bill", "stress at work"):
       // surface only when tied to a health experience, never on "my"/"I am" alone.
       if (AMBIGUOUS_MEDICAL_SOFT.has(matchedMed)) {
-        const healthVerb = /\b(?:have|has|had|having|i've|ive|suffer(?:s|ed|ing)?(?:\s+from)?|diagnosed(?:\s+with)?|treated\s+for|experiencing|developed|developing)\s+(?:(?:a|an|some|the|severe|bad|chronic|acute|serious|mild)\s+){0,2}$/;
+        const healthVerb = /\b(?:have|has|had|having|i've|ive|suffer(?:s|ed|ing)?(?:\s+from)?|diagnosed(?:\s+with)?|treated\s+for|experiencing|developed|developing|undergo(?:ing|ne)?)\s+(?:(?:a|an|some|the|severe|bad|chronic|acute|serious|mild)\s+){0,2}$/;
         const nonHealthNoun = /^\s*(?:bills?|prices?|stoves?|stations?|tanks?|pipes?|meters?|compan(?:y|ies)|cylinders?|masks?|pedals?|at\s+work|from\s+work|of\s+(?:tomatoes|plants|wheat|rice))\b/;
         return healthVerb.test(nearContextLower) && !nonHealthNoun.test(contextAfterLower);
       }
@@ -1878,13 +1881,44 @@ const TrustGazetteer = (() => {
     map.get(key).spans.push({ start: start, end: end });
   }
 
+  // True when the span [start, end) lies inside a longer religion term that also
+  // occurs in the text. "Christian" inside "born-again Christian" is part of that
+  // one phrase, so it must not become a second religion finding.
+  function coveredByLongerReligionTerm(text, start, end) {
+    for (const longer of RELIGION_GAZETTEER_TERMS) {
+      if (longer.length <= end - start) continue;
+      const re = buildTermRegex(longer, "gi");
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index <= start && m.index + m[0].length >= end) return true;
+      }
+    }
+    return false;
+  }
+
+  // Keys (lower-cased term text) whose every span lies inside a longer span of a
+  // different key. Used so "cancer" inside "breast cancer" is not reported twice.
+  function termKeysContainedInLongerSpan(spans) {
+    const allContained = new Map();
+    for (const a of spans) {
+      const inside = spans.some(b =>
+        b.key !== a.key && b.start <= a.start && b.end >= a.end &&
+        (b.end - b.start) > (a.end - a.start));
+      allContained.set(a.key, (allContained.has(a.key) ? allContained.get(a.key) : true) && inside);
+    }
+    return new Set([...allContained].filter(([, v]) => v).map(([k]) => k));
+  }
+
   function runGazetteerScan(text) {
-    const findings = [];
+    let findings = [];
     const lower = text.toLowerCase();
     const seen = new Set();  // Track already-found items to avoid duplicates
     // Accepted financial matches with their spans, used after the scan to drop a
     // term that only occurs inside a longer accepted financial term.
     const financialSpans = [];
+    // Accepted medical matches with their spans. Same longest-match rule as
+    // financial: "cancer" is dropped when every occurrence is inside "breast cancer".
+    const medicalSpans = [];
     const contextCandidates = new Map();  // safe-context candidates (see rememberContextCandidate)
 
     for (const [category, terms] of Object.entries(GAZETTEER)) {
@@ -1900,6 +1934,11 @@ const TrustGazetteer = (() => {
           // disclosure. Skip it. The card number itself is caught by credit_card.
           if (category === "financial" &&
               /^\s+cards?\b/i.test(text.slice(match.index + match[0].length, match.index + match[0].length + 12))) {
+            continue;
+          }
+          // Longest match wins for religion: skip a term inside a longer religion phrase.
+          if (category === "religion" &&
+              coveredByLongerReligionTerm(text, match.index, match.index + match[0].length)) {
             continue;
           }
           // NEW: Analyze context before flagging as PII
@@ -1927,6 +1966,9 @@ const TrustGazetteer = (() => {
           const dedupeKey = category + ":" + match[0].toLowerCase();
           if (category === "financial") {
             financialSpans.push({ key: dedupeKey, start: match.index, end: match.index + match[0].length });
+          }
+          if (category === "medical") {
+            medicalSpans.push({ key: dedupeKey, start: match.index, end: match.index + match[0].length });
           }
           
           if (!seen.has(dedupeKey)) {
@@ -1980,7 +2022,10 @@ const TrustGazetteer = (() => {
                 const isRiskyContext = analyzeTermContext(text, charIndex, fuzzyMatch.matchText.length, category);
                 
                 if (!isRiskyContext) {
-                  rememberContextCandidate(contextCandidates, category, fuzzyMatch.matchText, fuzzyMatch.canonical, charIndex, charIndex + fuzzyMatch.matchText.length, "fuzzy");
+                  // Financial fuzzy misses are dropped, the same as exact financial misses.
+                  if (category !== "financial") {
+                    rememberContextCandidate(contextCandidates, category, fuzzyMatch.matchText, fuzzyMatch.canonical, charIndex, charIndex + fuzzyMatch.matchText.length, "fuzzy");
+                  }
                   console.log(
                     '[TrustPrompt/PATH_B/B1] Filtered safe context (fuzzy): "' + fuzzyMatch.matchText + 
                     '" in category "' + category + '"'
@@ -2012,6 +2057,14 @@ const TrustGazetteer = (() => {
                 normalizedTerm: normalizeMedicalTerm(fuzzyMatch.matchText)  // Normalize what was actually found
               });
               seen.add(dedupeKey);
+              if (category === "medical") {
+                medicalSpans.push({ key: dedupeKey, start: charIndex, end: charIndex + fuzzyMatch.matchText.length });
+              }
+              // Keyed by the canonical term, which is the finding's rawMatch, so a
+              // shorter exact term inside a fuzzy phrase ("loan" in "loan amortizaton") is dropped.
+              if (category === "financial") {
+                financialSpans.push({ key: "financial:" + fuzzyMatch.canonical.toLowerCase(), start: charIndex, end: charIndex + fuzzyMatch.matchText.length });
+              }
               
               console.log(
                 '[TrustPrompt/PATH_B/B1] Fuzzy match found: "' + fuzzyMatch.matchText + 
@@ -2033,6 +2086,9 @@ const TrustGazetteer = (() => {
       if (cand.category === "financial") {
         for (const sp of cand.spans) financialSpans.push({ key: key, start: sp.start, end: sp.end });
       }
+      if (cand.category === "medical") {
+        for (const sp of cand.spans) medicalSpans.push({ key: key, start: sp.start, end: sp.end });
+      }
       const meta = CATEGORY_META[cand.category] || { label: cand.category, sanitize: () => "[REDACTED]" };
       const display = cand.category === "medical" ? normalizeMedicalTerm(cand.canonical) : cand.canonical;
       findings.push({
@@ -2049,6 +2105,15 @@ const TrustGazetteer = (() => {
         contextOnly: true,
         contextSpans: cand.spans,
       });
+    }
+
+    // Longest-match wins for medical terms: "breast cancer" is reported, and the
+    // shorter "cancer" is dropped only when all of its occurrences lie inside it.
+    // Finding originalMatch uses the same lower-cased text as the span key.
+    const containedMedical = termKeysContainedInLongerSpan(medicalSpans);
+    if (containedMedical.size > 0) {
+      findings = findings.filter(f => !(f.patternId === "gazetteer_medical" &&
+        containedMedical.has("medical:" + String(f.originalMatch).toLowerCase())));
     }
 
     // Longest-match wins for financial terms: "debt-to-income ratio" should be one
@@ -2233,6 +2298,33 @@ const TrustGazetteer = (() => {
     return parts.join('.');
   }
 
+  // Returns only the gazetteer term inside a trigger span, so trailing words
+  // ("i have diabetes pero hindi ko kaya" → "diabetes") are not kept.
+  // Picks the earliest whole-word match, longest among equal starts.
+  function narrowToGazetteerTerm(span, terms) {
+    const lower = span.toLowerCase();
+    const isWordChar = ch => /[\p{L}\p{N}]/u.test(ch);
+    let best = null;
+    for (const raw of terms) {
+      const term = String(raw).toLowerCase().trim();
+      if (!term) continue;
+      let idx = lower.indexOf(term);
+      while (idx !== -1) {
+        const end = idx + term.length;
+        const startOk = idx === 0 || !isWordChar(lower[idx - 1]);
+        const endOk = end >= lower.length || !isWordChar(lower[end]);
+        if (startOk && endOk) {
+          if (!best || idx < best.start || (idx === best.start && end > best.end)) {
+            best = { start: idx, end };
+          }
+          break;
+        }
+        idx = lower.indexOf(term, idx + 1);
+      }
+    }
+    return best ? span.slice(best.start, best.end) : span;
+  }
+
   function runTriggerScan(text) {
     const findings = [];
     const textWords = text.split(/\s+/).filter(Boolean);
@@ -2312,7 +2404,7 @@ const TrustGazetteer = (() => {
       // ── STANDARD TRIGGER PROCESSING (for non-contact-info triggers) ─────────────────────
 
       // FIX #3: extract value without relying on punctuation
-      const { span } = extractValue(textWords, endWordIdx, trigger);
+      let { span } = extractValue(textWords, endWordIdx, trigger);
       if (!span) continue;
 
       // "I am diabetic" is a health statement, not a self-introduction. Reject the
@@ -2329,6 +2421,10 @@ const TrustGazetteer = (() => {
       if (trigger.requireGazetteer) {
         const terms = GAZETTEER[trigger.requireGazetteer] || [];
         if (!terms.some(t => span.toLowerCase().includes(t))) continue;
+        // Medical triggers keep only the condition term, not the words after it.
+        if (trigger.requireGazetteer === "medical") {
+          span = narrowToGazetteerTerm(span, terms);
+        }
       }
 
       // NLP CONTEXT CHECK: Verify this is personal PII, not general information

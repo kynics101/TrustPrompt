@@ -11,7 +11,8 @@
 // 2. Candidate sentence: a Rule 2 trigger (valid personal identifier) in the
 //    same sentence as a financial, medical or nationality term, or a
 //    nationality anchor in the same sentence as a nationality term.
-//    Financial terms never use an anchor.
+//    Financial terms use the Financial Disclosure Anchor (step 1b) instead of
+//    a trigger; a bare "my + term" without a figure does not fire.
 // 3. Nationality positive attribution (nat_pos_*) -> escalate, overrides exclusion.
 // 4. Exclusion phrase -> suppress escalation for this sentence only.
 // 5. Otherwise -> escalate.
@@ -187,7 +188,9 @@
   function splitSentences(text) {
     if (!text || typeof text !== "string") return [];
     return text
-      .split(/(?<!\b(?:Dr|Mr|Mrs|Ms|Jr|Sr|St|vs|etc|e\.g|i\.e)\.)(?<=[.!?])\s+|\n+/)
+      // Address abbreviations (Brgy., Blvd., Subd., Blk., ...) do not end a sentence,
+      // so a street address stays in the same sentence as its residence term.
+      .split(/(?<!\b(?:Dr|Mr|Mrs|Ms|Jr|Sr|St|Sto|Sta|Ave|Blvd|Rd|Ln|Hwy|Ext|Brgy|Subd|Bldg|Blk|Mt|vs|etc|e\.g|i\.e)\.)(?<=[.!?])\s+|\n+/)
       .map(s => s.trim())
       .filter(Boolean);
   }
@@ -321,6 +324,62 @@
     return null;
   }
 
+  // ── Financial Disclosure Anchor (approved in chat 2026-11-23; see governance-rules.md) ──
+  // A first-person financial disclosure that states a figure. A bare "my + term" never fires.
+  // Adjacency tokens allowed between the anchor and the term (closed list).
+  const FIN_QUALIFIERS =
+    "(?:a|an|the|my|our|current|monthly|annual|remaining|outstanding|total|gcash|credit|car|home|personal|student)";
+  // An amount is a currency marker next to a number, or a grouped figure.
+  const FIN_AMOUNT =
+    "(?:(?:php|₱|p|\\$|usd)\\.?\\s?\\d[\\d,]*(?:\\.\\d+)?(?:\\s?(?:k|m|million|billion))?" +
+    "|\\d[\\d,]*(?:\\.\\d+)?\\s?(?:k|m|million|billion)?\\s?(?:pesos?|php|dollars?|usd)" +
+    "|\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?)";
+
+  // F1: my <term> (is|was|are|were|comes to|totals|stands at) <AMOUNT>
+  // F2: I (owe|have|earn|...) <AMOUNT> (in|on|of|to)? <term>
+  // F3: (my|I) ... <term> of <AMOUNT>, with my or I within 6 words before the term
+  function financialFrameSources(term) {
+    const t = termSource(term);
+    return [
+      { id: "fin_anchor_possessive_state",
+        source: "\\bmy\\s+(?:" + FIN_QUALIFIERS + "\\s+){0,4}" + t + NOT_WORD_AFTER +
+                "\\s+(?:is|was|are|were|comes\\s+to|totals|stands\\s+at)\\s+" + FIN_AMOUNT },
+      { id: "fin_anchor_ownership_amount",
+        source: "\\bi\\s+(?:owe|owed|have|had|earn|earned|make|made|pay|paid)\\s+" + FIN_AMOUNT +
+                "\\s+(?:(?:in|on|of|to)\\s+)?(?:" + FIN_QUALIFIERS + "\\s+){0,4}" + t + NOT_WORD_AFTER },
+      { id: "fin_anchor_term_of_amount",
+        source: "(?:\\bmy|\\bi)\\s+(?:\\S+\\s+){0,5}?" + t + NOT_WORD_AFTER + "\\s+of\\s+" + FIN_AMOUNT },
+    ];
+  }
+
+  // Steps 3 and 4 for a financial frame. The frame text counts as the anchor for
+  // the negation check, so "I don't have a loan of 50,000" is vetoed.
+  function financialFrameVeto(sentence, start, end) {
+    const before = sentence.slice(0, start);
+    const { clause } = clauseBefore(before);
+    if (NEGATION_RE.test(clause + sentence.slice(start, end))) return "negated";
+    return anchorVeto(sentence, start, end);
+  }
+
+  // Returns { id, category: "financial", term, polarity: "anchor" } or null.
+  function evaluateFinancialAnchor(sentence, financialTerms) {
+    if (!sentence || !financialTerms || financialTerms.length === 0) return null;
+    const s = expandAnchorContractions(sentence);
+    for (const term of financialTerms) {
+      for (const frame of financialFrameSources(term)) {
+        const re = new RegExp(frame.source, "gi");
+        let m;
+        while ((m = re.exec(s)) !== null) {
+          const start = m.index;
+          const end = start + m[0].length;
+          if (financialFrameVeto(s, start, end)) continue;
+          return { id: frame.id, category: "financial", term: term, polarity: "anchor" };
+        }
+      }
+    }
+    return null;
+  }
+
   // Returns the first nationality positive entry that matches, or null.
   function matchNationalityPositive(sentence, nationalityTerms) {
     for (const entry of POSITIVE_PATTERNS) {
@@ -401,6 +460,13 @@
       const anchor = evaluateMedicalAnchor(sentence, medicalTerms);
       if (anchor) return decide(true, "medical_anchor", sentence, anchor);
 
+      // 1b. Financial Disclosure Anchor: a figure-bearing first-person frame in the
+      // same sentence. No trigger is needed. Exclusion phrases cannot suppress it;
+      // the vetoes in financialFrameVeto cover the non-disclosure cases.
+      const financialTerms = here.filter(c => c.category === "financial").map(c => c.text);
+      const finAnchor = evaluateFinancialAnchor(sentence, financialTerms);
+      if (finAnchor) return decide(true, "financial_anchor", sentence, finAnchor);
+
       // 2. Candidate sentence: same-sentence trigger, or a nationality anchor.
       const triggerHere = triggers.some(t => containsTerm(sentence, t));
       const nationalityTerms = here.filter(c => c.category === "nationality").map(c => c.text);
@@ -466,6 +532,7 @@
     categoryForPatternId: categoryForPatternId,
     hasNationalityAnchor: hasNationalityAnchor,
     evaluateMedicalAnchor: evaluateMedicalAnchor,
+    evaluateFinancialAnchor: evaluateFinancialAnchor,
     matchAffiliationAnchor: matchAffiliationAnchor,
     AFFILIATION_ANCHOR_FORMS: AFFILIATION_ANCHOR_FORMS,
     splitSentences: splitSentences,

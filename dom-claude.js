@@ -23,6 +23,11 @@ const TP_CLAUDE = (() => {
   let pendingScanPromise = null;
   let lastResult         = null;
 
+  // ── Consent gate ─────────────────────────────────────────────────────────
+  // TrustPrompt does nothing on this page until the user allows it and it is
+  // not paused (see consent-state.js). Every listener below checks this flag.
+  let tpActive = false;
+
   // ── Scan token system (for interruption handling) ──────────────────────────
   let scanToken = 0;
   let activeScanToken = null;
@@ -132,6 +137,7 @@ const TP_CLAUDE = (() => {
   // adopted as the prompt box. This is our "keyboard / mouse event" fallback.
 
   function onProximityEvent(e) {
+    if (!tpActive) return;
     if (promptBox && isVisible(promptBox)) return;
     const t = e.target;
     if (!t || !(t.tagName === "TEXTAREA" || t.contentEditable === "true")) return;
@@ -570,6 +576,7 @@ const TP_CLAUDE = (() => {
   // ── 5. INPUT LISTENER ────────────────────────────────────────────────────
 
   function onInput() {
+    if (!tpActive) return;
     // If scan is done, check if text has changed
     if (scanState === STATE.DONE) {
       const currentText = extractText(promptBox);
@@ -622,6 +629,7 @@ const TP_CLAUDE = (() => {
   // ── Enter key intercept on the promptBox element itself ───────────────────
   // Attached here so it captures before ProseMirror's own keydown handlers.
   function onPromptBoxKeydown(e) {
+    if (!tpActive) return; // inactive: let the keystroke through untouched
     // ── INTERRUPTION: Shift+Enter during SCANNING interrupts scan ──────────
     // Plain Enter during SCANNING still blocks (prevents submission)
     if (scanState === STATE.SCANNING) {
@@ -757,6 +765,7 @@ const TP_CLAUDE = (() => {
 
   // Central helper: switch to a new prompt box, tear down old UI, re-attach
   function adoptPromptBox(el) {
+    if (!tpActive) return;
     if (el === promptBox) return;
     promptBox = el;
     scanState  = STATE.IDLE;
@@ -781,6 +790,7 @@ const TP_CLAUDE = (() => {
 
   // ── Submit intercept — document-level capture (send button + Enter fallback)
   document.addEventListener("keydown", (e) => {
+    if (!tpActive) return;
     if (e.key !== "Enter" || e.shiftKey) return;
     if (!promptBox || !isVisible(promptBox)) return;
     
@@ -799,6 +809,7 @@ const TP_CLAUDE = (() => {
   }, true);
 
   document.addEventListener("click", (e) => {
+    if (!tpActive) return;
     const btn = e.target.closest("button");
     if (!btn) return;
     const lbl = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
@@ -819,6 +830,7 @@ const TP_CLAUDE = (() => {
   // ── 6. MUTATION OBSERVER + INIT ──────────────────────────────────────────
 
   const observer = new MutationObserver(() => {
+    if (!tpActive) return;
     clearTimeout(observerDebounce);
     observerDebounce = setTimeout(() => {
       if (!promptBox || !isVisible(promptBox)) {
@@ -834,6 +846,7 @@ const TP_CLAUDE = (() => {
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
   function init() {
+    if (!tpActive) return;
     promptBox = findPromptBox();
     if (promptBox) {
       attachListeners(promptBox);
@@ -854,7 +867,51 @@ const TP_CLAUDE = (() => {
     }
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else setTimeout(init, 600);
+  // ── CONSENT GATE: start and stop ─────────────────────────────────────────
+  // Scanning starts only when consent is "allowed" and not paused. Turning it
+  // off clears the scan state and removes the TrustPrompt UI from the page.
+  function setActive(active) {
+    if (active === tpActive) return;
+    tpActive = active;
+    if (active) {
+      console.log("[TP/claude] TrustPrompt active — starting");
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+      else setTimeout(init, 600);
+    } else {
+      console.log("[TP/claude] TrustPrompt inactive — stopping");
+      deactivate();
+    }
+  }
+
+  function deactivate() {
+    clearTimeout(debounceTimer);
+    clearTimeout(observerDebounce);
+    activeScanToken = null;
+    scanState  = STATE.IDLE;
+    allowSubmit = true;
+    lastResult = null;
+    lastScannedText = "";
+    TrustUI.teardown();
+    if (promptBox) {
+      // Undo any read-only lock left by an in-flight scan. Does not move focus.
+      promptBox.readOnly = false;
+      if (promptBox.tagName !== "TEXTAREA") promptBox.contentEditable = "true";
+      promptBox.removeAttribute("data-tp-readonly");
+      promptBox.style.pointerEvents = "";
+      promptBox.style.opacity = "";
+    }
+    updateSendButtonState();
+  }
+
+  // Fail closed: if consent-state.js did not load, TrustPrompt stays inactive.
+  if (typeof TrustPromptConsent === "undefined") {
+    console.warn("[TP/claude] consent-state.js missing — staying inactive");
+  } else {
+    TrustPromptConsent.getState().then(s => setActive(TrustPromptConsent.isActive(s)));
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[TrustPromptConsent.STORAGE_KEY]) return;
+      TrustPromptConsent.getState().then(s => setActive(TrustPromptConsent.isActive(s)));
+    });
+  }
 
 })();

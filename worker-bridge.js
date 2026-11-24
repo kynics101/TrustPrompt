@@ -68,9 +68,11 @@ const TrustWorkerBridge = (() => {
 
   function initWorker() {
     try {
+      // trust-worker.js loads the scanner scripts relative to EXTENSION_BASE. A blob
+      // worker resolves bare names against the blob URL, so the base must be absolute.
       const workerCode = `
-        importScripts('${chrome.runtime.getURL("worker-data-bundle.js")}');
-        importScripts('${chrome.runtime.getURL("trust-worker.js")}');
+        self.EXTENSION_BASE = ${JSON.stringify(chrome.runtime.getURL(""))};
+        importScripts(${JSON.stringify(chrome.runtime.getURL("trust-worker.js"))});
       `;
       const blob = new Blob([workerCode], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
@@ -89,11 +91,18 @@ const TrustWorkerBridge = (() => {
 
   function onWorkerMessage(e) {
     const { type, scanId, findings, riskLevel, score,
-            normalisedText, wasCapsConverted, elapsedMs } = e.data;
-    if (type !== "RESULT") return;
+            normalisedText, wasCapsConverted, elapsedMs, message } = e.data;
+    if (type !== "RESULT" && type !== "ERROR") return;
 
     const entry = pending.get(scanId);
     if (!entry) return;
+
+    if (type === "ERROR") {
+      clearTimeout(entry.timer);
+      pending.delete(scanId);
+      entry.reject(new Error(message || "worker scan error"));
+      return;
+    }
 
     clearTimeout(entry.timer);
     pending.delete(scanId);
@@ -182,7 +191,12 @@ const TrustWorkerBridge = (() => {
         }
       }, timeout);
 
-      pending.set(scanId, { resolve, reject, timer });
+      // Worker error or ERROR reply: fall through to the main-thread scanner.
+      const fallback = (err) => {
+        console.warn("[TrustPrompt/bridge] Worker scan failed — falling back:", err && err.message);
+        scanOnMainThread(rawText).then(resolve, reject);
+      };
+      pending.set(scanId, { resolve, reject: fallback, timer });
       worker.postMessage({ type: "SCAN", rawText, scanId });
     });
   }

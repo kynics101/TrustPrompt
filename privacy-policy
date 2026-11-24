@@ -1,0 +1,49 @@
+TrustPrompt Privacy Policy
+Last updated: November 2026 | Applies to TrustPrompt version 4
+TrustPrompt is a Chromium-based browser extension developed as a capstone research project by students of the College of Information and Computing Sciences, University of Santo Tomas, Philippines. It checks the text you type into ChatGPT and Claude for personal or sensitive information before you send it. This policy explains what the extension accesses, how it is used, and what it does not do.
+Summary
+•TrustPrompt reads the text in the prompt box on chatgpt.com and claude.ai so it can scan it.
+•All scanning and scoring happen locally in your browser.
+•Your prompts are not sent to the TrustPrompt developers or to any other third party by the extension.
+•Your prompts are not sold, shared, used for advertising, or used to train any model.
+•TrustPrompt is advisory only. You decide whether to send, edit, or copy a safer version of your prompt.
+What TrustPrompt accesses
+TrustPrompt reads the text you type or paste into the prompt box on the supported websites (chatgpt.com and claude.ai). Scanning starts after a short pause in typing (about 0.4 seconds) or when you try to submit. The text may include personal information that you type, such as names, contact details, card numbers, ID numbers, or credentials.
+TrustPrompt does not read other pages or websites, your browsing history, files or images you attach, or the responses that ChatGPT or Claude generate.
+How your text is used
+The text is used for one purpose: to detect predefined categories of personal or sensitive information, estimate a disclosure risk level, and show you a badge, an explanation, and, for high-risk prompts, a suggested masked version.
+Detection uses pattern matching with validation, word lists, and rule-based language matching, all running inside your browser. TrustPrompt does not use a cloud service or an AI model to analyze your text.
+What TrustPrompt does not do
+•It does not transmit your prompts, detected items, or risk results to the developers or to any server.
+•It does not store your prompts or keep a history of them. Text is processed in browser memory and discarded.
+•It does not sell or transfer user data to third parties.
+•It does not use your data for advertising, creditworthiness, lending, or any purpose unrelated to the extension's single function.
+•It does not include analytics, tracking, or advertising code. 
+•It does not block you from sending a prompt.
+Local storage and settings
+TrustPrompt does not save any data on your device. It only utilizes chrome storage local to hold the state of permission of the users if they allow or disallow TrustPrompt as an extension.
+Permissions
+TrustPrompt requests only the access it needs to work:
+•Access to chatgpt.com and claude.ai: to find the prompt box and read its text for scanning.
+•Side panel: to show detected items and explanations.
+•Clipboard write: to copy the masked version of your prompt when you select "Copy Safe Version." 
+Your use of ChatGPT and Claude
+TrustPrompt runs on top of ChatGPT and Claude but is independent of them. It is not affiliated with, endorsed by, or sponsored by OpenAI or Anthropic. If you choose to send a prompt, including by selecting "Send Anyway," that prompt is handled under the terms and privacy policies of the platform you use. Once sent, TrustPrompt cannot retrieve or delete it, and free-tier prompts may be retained or used for model training depending on the platform's policies.
+Limitations
+A "No Detected Privacy Risk" result does not guarantee that a prompt contains no sensitive information. TrustPrompt checks only its supported categories, is designed for English prompts, may miss unusual names, spellings, or formats, and may occasionally flag harmless text. It does not scan images or file attachments. TrustPrompt supports privacy awareness and is not a determination of legal compliance.
+Research participants
+If you take part in the TrustPrompt user acceptance test, the survey (hosted on Google Forms) is separate from the extension and is covered by its own informed consent form. The extension does not send your prompts to the researchers, and the researchers do not collect, view, or store them. Participants should use fictional details only and should not select "Send Anyway" during testing.
+Security
+Because processing happens locally, your text is not exposed to external servers by TrustPrompt. The extension asks for limited permissions and does not load remote code. If a security issue is found, the team will release a fix as quickly as possible and, where required, notify affected users and the National Privacy Commission.
+Children
+TrustPrompt is not directed at children. The user acceptance test is limited to adults aged 18 and above.
+Legal basis
+TrustPrompt is designed with the principles of transparency, legitimate purpose, and proportionality under the Data Privacy Act of 2012 (Republic Act No. 10173) in mind. Because the extension does not collect or transmit your personal data, it does not build a database of personal information.
+Chrome Web Store User Data Policy
+The use of information received through Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.
+Changes to this policy
+If this policy changes, the updated version will be posted at the public repository with a new "Last updated" date. Material changes will also be noted in the extension's release notes.
+Contact
+For questions or privacy concerns, contact the project's Data Protection Officer:
+Juliana Gabriella A. Sergio julianagabriella.sergio.cics@ust.edu.ph
+College of Information and Computing Sciences, University of Santo Tomas, Manila, Philippines

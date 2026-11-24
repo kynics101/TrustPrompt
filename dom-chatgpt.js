@@ -332,7 +332,7 @@ const TP_CHATGPT = (() => {
     // scroll/resize repositioner no-ops. The driver re-establishes the badge on
     // the next input/scan via its listeners.
     TrustUI.teardown();
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
   }
 
   // Walk up from the textarea to find the outermost card/form wrapper
@@ -388,7 +388,7 @@ const TP_CHATGPT = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(promptBox);
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -543,7 +543,7 @@ const TP_CHATGPT = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(promptBox);
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -735,7 +735,7 @@ const TP_CHATGPT = (() => {
     lastResult = null; lastScannedText = "";
     TrustUI.teardown();
     attachListeners(promptBox);
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
     console.log("[TP/chatgpt] prompt box adopted:", el.tagName,
       el.getAttribute("aria-label") || el.className.slice(0, 40));
     
@@ -869,6 +869,8 @@ const TP_CHATGPT = (() => {
     tpActive = active;
     if (active) {
       console.log("[TP/chatgpt] TrustPrompt active — starting");
+      // Show the grey "ON" badge right away, without waiting for a page refresh.
+      chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
       else setTimeout(init, 1200); // Delay so the page finishes loading
     } else {

@@ -331,7 +331,7 @@ const TP_CLAUDE = (() => {
     // scroll/resize repositioner no-ops. The driver re-establishes the badge on
     // the next input/scan via its listeners.
     TrustUI.teardown();
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
   }
 
   // ── PROMPT BOX CONTROL ─────────────────────────────────────────────────
@@ -412,7 +412,7 @@ const TP_CLAUDE = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(getComposerWrapper());
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -607,7 +607,7 @@ const TP_CLAUDE = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(getComposerWrapper());
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -773,7 +773,7 @@ const TP_CLAUDE = (() => {
     TrustUI.teardown();
     TrustUI.setScanning(getComposerWrapper());
     attachListeners(promptBox);
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
     console.log("[TP/claude] prompt box adopted:", el.tagName,
       el.getAttribute("aria-label") || el.className.slice(0, 40));
   }
@@ -875,6 +875,8 @@ const TP_CLAUDE = (() => {
     tpActive = active;
     if (active) {
       console.log("[TP/claude] TrustPrompt active — starting");
+      // Show the grey "ON" badge right away, without waiting for a page refresh.
+      chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
       else setTimeout(init, 600);
     } else {

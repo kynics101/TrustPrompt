@@ -70,7 +70,16 @@
       <p>Version <span id="version"></span> · Updated November 2026 </p>
     </footer>
   </main>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite">
+    <span id="toast-text"></span>
+    <span id="toast-ring" class="ring" hidden aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle class="ring-bg" cx="18" cy="18" r="15.9155" pathLength="100"></circle>
+        <circle id="ring-fg" class="ring-fg" cx="18" cy="18" r="15.9155" pathLength="100"></circle>
+      </svg>
+      <span id="ring-num"></span>
+    </span>
+  </div>
   <script src="consent-state.js"></script>
   <script src="onboarding.js"></script>
 </body>

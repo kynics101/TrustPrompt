@@ -12,6 +12,7 @@
   const btnNext   = document.getElementById("btn-next");
   const btnAllow  = document.getElementById("btn-allow");
   const btnDecline = document.getElementById("btn-decline");
+  const btnClose  = document.getElementById("btn-close");
   const result    = document.getElementById("choice-result");
   const version   = document.getElementById("version");
 
@@ -36,9 +37,9 @@
 
   async function saveChoice(status) {
     await TrustPromptConsent.setConsent(status);
-    if (status === "allowed") showToast("TrustPrompt is now on.");
+    if (status === "allowed") showToast("TrustPrompt is now on. You may close this page.");
     result.textContent = status === "allowed"
-      ? "TrustPrompt is on. Open ChatGPT or Claude to see it working."
+      ? "TrustPrompt is on. Open ChatGPT or Claude to see it working. You may now close this page."
       : "TrustPrompt is off. You can turn it on later from the TrustPrompt icon in your browser toolbar.";
   }
 
@@ -46,6 +47,8 @@
   btnBack.addEventListener("click", () => showStep(current - 1));
   btnAllow.addEventListener("click", () => saveChoice("allowed"));
   btnDecline.addEventListener("click", () => saveChoice("declined"));
+  // Closing without choosing leaves consent as "pending", which keeps TrustPrompt inactive.
+  btnClose.addEventListener("click", () => window.close());
 
   version.textContent = chrome.runtime.getManifest().version;
 

@@ -102,6 +102,29 @@ button.secondary {
   border-color: #c9ced6;
 }
 
+#btn-allow, #btn-decline { transition: opacity 0.15s ease; }
+#btn-allow:hover, #btn-decline:hover { opacity: 0.7; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 20px);
+  max-width: calc(100% - 32px);
+  padding: 12px 20px;
+  background: #388e3c;
+  color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 button:focus-visible {
   outline: 3px solid #9ec5fe;
   outline-offset: 2px;

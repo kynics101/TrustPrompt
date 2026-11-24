@@ -24,8 +24,19 @@
     window.scrollTo(0, 0);
   }
 
+  const toast = document.getElementById("toast");
+  let toastTimer;
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 3500);
+  }
+
   async function saveChoice(status) {
     await TrustPromptConsent.setConsent(status);
+    if (status === "allowed") showToast("TrustPrompt is now on.");
     result.textContent = status === "allowed"
       ? "TrustPrompt is on. Open ChatGPT or Claude to see it working."
       : "TrustPrompt is off. You can turn it on later from the TrustPrompt icon in your browser toolbar.";

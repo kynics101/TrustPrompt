@@ -231,6 +231,12 @@ const TrustNormalizer = (() => {
     // Step 2: Convert smart quotes/dashes to ASCII
     text = asciiPunctuation(text);
     
+    // Record the line breaks before they are collapsed: the detector must not let an organization span cross a line.
+    // Each pair is (last word of a line, first word of the next line), lowercased and stripped of edge punctuation.
+    const _brkPairs = new Set();
+    const _brkTok = w => w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    for (const bm of text.matchAll(/(\S+)[ \t]*\n\s*(?=(\S+))/g)) _brkPairs.add(_brkTok(bm[1]) + "\u0001" + _brkTok(bm[2]));
+
     // Step 3: Collapse ALL whitespace to single space (Compromise needs flat text)
     text = text.replace(/\s+/g, " ").trim();
     
@@ -264,9 +270,10 @@ const TrustNormalizer = (() => {
     // Step 8: ALL-CAPS guard
     const { text: guardedText } = capsGuard(text);
     text = guardedText;
-    
+
     text = text.trim();
-    
+
+    normalizePath_C.lastBreaks = { out: text, pairs: _brkPairs };
     return text;
   }
 

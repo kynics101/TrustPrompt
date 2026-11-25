@@ -1542,7 +1542,7 @@ const TrustScanner = (() => {
   const ATTR_MAX_TAIL_WORDS = 6;
   const ATTR_LEAD_RE = /\b(?:i['’]?m|i\s+am|i\s+was|i['’]ll\s+be|i\s+will\s+be|i\s+(?:just\s+)?turn(?:ed|ing|s)?|i['’]ll\s+turn|i\s+will\s+turn|i\s+weigh(?:ed)?|i\s+stand|i\s+measure[ds]?)\b/gi;
   const ATTR_LEAD_HAVE_RE = /\b(?:i\s+have|i['’]ve(?:\s+got)?|i\s+had|i\s+got)\b/gi;
-  const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?|sex|gender)\b/gi;
+  const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|rh(?:\s+factor)?|eye\s*colou?r|eyes?|sex|gender)\b/gi;
   const ATTR_NON_SELF_WORDS = new Set([
     "my", "his", "her", "hers", "their", "our", "your", "he", "she", "they", "we", "you",
     "the", "this", "that", "these", "those", "its", "it", "who", "whom", "whose", "which",

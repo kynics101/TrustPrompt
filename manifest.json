@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "TrustPrompt (dev test)",
+  "name": "TrustPrompt",
   "version": "0.0.4",
   "description": "Screens user prompts for sensitive data before submission to AI assistants.",
 
   "permissions": [
     "storage",
-    "scripting",
     "sidePanel"
   ],
 

@@ -116,7 +116,8 @@ const TrustGazetteer = (() => {
     "debt", "debts", "401(k)", "sweldo", "suweldo", "sahod", "utang",
     // Multi-word personal phrases. Multi-word terms always need a personal or
     // amount cue (see analyzeTermContext).
-    "bank balance", "bank account", "savings account", "credit score",
+    "bank balance", "bank account", "bank statement", "bank statements",
+    "savings account", "credit score",
     "credit rating", "credit limit", "net worth", "take-home pay", "net pay",
     "gross pay", "monthly income", "annual income", "monthly salary",
     "outstanding balance", "loan balance", "debt-to-income ratio", "tax refund",
@@ -1424,7 +1425,12 @@ const TrustGazetteer = (() => {
         // A clause-wide match let "our family dinners are ... arguments about taxes" count "our" as the writer's.
         const personalCue = /\b(?:my|our|mine)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower) ||
                             /\b(?:i|we)(?:['’]ve|['’]m)?\s+(?:have|has|had|own|owns|owned|hold|holds|bought|sold|invested|paid|pay|owe|owed|lost|got|keep|kept|received|earn(?:ed)?|declared|filed)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower);
-        if (!personalCue && !hasAmountNearby) {
+        // "I'm reviewing a bank statement" names the writer's own statement. Only the
+        // bank-statement terms accept this verb cue, so generic activity verbs do not
+        // turn other financial words into context indicators.
+        const bankStatementCue = /^bank statements?$/.test(matchedTerm) &&
+          /\b(?:i(?:['’]m|\s+am)?|we(?:['’]re|\s+are)?)\s+(?:reviewing|checking|reconciling|disputing|reviewed|checked|reconciled|disputed)\s+(?:[\p{L}'’-]+\s+){0,2}$/u.test(nearContextLower);
+        if (!personalCue && !bankStatementCue && !hasAmountNearby) {
           return false;  // Safe: general-word usage, no personal/monetary cue
         }
       }

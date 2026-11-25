@@ -4359,6 +4359,15 @@ const TrustScanner = (() => {
     return (async () => {
     try {
       console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
+      // Build stamp (permanent, one line): which code this context is running. ctx = worker or main thread.
+      try {
+        console.log("[TrustPrompt/build] det=" + (TrustLinguisticDetector.buildId ? TrustLinguisticDetector.buildId() : "none") +
+          " norm=" + (TrustNormalizer.buildId ? TrustNormalizer.buildId() : "none") + " ctx=" + (typeof importScripts === "function" ? "worker" : "main"));
+      } catch (_) { /* stamp only */ }
+      // Debug mode (localStorage "tp-debug" = "1", or self.TP_DEBUG): the raw text exactly as received, before normalization, as JSON
+      // so a line break shows as \n.
+      const _tpDebug = (typeof self !== "undefined" && self.TP_DEBUG === true) || (typeof localStorage !== "undefined" && (() => { try { return localStorage.getItem("tp-debug") === "1"; } catch (_) { return false; } })());
+      if (_tpDebug) console.log("[TrustPrompt/raw] " + JSON.stringify(rawText));
       
       if (!rawText || !rawText.trim()) {
         console.log("[TrustPrompt/scanner] Empty text - returning empty findings");
@@ -4498,7 +4507,7 @@ const TrustScanner = (() => {
           // Run linguistic detector (compromise.js only)
           // TrustLinguisticDetector.scan() returns findings array directly
           console.log(`[TrustPrompt/scanner] DEBUG: TrustLinguisticDetector.scan is available, calling it...`);
-          pathCFindings = TrustLinguisticDetector.scan(textNLP);
+          pathCFindings = TrustLinguisticDetector.scan(textNLP, { breaks: (TrustNormalizer.pathCBreakPairs ? TrustNormalizer.pathCBreakPairs(rawText) : null) });
           
           // Mark all PATH C findings with origin
           pathCFindings.forEach(f => { f.origin = 'pathC'; });

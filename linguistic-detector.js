@@ -1226,6 +1226,14 @@ const TrustLinguisticDetector = (() => {
   function splitTitleRun(run, startIndex, keepFirst) {
     const re = /\S+/g; const toks = []; let m;
     while ((m = re.exec(run)) !== null) toks.push({ w: m[0], s: m.index, e: m.index + m[0].length, cut: !(keepFirst && !toks.length) && isTitleRunSplitter(m[0]) });
+    // a multi-word dictionary title ("Operations Manager") cuts its own first words too, so "Percival Lacsamana Operations Manager" keeps only the name
+    for (let i = 1; i < toks.length; i++) {
+      if (!toks[i].cut) continue;
+      for (let k = 1; k <= 2 && i - k >= 1; k++) {
+        const phrase = toks.slice(i - k, i + 1).map(t => t.w.replace(/[.,]$/, '')).join(' ').toLowerCase();
+        if (EXTENSIVE_JOB_TITLES.has(phrase)) for (let j = i - k; j < i; j++) toks[j].cut = true;
+      }
+    }
     if (!toks.some(t => t.cut)) return null;
     const pieces = []; let cur = [];
     const flush = () => { if (cur.length >= 2) pieces.push({ run: run.slice(cur[0].s, cur[cur.length - 1].e), index: startIndex + cur[0].s }); cur = []; };
@@ -1546,6 +1554,15 @@ const TrustLinguisticDetector = (() => {
 
       // Guard: skip obvious placeholder/generic single-word "names"
       if (rawName && /^(?:the|a|an|and|or|but|not|this|that)$/i.test(rawName)) continue;
+
+      // Owner item 3: a role word followed by an ordinary word is not a name ("user error", "the buyer pays", "customer service").
+      // The construct had no evidence gate: any word pair after a role word was taken as a name. A name word must now be a known
+      // given name or surname, or be written with a capital letter and not be an ordinary English / Filipino function word.
+      if (rawName) {
+        const nameWords = rawName.split(/\s+/);
+        const evid = w => isKnownNameWord(w) || (/^\p{Lu}/u.test(w) && !isLexiconOrdinaryWord(w) && !NON_NAME_WORDS.has(w.toLowerCase()));
+        if (!nameWords.every(w => evid(w) && !OB_FIL_PARTICLES.has(w.toLowerCase()))) continue;
+      }
 
       const entry = {};
       if (rawName)  entry.name     = rawName;
@@ -2881,6 +2898,7 @@ const TrustLinguisticDetector = (() => {
   //   (b) the word right after it is a heading-like ending (List, Guide, Schedule, Checklist, Menu, Plan, Report, Directory...).
   // Used only to withhold the "multi-word title" shortcut from titles added by category; any other cue still counts.
   const JOB_HEADING_ENDINGS = new Set(['list', 'lists', 'guide', 'schedule', 'checklist', 'menu', 'plan', 'report', 'directory', 'handbook', 'roster', 'chart', 'table', 'calendar', 'form', 'template', 'registry', 'index', 'catalog', 'catalogue']);
+  const JOB_COMPOUND_NEXT = new Set('handbook manual policy policies guideline guidelines template form schedule agenda meeting meetings room lounge uniform salary pay scale exam exams workshop newsletter strike shortage profession evaluation training report checklist'.split(' '));
   function jobHeadingLikeAt(text, s, e) {
     if (!/^[A-Z]/.test(text.slice(s, e))) return false;
     const nx = text.slice(e, e + 40).match(/^\s+([A-Za-z]+)/);
@@ -2911,7 +2929,8 @@ const TrustLinguisticDetector = (() => {
       let sentEnd = text.length;
       for (const ch of ['.', '!', '?']) { const k = text.indexOf(ch, e); if (k !== -1 && k < sentEnd) sentEnd = k; }
       const words = (text.slice(sentStart, s) + ' ' + text.slice(e, sentEnd)).match(/[A-Za-z][A-Za-z'’-]*/g) || [];
-      const rest = words.slice(1);                                   // ignore the sentence-initial word
+      // ignore the sentence-initial word (but when the title itself opens the sentence it is not among `words`, so nothing is ignored)
+      const rest = text.slice(sentStart, s).trim() ? words.slice(1) : words;
       if (rest.length < 4) return false;
       return rest.filter(w => /^[A-Z]/.test(w)).length / rest.length > 0.75;
     })();
@@ -2932,13 +2951,20 @@ const TrustLinguisticDetector = (() => {
     const capsUseless = capsUselessBase || headGuard;
     const definiteBefore = /\b(?:the|this|that|these|those)\s+$/i.test(before);
     // (Group 17: not for a plural, and not for a title added by category when the sentence is generic)
-    if (!leadOnly && !noMulti && /\s/.test(span.trim()) && !definiteBefore &&
+    // "a staff member handbook template": the title is the modifier of a following common noun, not a person's job
+    const compoundNext = JOB_COMPOUND_NEXT.has(((after.match(/^\s+([A-Za-z]+)/) || [])[1] || '').toLowerCase());
+    if (!leadOnly && !noMulti && /\s/.test(span.trim()) && !definiteBefore && !compoundNext &&
         !((JOB_EXTRA_TITLES.has(span.trim().toLowerCase()) && (jobGenericAt(text, s, e) || capsUseless)) || headGuard)) return true;            // 1 (multi-word, not a bare definite description)
     if (/(?:job|role|position|title|occupation|profession|designation)["']?\s*[:=-]\s*["']?\s*$/i.test(before)) return true; // 2
     // Group 15 (a): a bare "as a" right after a verb of use / purpose / treatment ("use it as a", "designed as a", "treated as a") names the
     // role of a THING; it is not evidence of a person's job. "works as", "serves as", "employed as", "hired as" are not in that class.
     if (/(?<!such )\b(?:as|hired as|promoted to|appointed|named)\s+(?:an?\s+|the\s+)?$/i.test(before) && !JOB_OBJECT_ROLE_BEFORE_AS_RE.test(before)) return true;      // 3
     if (/\w,\s*an?\s+$/i.test(before)) return true;                                                                      // 3b appositive "X, a <title>"
+    // 3d: "X, a Muslim Filipina nurse" / "I am a 40-year-old Filipino nurse": up to three nationality, religion or ordinary adjectives between the article and the title
+    {
+      const am = before.match(/(?:\p{L},|\bi\s*(?:am|['’]m|was))\s+an?\s+((?:[\p{L}'’-]+\s+){1,3})$/iu);
+      if (am && am[1].trim().split(/\s+/).every(g => { const lg = g.toLowerCase(); let lt; try { lt = window.nlp.world().model.one.lexicon[lg]; } catch (_) { lt = null; } return G_LANG_NAT.has(lg) || G_RELIGION.has(g2Key(lg)) || JOB_MOD_ADJ.has(lg) || (lt && [].concat(lt).includes('Adjective')); })) return true;
+    }
     // Group 16: "became / becomes / becoming a <title>" is a role change like "promoted to" (not for hypotheticals)
     if (/\b(?:became|becomes|becoming)\s+(?:an?\s+|the\s+)$/i.test(before) && !JOB_HYPOTHETICAL_BEFORE_RE.test(before.replace(/\b(?:became|becomes|becoming)\s+(?:an?\s+|the\s+)$/i, ''))) return true;   // 3c
     // Group 16 (cause B, stage 1)
@@ -2954,7 +2980,7 @@ const TrustLinguisticDetector = (() => {
       if (!capsUseless && !noMulti && /\s/.test(span.trim()) && /^[A-Z]/.test(span) &&
           nameBefore(/((?:[A-Z][\w'’-]*\s+){1,3})$/)) return true;                                                                       // 9
     }
-    if (!capsUseless && !leadOnly) {
+    if (!capsUseless && !leadOnly && !compoundNext) {
       const orgM = after.match(/^[,\s]*(?:at|of|for|with|under|from)\s+(?:the\s+)?([A-Z][A-Za-z'.&-]*)/);               // 4
       if (orgM && !JOB_NOT_NAME_START.test(orgM[1])) return true;
       // (an optional "." is tolerated: normalizePath_C inserts one between a lowercase word and a Title-case word)
@@ -2974,6 +3000,11 @@ const TrustLinguisticDetector = (() => {
       if (!noMulti && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;     // 6 (not for a plural: "<Org Name>, Doctors ...")
     }
     if (leadOnly && !capsUseless && /(?:[A-Z][a-z'’-]+\s+){1,3}[A-Z][a-z'’-]+,\s*(?:an?\s+|the\s+)?$/.test(before)) return true;   // 6 (lead-only)
+    // 10: "Mentored three junior auditors, including <Person Name> and ...": a title (plural too) followed by "including / such as <a person's name>"
+    if (!leadOnly) {
+      const inc = after.match(/^\s*,?\s*(?:including|such as|namely)\s+((?:\p{Lu}[\p{L}\p{M}'’.-]+\s*){1,3})/u);
+      if (inc && looksLikePersonNameRun(inc[1].trim().split(/\s+/))) return true;
+    }
     if (/[|•]\s*$/.test(before) || (!leadOnly && /^\s*[|•]/.test(after))) return true;                               // 7
     return false;
   }
@@ -2996,6 +3027,13 @@ const TrustLinguisticDetector = (() => {
       if (!m) break;
       const w = m[1], lw = w.toLowerCase();
       if (JOB_MOD_STOP.has(lw) || w.length < 3) break;
+      // a Title Case word right after an anchored given name is that person's surname, not a modifier of the title ("Yolanda Villaruel Software Engineer")
+      if (/^\p{Lu}/u.test(w) && !JOB_MOD_ADJ.has(lw) && !TITLE_LEVEL_WORDS.has(lw)) {
+        const pb = pre.slice(0, pre.length - m[0].length).match(/([A-Za-z][A-Za-z'’-]*)\s+$/);
+        let wKnown = false; try { wKnown = window.nlp.world().model.one.lexicon[lw] !== undefined; } catch (_) { /* no nlp */ }
+        // (a word that Compromise's lexicon knows as an ordinary noun, such as "Branch" in "Maria Santos Branch Coordinator", stays a modifier)
+        if (!wKnown && pb && /^\p{Lu}/u.test(pb[1]) && (isKnownGivenName(pb[1]) || isolatedNameTags(pb[1]).includes('FirstName'))) break;
+      }
       if (/['’]s$|s['’]$/i.test(w)) break;                    // Group 14 (G): a possessive ("Protection's fire marshal") ends the title
       // Religion and nationality terms (e.g. "Muslim", "Filipina") are separate
       // sensitive entities detected by their own gazetteer path. They must not be
@@ -5275,11 +5313,18 @@ const TrustLinguisticDetector = (() => {
         const lawNext = toks[i + 2] && toks[i + 1].word && toks[i + 2].word && G7_FIRM_SUFFIX_RE.test(toks[i + 1].w + ' ' + toks[i + 2].w);
         if (closes && !lawNext) { toks.length = i + 1; break; }
       }
+      // a dotted company suffix ("Co.", "Inc.", "Corp.", "Ltd.") after "<Name> & <Name>" closes the name: the normalizer capitalises the word that follows the dot
+      // ("Harbor & Pike Co. Since 2019"), which must not stay in the run
+      for (let i = 3; i < toks.length; i++) {
+        if (toks[i].word && /^(?:Co|Inc|Corp|Ltd|LLC)\.$/.test(toks[i].w) && toks[i - 1].word && toks.slice(0, i).some(x => x.amp)) { toks.length = i + 1; break; }
+      }
       // 1. firm suffix at the end
       let end = toks.length, kind = '';
       const words = i => toks[i] && toks[i].word ? toks[i].w.replace(/\.$/, '') : '';
       const lastW = end - 1;
+      let ampCorp = false;   // "<Name> & <Name> Co." / "Inc." / "Corp." / "Ltd.": two names joined by "&" and closed by a company suffix
       if (/^Co(?:mpany)?$/.test(words(lastW)) && toks[lastW - 1] && toks[lastW - 1].amp) { kind = 'co'; end = lastW - 1; }
+      else if (/^(?:Co|Inc|Corp|Ltd|LLC|Company)$/.test(words(lastW)) && lastW >= 3 && toks.slice(0, lastW).some(x => x.amp) && toks[lastW - 1].word) { kind = 'co'; end = lastW; ampCorp = true; }
       else if (/^(?:Associates|Partners)$/.test(words(lastW)) && toks[lastW - 1] && toks[lastW - 1].conn) { kind = 'assoc'; end = lastW - 1; }
       else if (lastW >= 1 && G7_FIRM_SUFFIX_RE.test(words(lastW - 1) + ' ' + words(lastW))) { kind = 'law'; end = lastW - 1; }
       else if (G7_FIRM_SUFFIX_RE.test(words(lastW))) { kind = 'law'; end = lastW; }
@@ -5290,7 +5335,7 @@ const TrustLinguisticDetector = (() => {
       while (end > begin && !toks[end - 1].word) end--;
       const nameToks = toks.slice(begin, end).filter(x => x.word);
       if (nameToks.length < 1) continue;
-      if (nameToks.some(x => g7IsCommonWord(x.w) || x.w.length < 2)) {
+      if (!ampCorp && nameToks.some(x => g7IsCommonWord(x.w) || x.w.length < 2)) {
         // a common word inside the run: keep only the last stretch of surname-like words
         let k = end - 1; while (k >= begin && (!toks[k].word || !g7IsCommonWord(toks[k].w))) k--;
         begin = k + 1; while (begin < end && !toks[begin].word) begin++;
@@ -5318,7 +5363,7 @@ const TrustLinguisticDetector = (() => {
       }
       if (kind === 'law' || kind === 'co' || kind === 'assoc') {
         // the surnames of a suffixed firm have to be real words of a name: reject if the first one is a person's given name followed by a verb etc.
-        if (names.some(x => g7IsCommonWord(x.w))) continue;
+        if (!ampCorp && names.some(x => g7IsCommonWord(x.w))) continue;
       }
       let span = text.slice(runStart + toks[begin].s, runStart + spanEnd).replace(/\s+/g, ' ').replace(/\s+,/g, ',');
       if (/[.]$/.test(span) && !/\b(?:Co|Inc|Ltd)\.$/.test(span)) span = span.replace(/\.$/, '');
@@ -5617,24 +5662,37 @@ const TrustLinguisticDetector = (() => {
     return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller clears and refills `findings`)
   }
 
+  // one-word "organizations" that are really a time, a place or a state ("at night", "at home", "at heart")
+  const G_ORG_WORD_STOP = new Set('night nights noon midnight dawn dusk dinner lunch breakfast home work school heart once times hours weekends weekdays days mornings evenings present first last most best all least large length risk odds peace ease war play rest sea sunrise sunset university college church'.split(' '));
   function addAppositiveOrganizations(findings, text) {
     const W = String.raw`\p{Lu}[\p{L}\p{M}'’&-]*`;
-    const reAfter = new RegExp(String.raw`^\s*(?:,\s*)?(from|at|of)\s+(?:the\s+)?(${W}(?:\s+(?:(?:of|and|&|for)\s+)?${W}){0,3})(?![\p{L}\p{M}\d_])`, 'u');
+    // the preposition may be capitalised ("A Civil Engineer At Megaworld": ALL CAPS text arrives Title-Cased)
+    const W2 = String.raw`\p{Lu}[\p{L}\p{M}'’&-]+`;   // a later word has 2+ letters ("... Orbalis and I need" must not take the pronoun I)
+    const reAfter = new RegExp(String.raw`^\s*(?:,\s*)?([Ff][Rr][Oo][Mm]|[Aa][Tt]|[Oo][Ff])\s+(?:the\s+)?(${W}(?:\s+(?:(?:of|and|&|for)\s+)?${W2}){0,3})(?![\p{L}\p{M}\d_])`, 'u');
+    const reAfterLower = new RegExp(String.raw`^\s*(?:,\s*)?(at|for|from)\s+(?:the\s+)?(\p{Ll}[\p{L}\p{M}'’&-]{3,})(?![\p{L}\p{M}\d_'’-])`, 'u');
     const jobs = new Set(findings.filter(f => f.patternId === 'nlp_job_title' && f.rawMatch).map(f => f.rawMatch.trim()));
     const added = [];
+    const lexKnown = w => { try { return window.nlp.world().model.one.lexicon[w.toLowerCase()] !== undefined; } catch (_) { return false; } };
     for (const raw of jobs) {
       for (const [s, e] of jobOccurrences(text, raw)) {
         if (!/\b(?:an?|the)\s+$/i.test(text.slice(Math.max(0, s - 8), s))) continue;
-        const m = text.slice(e, e + 120).match(reAfter);
+        // a personal statement: "I'm a <job> at X", "I work as a <job> at X", "<Name>, a <job> at X" (any letter case). Only there is a ONE-word
+        // organization accepted ("Looking for an engineer at Home" is not a statement about the writer).
+        const beforeDet = text.slice(Math.max(0, s - 40), s).replace(/\b(?:an?|the)\s+$/i, '');
+        const personal = /\b(?:i['’]?m|i\s*am|i\s+was|i\s+work(?:ed|ing)?\s+as|work(?:s|ed|ing)?\s+as)\s*$/i.test(beforeDet) || /\p{L},\s*$/u.test(beforeDet);
+        let m = text.slice(e, e + 120).match(reAfter);
+        if (!m && personal) { const lm = text.slice(e, e + 120).match(reAfterLower); if (lm && !lexKnown(lm[2]) && !G_ORG_WORD_STOP.has(lm[2].toLowerCase())) m = lm; }
         if (!m) continue;
         let run = m[2].replace(/\s+(?:of|and|&|for)$/i, '');
-        const toks = run.split(/\s+/).filter(t => /^\p{Lu}/u.test(t));
+        if (!/\s/.test(run) && (lexKnown(run) || G_ORG_WORD_STOP.has(run.toLowerCase()))) continue;   // a single word must be unfamiliar to the lexicon ("Home", "School", "Night" are not organizations)
+        const toks = run.split(/\s+/).filter(t => /^\p{L}/u.test(t));
+        if (!toks.length) continue;
         if (m[1].toLowerCase() === 'of' && toks.length < 2) continue;
         if (isKnownPlaceWord(run) || looksLikePlaceName(run) || toks.every(t => isKnownPlaceWord(t) || looksLikePlaceName(t) || isolatedNameTags(t).some(g => ['City', 'Country', 'Region'].includes(g)))) continue;
         { let cityLike = false; try { cityLike = window.nlp(run).has('#City') || window.nlp(run).has('#Country') || window.nlp(run).has('#Region'); } catch (_) { /* no nlp */ } if (cityLike) continue; }
         // the first word decides (later words may be ordinary: Harbor Light); a word that Compromise's own lexicon lists as a verb / closed-class
         // word is refused, a tag guessed from an unknown word's ending is not (caEligibleToken)
-        if (G_INTRO_NOT_NAMES.has(toks[0].toLowerCase()) || NON_NAME_WORDS.has(toks[0].toLowerCase()) || !caEligibleToken(toks[0]) ||
+        if (G_INTRO_NOT_NAMES.has(toks[0].toLowerCase()) || NON_NAME_WORDS.has(toks[0].toLowerCase()) || (/^\p{Lu}/u.test(toks[0]) && !caEligibleToken(toks[0])) ||
             isolatedNameTags(toks[0]).some(t => ['Place', 'City', 'Country', 'Region', 'Date', 'Month', 'WeekDay', 'Holiday', 'Demonym'].includes(t))) continue;
         { let lt; try { lt = window.nlp.world().model.one.lexicon[toks[0].toLowerCase()]; } catch (_) { lt = null; }
           if (lt && [].concat(lt).includes('Adjective') && !nameHasPersonTag(isolatedNameTags(toks[0]))) continue; }   // English, Spanish, Green...
@@ -5643,7 +5701,7 @@ const TrustLinguisticDetector = (() => {
         const allAnchored = toks.length >= 2 && toks.every(t => isKnownNameWord(t) || nameHasPersonTag(isolatedNameTags(t)));
         if (!hasHead && ((m[1].toLowerCase() === 'of' && looksLikePersonNameRun(toks)) || allAnchored)) continue;
         const rs = text.indexOf(run, e);
-        if (inTitleCaseRun(text, rs, rs + run.length)) continue;
+        if (!personal && inTitleCaseRun(text, rs, rs + run.length)) continue;
         if (findings.some(f => f.patternId === 'nlp_organization' && f.rawMatch && f.rawMatch.toLowerCase().includes(run.toLowerCase())) ||
             added.some(a => a.rawMatch.toLowerCase() === run.toLowerCase())) continue;
         added.push({ patternId: 'nlp_organization', label: 'Organization (title frame)', risk: 'low', rawMatch: run, safeVersion: '[ORGANIZATION REDACTED]', source: 'C_linguistic', extractionMethod: 'title_frame_org', validated: false });
@@ -5722,6 +5780,27 @@ const TrustLinguisticDetector = (() => {
       console.debug(`[PATH_C/ORGPERSON] Dropped person that is a dictionary organization: "${raw}"`);
     });
     return findings.filter((_, i) => !drop.has(i));   // always a new array (the caller clears and refills `findings`)
+  }
+
+  // Philippine government agencies and funds are never a person ("I owe 45,000 to Pag-IBIG", "my SSS contribution", "paid to DepEd"): compared without
+  // case, hyphens or spaces, so Pag-IBIG / Pag-ibig / PAG-IBIG / Pagibig are all the same word.
+  const G_PH_AGENCY_KEYS = new Set(('pagibig pag pagibigfund hdmf sss gsis philhealth bir deped dswd dole dilg dti doh dost dpwh dfa dof lto nbi pnp afp ched tesda psa prc pagasa bsp comelec lgu').split(' '));
+  // A generic "<function> department" ("our HR department", "the accounting department") names no organization: only a named one does ("Department of
+  // Education", "Cardiology Department of Lakeside Hospital" is kept because it carries a name). Every word before "department" must be a sector word,
+  // a common function word or an acronym such as HR / IT.
+  const G_DEPT_GENERIC_EXTRA = new Set(('hr it ict qa pr admin administrative sales billing payroll purchasing legal records registrar customer service support ' +
+    'facilities general main central regional local branch head office store warehouse production quality inventory logistics and the our your my their its this that').split(' '));
+  function dropGenericDepartments(findings) {
+    return findings.filter(f => {
+      if (f.patternId !== 'nlp_organization' || !f.rawMatch) return true;
+      const m = f.rawMatch.trim().match(/^(.+?)\s+(?:department|dept\.?)$/i);
+      if (!m) return true;
+      const ws = m[1].toLowerCase().split(/\s+/);
+      return !ws.every(w => G7_SECTOR_WORDS.has(w) || G_DEPT_GENERIC_EXTRA.has(w));
+    });
+  }
+  function dropAgencyPersons(findings) {
+    return findings.filter(f => !(f.patternId === 'nlp_person_name' && f.rawMatch && G_PH_AGENCY_KEYS.has(f.rawMatch.toLowerCase().replace(/[^\p{L}]/gu, ''))));
   }
 
   function suppressPersonsAsOrganizationsOrPlaces(findings, text) {
@@ -6655,6 +6734,12 @@ const TrustLinguisticDetector = (() => {
   const G_PLACEHOLDER_ONLY = new Set(['example', 'sample', 'test', 'abc', 'xyz', 'demo', 'dummy', 'foo', 'bar', 'lorem', 'ipsum', 'acme', 'placeholder']);
   const G_PLACE_LEAD = new Set(['fort', 'camp', 'mount', 'mt', 'lake']);
   const G_NOT_JOB = new Set(['starter', 'associates', 'factor']);
+  // 'breaker': an electrical device ("the main breaker", "circuit breaker"). It is never taken as a job from a statement about people (applyJobLow);
+  // a cue of its own ("works as a breaker") still makes it one through the normal gate.
+  const G_NOT_JOB_STATEMENT = new Set(['starter', 'associates', 'factor', 'breaker']);
+  // a title right after a modal / "to" is a verb ("will pilot a new program", "to guard the gate"), not a job
+  const G_MODAL_BEFORE_RE = /\b(?:will|would|can|could|may|might|must|shall|should|to|not|never|also|just|then)\s+$/i;
+  function jobAfterModal(text, s) { return G_MODAL_BEFORE_RE.test(text.slice(Math.max(0, s - 14), s)); }
   function smallVetoes(findings, text) {
     const drop = new Map();
     findings.forEach((f, idx) => {
@@ -6995,7 +7080,7 @@ const TrustLinguisticDetector = (() => {
       grp.forEach((it, k) => {
         if (flags[k]) return;
         const word = text.slice(it[0], it[1]).trim(), last = word.toLowerCase().split(/\s+/).pop();
-        if (G11_NOT_TITLE.has(last) || G_NOT_JOB.has(last)) return;
+        if (G11_NOT_TITLE.has(last) || G_NOT_JOB_STATEMENT.has(last)) return;
         try { const d = window.nlp(word); if (!d.has('#Noun') || (d.has('#Adjective') && !d.has('#Noun'))) return; } catch (_) { /* no nlp */ }
         out.push(it);
       });
@@ -7019,17 +7104,17 @@ const TrustLinguisticDetector = (() => {
       if (c.plural || !(c.source === 'csv_exact_match' || c.source === 'csv_phrase_match') || c.confidence !== 'high') continue;
       const raw = String(c.rawMatch || c.name || '').trim();
       if (!raw || findings.some(f => f.patternId === 'nlp_job_title' && f.rawMatch && f.rawMatch.toLowerCase().includes(raw.toLowerCase()))) continue;
-      if (G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
+      if (G_NOT_JOB_STATEMENT.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
       if (!/[\s-]/.test(raw)) { try { const d = window.nlp(raw); if (d.has('#Adjective') && !d.has('#Noun')) continue; } catch (_) { /* no nlp */ } }
       const taken = findings.filter(f => (f.patternId === "nlp_person_name" || f.patternId === "nlp_organization") && f.rawMatch).flatMap(f => jobOccurrences(text, f.rawMatch));
-      const occ = jobOccurrences(text, raw).filter(([s, e]) => !taken.some(o => g7Overlap(o, [s, e])) && g9Qualifies(text, s, e, sents, people, nJobsAt(s), true));
+      const occ = jobOccurrences(text, raw).filter(([s, e]) => !taken.some(o => g7Overlap(o, [s, e])) && !jobAfterModal(text, s) && g9Qualifies(text, s, e, sents, people, nJobsAt(s), true));
       if (!occ.length) continue;
       const [s, e] = occ[0];
       findings.push({ patternId: 'nlp_job_title', label: 'Job Title (statement)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: true, attributed: false, lowQualifying: true });
     }
     for (const [s, e] of coord) {
       const taken = findings.filter(f => (f.patternId === 'nlp_person_name' || f.patternId === 'nlp_organization' || f.patternId === 'nlp_job_title') && f.rawMatch).flatMap(f => jobOccurrences(text, f.rawMatch));
-      if (taken.some(o => g7Overlap(o, [s, e])) || !g9Qualifies(text, s, e, sents, people, nJobsAt(s), true)) continue;
+      if (taken.some(o => g7Overlap(o, [s, e])) || jobAfterModal(text, s) || !g9Qualifies(text, s, e, sents, people, nJobsAt(s), true)) continue;
       findings.push({ patternId: 'nlp_job_title', label: 'Job Title (statement)', risk: 'low', rawMatch: text.slice(s, e), safeVersion: '[JOB TITLE REDACTED]', source: 'C_linguistic', confidence: 'medium', csvValidated: false, attributed: false, lowQualifying: true });
     }
     for (const f of findings) {
@@ -7062,7 +7147,7 @@ const TrustLinguisticDetector = (() => {
     for (const c of cands) {
       if (c.plural) continue;
       const raw = String(c.rawMatch || c.name || '').trim();
-      if (!raw || G_NOT_JOB.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
+      if (!raw || G_NOT_JOB_STATEMENT.has(raw.toLowerCase()) || /^(?:server|factor|former|extra|senior|junior|chief|head|lead)$/i.test(raw)) continue;
       if (!/[\s-]/.test(raw)) { try { const d = window.nlp(raw); if (d.has('#Adjective') && !d.has('#Noun')) continue; } catch (_) { /* no nlp */ } }
       for (const [s, e] of jobOccurrences(text, raw)) {
         const pb = text.slice(Math.max(0, s - 100), s);
@@ -7134,7 +7219,285 @@ const TrustLinguisticDetector = (() => {
     } catch (_) { return []; }
   }
 
-  function scan(textNLP) {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // OWNER OBSERVATIONS, items 1-10: one post-filter layer on the final findings of scan() (see scan() below).
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  const OB_TYPE = { P: 'nlp_person_name', J: 'nlp_job_title', O: 'nlp_organization' };
+
+  // item 6: Filipino / Cebuano particles and function words. Written in lowercase they never belong to a name span.
+  var OB_FIL_PARTICLES = new Set(('ang ng nang kung kong ko mo na naman lang daw raw po opo sa mga si ni kay at o pa rin din ba ay yung iyong mong ' +
+    'niyang kaya kasi dahil para pero ito iyan iyon ayon sino ano saan kailan bakit paano kapag habang bago pagkatapos hindi wala may mayroon ' +
+    'ako ikaw siya kami tayo kayo sila namin natin ninyo nila akin iyo kanya amin atin inyo kanila dito diyan doon nga pala ata yata sana lamang ' +
+    'og ug nga sa si ni kang ra lang man gyud kay mao ang').split(' '));
+
+  // item 4: programming languages and software. ALWAYS = never a person. AMBIGUOUS = also a given name, so a programming context is needed.
+  const OB_SOFTWARE_ALWAYS = new Set(['python', 'java', 'javascript', 'typescript', 'excel', 'linux', 'docker', 'git', 'github', 'gitlab', 'kubernetes',
+    'powershell', 'matlab', 'photoshop', 'powerpoint', 'ubuntu', 'debian', 'android', 'windows', 'macos', 'mysql', 'postgresql', 'mongodb', 'nodejs',
+    'php', 'html', 'css', 'sql', 'jupyter', 'tensorflow', 'pytorch', 'photoshop', 'figma', 'jira', 'bash']);
+  const OB_SOFTWARE_AMBIGUOUS = new Set(['julia', 'ruby', 'rust', 'swift', 'dart', 'scala', 'kotlin', 'crystal', 'perl', 'lua', 'elixir', 'go', 'node', 'react', 'rails', 'django', 'flask', 'spring']);
+  const OB_PROGRAMMING_CONTEXT_RE = /```|\b(?:script|scripts|function|functions|library|libraries|package|packages|compile[rd]?|syntax|framework|programming|programmer|code|coding|repo|repository|module|runtime|interpreter|api|cli|terminal|pip|npm|cargo|gem|import|variable|class|method|language|developer|dev|benchmark|dataframe|notebook|stack\s*overflow)\b/i;
+
+  // item 2 and 8: generic units and positions are not organizations
+  const OB_UNIT_WORDS = new Set(['office', 'team', 'teams', 'desk', 'desks', 'hotline', 'hotlines', 'helpdesk', 'section', 'sections']);
+  const OB_POSITION_ORG_RE = /^(?:the\s+)?(?:office\s+of\s+(?:the\s+)?)?(?:(?:university|college|school|campus|graduate|undergraduate|associate|assistant|vice|deputy|senior)\s+)*(?:registrar|dean|treasurer|provost|chancellor|librarian|principal|bursar|comptroller|cashier|auditor)(?:['’]s)?(?:\s+(?:office|of\s+students|of\s+\w+))?(?:\s+office)?$/i;
+
+  // item 10: own-credential organizations, by category. Rationale and the excluded agencies (SSS, GSIS, Pag-IBIG, BIR) are documented in
+  // docs/data-sources.md and .agents/tasks/known-limitations.md.
+  const OB_CRED_ORGS = {
+    payment_network: ['Visa', 'Mastercard', 'American Express', 'Amex', 'JCB'],
+    developer_platform: ['GitHub', 'GitLab', 'Bitbucket', 'AWS', 'Azure', 'Google Cloud'],
+    health_insurer: ['PhilHealth', 'Maxicare', 'Intellicare', 'Medicard', 'PhilCare', 'Pacific Cross', 'Avega', 'Cocolife', 'Insular Health Care', 'Caritas Health Shield', 'ValuCare', 'EastWest Healthcare'],
+  };
+  const OB_CRED_WORDS = 'cards?|numbers?|ids?|accounts?|tokens?|keys?|passwords?|memberships?|records?|workflows?';
+  const OB_CRED_VALUE_RES = [
+    /(?<![\d])\d{9,}(?![\d])/,                                           // digit run of 9 or more
+    /\b\d{4}(?:[ -]\d{4}){2,3}\b/,                                       // grouped card-style number
+    /\b\d{2,4}-\d{4,}(?:-\d+)+\b|\b\d{2,4}-\d{6,}-\d\b/,                // ID pattern with dashes
+    /\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|glpat-[A-Za-z0-9_-]{12,}|AKIA[0-9A-Z]{12,}|ASIA[0-9A-Z]{12,}|AIza[0-9A-Za-z_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,})/,
+    /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{32,}\b/, // long mixed token
+  ];
+
+  function obEsc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function obOccurrences(text, raw) {
+    const out = [], low = text.toLowerCase(), r = String(raw || '').toLowerCase();
+    if (!r) return out;
+    for (let i = low.indexOf(r); i !== -1; i = low.indexOf(r, i + 1)) {
+      const b = i > 0 ? low[i - 1] : ' ', a = i + r.length < low.length ? low[i + r.length] : ' ';
+      if (/[\p{L}\p{N}]/u.test(b) || /[\p{L}\p{N}]/u.test(a)) continue;
+      out.push([i, i + r.length]);
+    }
+    return out;
+  }
+  // a finding is dropped when it occurs and EVERY occurrence satisfies the predicate
+  function obAllOcc(text, f, pred) {
+    const occ = obOccurrences(text, f.rawMatch);
+    return occ.length > 0 && occ.every(([s, e]) => pred(s, e));
+  }
+  function obSentenceBefore(text, s) {
+    let i = s; while (i > 0 && !/[.?!\n]/.test(text[i - 1])) i--;
+    return text.slice(i, s);
+  }
+
+  // item 1: a spoken e-mail address ("marites at gmail dot com") is not a person
+  function obSpokenEmailSpans(text) {
+    // local part: one word, or words joined by "dot" ("juan dot cruz"); quotes and apostrophes around it are not part of the span
+    const spans = [], re = /[\w+-]+(?:\s+dot\s+[\w+-]+)*\s+at\s+[\w-]+(?:\s+dot\s+[\w-]+)+/gi;
+    let m; while ((m = re.exec(text)) !== null) spans.push([m.index, m.index + m[0].length]);
+    return spans;
+  }
+  // "<name> at <word> dot <word>": a finding that ends right before this tail is the local part of a spoken address, whatever its length
+  const OB_SPOKEN_TAIL_RE = /^["'”’)\]]?\s+at\s+[\w-]+(?:\s+dot\s+[\w-]+)+/i;
+  // "<word> dot <word>" directly before or after a finding: the finding is a piece of a spoken local part ("dot cruz")
+  // the sentence around a spoken address talks about the way of saying it (generic / example), not about the user's own address
+  const OB_GENERIC_SPOKEN_RE = /\b(?:if\s+(?:he|she|they|someone|somebody|a\s+person|one|you|people|anyone)\s+(?:says?|said|dictates?|spells?|reads?)|how\s+(?:do|does|should|can|could|would|to)\s+(?:i|you|we|one|people)?\s*(?:say|spell|read|dictate|pronounce|write)|(?:say|saying|spell|spelling|read|reading|dictate|dictating|pronounce|pronouncing)\s+(?:out|aloud|it|an?\s+e-?mail|the\s+(?:e-?mail|address|@))|out\s+loud|aloud|over\s+the\s+phone|instead\s+of\s+(?:using|typing|the)|the\s+@\s*(?:sign|symbol)|symbols?|for\s+example|for\s+instance|e\.g\.|such\s+as|(?:is|are)\s+it\s+(?:ok|okay|safe|fine|correct|valid)|will\s+(?:they|he|she|the\s+person)\s+understand)\b/i;
+  function obGenericSpokenSentence(text, s, e) {
+    let a = s; while (a > 0 && !/[.?!\n]/.test(text[a - 1])) a--;
+    let z = e; while (z < text.length && !/[.?!\n]/.test(text[z])) z++;
+    return OB_GENERIC_SPOKEN_RE.test(text.slice(a, z + 1));
+  }
+  const OB_DOT_JOIN_BEFORE_RE = /\bdot\s+$/i, OB_DOT_JOIN_AFTER_RE = /^\s+dot\b/i;
+
+  // naming topic (second version): a first-person statement in the prompt keeps the name; otherwise a name that stands right next to a
+  // naming word, or in a "short for / be named / how common is" frame, is the topic of the question and not a person
+  const OB_FIRST_PERSON_STMT_RE = /\b(?:my\s+(?:full\s+|first\s+|last\s+|real\s+)?name\s+is|call\s+me|i\s+am|i['’]m|i\s+was\s+named|my\s+(?:friend|classmate|cousin|brother|sister|mother|mom|mother-in-law|father|dad|teacher|boss|colleague|neighbou?r|daughter|son|wife|husband|aunt|uncle|student|patient|client|landlord|landlady)\b)/i;
+  const OB_NAMING_NOUN = String.raw`(?:first\s+|last\s+|given\s+|family\s+|middle\s+|baby\s+|pet\s+|real\s+|common\s+|popular\s+|filipino\s+|spanish\s+|chinese\s+)?(?:names?|surnames?|nicknames?)`;
+  const OB_NAMING_BEFORE_RES = [
+    new RegExp(String.raw`\b${OB_NAMING_NOUN}\s*(?:of\s+|like\s+|such\s+as\s+|called\s+)?["'“‘]?$`, 'i'),                      // "the name X", "surname X", "names like X"
+    /\b(?:meaning|origin|origins|etymology|pronunciation|spelling|popularity)\s+of\s+(?:the\s+)?(?:(?:first|last|given|family)\s+)?(?:name\s+)?["'“‘]?$/i,
+    /\b(?:short\s+for|nickname\s+for|diminutive\s+of|derived\s+from|variant\s+of|spelled\s+like|same\s+as)\s+["'“‘]?$/i,
+    /\b(?:to\s+be|be|being)\s+named\s+["'“‘]?$/i,                                                                             // "is named X" states a fact, "to be named X" asks about naming
+    /\b(?:whether|if|is|are|was|were|does|do|did|check\s+if|check\s+whether)\s+["'“‘]?$/i,                                       // narrowed below: needs a naming noun after
+    /\bhow\s+(?:common|popular|rare|unusual|old|frequent)\s+(?:is|are)\s+(?:the\s+)?["'“‘]?$/i,
+    /\b(?:more|less|most|least)\s+(?:common|popular)\s+(?:as\s+an?\s+\w+\s*,?\s*)?["'“‘]?$/i,
+  ];
+  const OB_NAMING_AFTER_RE = new RegExp(String.raw`^["'”’]?[,\s]+(?:(?:is|are|was|were|as|sounds?|really|actually|still|more|less|very|so|too|also|even|a|an|the|common|real|rare|popular|good|nice|valid|filipino|spanish|chinese|boy['’]s|girl['’]s|unisex|male|female|first|last|given|family|baby|pet)\s+){0,8}${OB_NAMING_NOUN}\b`, 'i');
+  const OB_NAMING_AFTER2_RE = /^["'”’]?\s+(?:short\s+for|mean|means|come\s+from|comes\s+from|originat\w*|derive\w*|sound\s+like|stand\s+for|stands\s+for)\b/i;
+  function obNamingTopic(text, s, e) {
+    if (OB_FIRST_PERSON_STMT_RE.test(text.replace(/\s+/g, ' '))) return false;
+    const line0 = text.lastIndexOf('\n', s - 1) + 1;
+    const before = text.slice(Math.max(line0, s - 90), s);
+    let after = text.slice(e, e + 90).replace(/\n[\s\S]*$/, '');
+    // a name that ends in an abbreviation keeps its dot in the text ("Roberto Villanueva Jr. Is a common name"): step over it
+    if (after[0] === '.' && /(?:^|\s)(?:jr|sr|ii|iii|iv|ma|mr|mrs|ms|dr)$/i.test(text.slice(Math.max(0, e - 4), e))) after = after.slice(1);
+    const nounAfter = new RegExp(String.raw`^["'”’]?[,\s]+(?:[\w'’-]+\s+){0,8}?${OB_NAMING_NOUN}\b`, 'i').test(after);
+    for (const re of OB_NAMING_BEFORE_RES) {
+      if (!re.test(before)) continue;
+      // the bare "is / whether / if" frames count only when a naming noun follows the name ("is X a common name")
+      if (/\b(?:whether|if|is|are|was|were|does|do|did)\s+["'“‘]?$/i.test(before) && re === OB_NAMING_BEFORE_RES[4] && !(nounAfter || OB_NAMING_AFTER2_RE.test(after))) continue;
+      return true;
+    }
+    if (OB_NAMING_AFTER_RE.test(after) && /\b(?:is|are|was|were|does|do|did|whether|if|check|how|what|which|why)\b/i.test(before + ' ' + after.slice(0, 40))) return true;
+    if (OB_NAMING_AFTER2_RE.test(after) && /\b(?:name|surname|nickname|does|what|how|is)\b/i.test(before)) return true;
+    return false;
+  }
+
+  function obProgrammingContext(text) {
+    if (OB_PROGRAMMING_CONTEXT_RE.test(text)) return true;
+    return text.toLowerCase().split(/[^\p{L}\p{N}#+]+/u).some(w => OB_SOFTWARE_ALWAYS.has(w));
+  }
+
+  function obKnownOrg(name) {
+    try { return typeof EXTENSIVE_ORGANIZATIONS !== 'undefined' && EXTENSIVE_ORGANIZATIONS.has(name.toLowerCase()); } catch (_) { return false; }
+  }
+
+  // item 9: line-break pairs recorded by normalizePath_C for the text that is being scanned
+  function obBreakPairs(text) {
+    try {
+      const nz = (typeof TrustNormalizer !== 'undefined' && TrustNormalizer) || globalThis.TrustNormalizer;
+      const lb = nz && nz.normalizePath_C && nz.normalizePath_C.lastBreaks;
+      return lb && lb.out === text && lb.pairs && lb.pairs.size ? lb.pairs : null;
+    } catch (_) { return null; }
+  }
+  const obTok = w => String(w).toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+
+  function applyOwnerObservations(findings, text, opts) {
+    if (!Array.isArray(findings) || !text) return findings;
+    const cloneWith = (f, raw) => Object.assign({}, f, { rawMatch: raw });
+    let out = [];
+    // line-break pairs: the caller's own list (scanner.js passes the pairs of the raw text) wins over the normalizer's last-call record,
+    // which a second scan that starts before this one ends would overwrite
+    const spoken = obSpokenEmailSpans(text), breaks = (opts && opts.breaks && opts.breaks.size ? opts.breaks : null) || obBreakPairs(text);
+    const progCtx = obProgrammingContext(text);
+    for (let f of findings) {
+      let raw = String(f.rawMatch || '').trim(); const id = f.patternId;
+      if (!raw) { out.push(f); continue; }
+      // item 6: a person marker or particle that the sentence-case step capitalised at the start of the span ("Si Marites Dumalagan", "Kay Ligaya Mercado")
+      if (id === OB_TYPE.P) { const t0 = raw.split(/\s+/); if (t0.length >= 2 && /^\p{Lu}/u.test(t0[0]) && /^(?:si|ni|kay|ang|ng|nang|mga|sa|po)$/i.test(t0[0])) { raw = t0.slice(1).join(' '); f = cloneWith(f, raw); } }
+      // item 1
+      if (id === OB_TYPE.P) {
+        // a name that overlaps a spoken address, ends right before "at <domain> dot <tld>", or sits next to a "dot" is a piece of the address
+        // a fragment of the address itself ("dot cruz", "juan dot") is never a person, whatever the sentence says
+        if (spoken.length && (/(?:^|\s)dot(?:\s|$)/i.test(raw) || obAllOcc(text, f, (s, e) => spoken.some(([a, b]) => s < b && e > a) && OB_DOT_JOIN_BEFORE_RE.test(text.slice(Math.max(0, s - 6), s))))) continue;
+        // only a generic or example sentence ("if he says ...", "how do I say ...") drops the name; a first-person or instruction sentence keeps it
+        if (obAllOcc(text, f, (s, e) => obGenericSpokenSentence(text, s, e) && (spoken.some(([a, b]) => s < b && e > a) || OB_SPOKEN_TAIL_RE.test(text.slice(e, e + 80)) ||
+            OB_DOT_JOIN_BEFORE_RE.test(text.slice(Math.max(0, s - 6), s)) || (OB_DOT_JOIN_AFTER_RE.test(text.slice(e, e + 6)) && OB_SPOKEN_TAIL_RE.test(text.slice(e).replace(/^(?:\s+dot\s+[\w'’-]+)+/i, '')))))) continue;
+      } else if (spoken.length && obAllOcc(text, f, (s, e) => spoken.some(([a, b]) => s >= a && e <= b))) continue;
+      if (id === OB_TYPE.P) {
+        const toks = raw.split(/\s+/);
+        // item 4
+        const sw = toks.map(t => obTok(t));
+        if (sw.every(t => OB_SOFTWARE_ALWAYS.has(t) || (OB_SOFTWARE_AMBIGUOUS.has(t) && progCtx)) && sw.some(t => OB_SOFTWARE_ALWAYS.has(t) || OB_SOFTWARE_AMBIGUOUS.has(t))) continue;
+        // item 7
+        if (obAllOcc(text, f, (s, e) => obNamingTopic(text, s, e))) continue;
+        // item 6: particles inside a name span written in lowercase
+        if (toks.some(t => OB_FIL_PARTICLES.has(t) && t === t.toLowerCase())) {
+          // the span is cut at every lowercase particle; a piece survives only with name evidence of its own: a capitalised word, two or
+          // more dictionary name words, or one dictionary given name right after the person markers si / ni / kay
+          const pieces = []; let cur = [], prev = '';
+          for (const t of toks) {
+            if (OB_FIL_PARTICLES.has(t) && t === t.toLowerCase()) { if (cur.length) pieces.push({ w: cur, prev }); cur = []; prev = t; } else cur.push(t);
+          }
+          if (cur.length) pieces.push({ w: cur, prev });
+          for (const { w: p, prev: pv } of pieces) {
+            const bare = p.map(w => w.replace(/[^\p{L}\p{M}'-]/gu, ''));
+            const known = bare.length > 0 && bare.every(w => isKnownNameWord(w));
+            const sentInit = obOccurrences(text, p.join(' ')).every(([s0]) => /^\s*$/.test(obSentenceBefore(text, s0)));
+            const ok = known && ((p.some(w => /^\p{Lu}/u.test(w)) && !(sentInit && bare.length === 1)) || bare.length >= 2 ||(isKnownGivenName(bare[0]) && /^(?:si|ni|kay)$/.test(pv)));
+            if (ok) out.push(cloneWith(f, p.join(' ')));
+          }
+          continue;
+        }
+      }
+      if (id === OB_TYPE.O) {
+        const toks = raw.split(/\s+/), lastLow = obTok(toks[toks.length - 1]);
+        // item 8
+        if (OB_POSITION_ORG_RE.test(raw.replace(/^the\s+/i, ''))) continue;
+        // item 2
+        if (!(toks.length >= 2 && /^(?:law|legal|dental|medical|eye|clinic|insurance|accounting|tax)$/i.test(toks[toks.length - 2])) && OB_UNIT_WORDS.has(lastLow) || (toks.length >= 2 && /^help$/i.test(toks[toks.length - 2]) && lastLow === 'desk')) {
+          const rest = toks.slice(0, -1).filter((w, i, a) => !(/^help$/i.test(w) && i === a.length - 1)).join(' ').replace(/^(?:the|local|our|my|your|their|main)\s+/i, '');
+          const restToks = rest.split(/\s+/).filter(Boolean);
+          const named = restToks.length >= 3 && /\b(?:of|for)\b/i.test(rest);
+          if (rest && (named || obKnownOrg(rest))) { out.push(cloneWith(f, rest)); }
+          continue;
+        }
+        // item 9: an organization never spans a line break
+        if (breaks && toks.length > 1) {
+          const segs = []; let cur = [toks[0]];
+          for (let i = 1; i < toks.length; i++) {
+            if (breaks.has(obTok(toks[i - 1]) + '\u0001' + obTok(toks[i]))) { segs.push(cur); cur = []; }
+            cur.push(toks[i]);
+          }
+          segs.push(cur);
+          if (segs.length > 1) {
+            // each line keeps only what is itself an organization: not a one-word line, not a job title, not a bare person name
+            for (const sg of segs) {
+              if (sg.length < 2) continue;
+              const seg = sg.join(' '), low = seg.toLowerCase().replace(/^(?:senior|junior|lead|chief|assistant|associate)\s+/, '');
+              const hasHead = sg.some(w => RUN_ORG_HEAD_WORDS.has(obTok(w)) || STRONG_ORG_HEAD_WORDS.has(obTok(w)));
+              if (EXTENSIVE_JOB_TITLES.has(low) || EXTENSIVE_JOB_TITLES.has(seg.toLowerCase())) continue;
+              if (!hasHead && !obKnownOrg(seg) && sg.every(w => isKnownNameWord(w.replace(/[^\p{L}\p{M}'-]/gu, '')))) continue;
+              out.push(cloneWith(f, seg));
+            }
+            continue;
+          }
+        }
+      }
+      out.push(f);
+    }
+
+    // organization overlap: when two organization spans share a word of the text ("Tarlac State University" and "University College" in
+    // "... Tarlac State University College of Education"), the span that is not accepted is dropped. Accepted: more words, then a
+    // dictionary organization, then the earlier one. This does not need the line break.
+    {
+      const orgs = out.filter(f => f.patternId === OB_TYPE.O && f.rawMatch).map(f => {
+        const occ = obOccurrences(text, f.rawMatch);
+        return { f, occ, n: String(f.rawMatch).trim().split(/\s+/).length, known: obKnownOrg(String(f.rawMatch)) };
+      });
+      const drop = new Set();
+      for (let i = 0; i < orgs.length; i++) for (let j = i + 1; j < orgs.length; j++) {
+        const A = orgs[i], B = orgs[j];
+        if (drop.has(A.f) || drop.has(B.f) || String(A.f.rawMatch).toLowerCase() === String(B.f.rawMatch).toLowerCase()) continue;
+        const hit = A.occ.some(([a0, a1]) => B.occ.some(([b0, b1]) => a0 < b1 && b0 < a1));
+        if (!hit) continue;
+        const aWins = A.n !== B.n ? A.n > B.n : (A.known !== B.known ? A.known : A.occ[0][0] <= B.occ[0][0]);
+        drop.add(aWins ? B.f : A.f);
+      }
+      if (drop.size) out = out.filter(f => !drop.has(f));
+    }
+
+    // item 5: a title next to a named person (before or after the name) is a Low finding
+    const people = out.filter(f => f.patternId === OB_TYPE.P && f.rawMatch);
+    if (people.length) {
+      for (const j of out) {
+        if (j.patternId !== OB_TYPE.J || j.lowQualifying || !j.rawMatch) continue;
+        const adj = obOccurrences(text, j.rawMatch).some(([js, je]) => people.some(p => obOccurrences(text, p.rawMatch).some(([ps, pe]) => {
+          if (pe <= js) return /^\s*,\s*(?:(?:my|our|his|her|their|the|a|an|former|current|late|retired|new|old|previous|dear)\s+)*$/i.test(text.slice(pe, js));
+          if (je <= ps) return /^\s*,?\s*(?:(?:Mr|Mrs|Ms|Miss|Dr|Atty|Engr|Prof|Sir|Madam|Ma['’]am|Fr|Rev)\.?\s+)?$/i.test(text.slice(je, ps));
+          return false;
+        })));
+        if (adj) j.lowQualifying = true;
+      }
+    }
+
+    // item 10: own-credential organizations
+    const credVal = OB_CRED_VALUE_RES.some(re => re.test(text));
+    if (credVal) {
+      const have = new Set(out.filter(f => f.patternId === OB_TYPE.O).map(f => String(f.rawMatch).toLowerCase()));
+      const add = (name, cat, how) => {
+        if (have.has(name.toLowerCase())) return; have.add(name.toLowerCase());
+        out.push({ patternId: OB_TYPE.O, label: 'Organization (own credential)', risk: 'low', rawMatch: name, safeVersion: '[ORGANIZATION REDACTED]', source: 'C_linguistic', extractionMethod: 'own_credential_org', confidence: 'high', category: cat });
+      };
+      for (const [cat, names] of Object.entries(OB_CRED_ORGS)) {
+        for (const n of names) {
+          const e = obEsc(n).replace(/\\ /g, '\\s+');
+          const a = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:my|our)\s+(${e})(?:\s+[\p{L}-]+){0,2}?\s+(?:${OB_CRED_WORDS})(?![\p{L}\p{N}])`, 'iu').exec(text);
+          if (a) { add(a[1], cat, 'a'); continue; }
+          if (cat === 'health_insurer') {
+            const b = new RegExp(String.raw`(?<![\p{L}\p{N}])(${e})(?:\s+[\p{L}-]+)?\s+(?:numbers?|ids?|membership|transcription)(?![\p{L}\p{N}])`, 'iu').exec(text);
+            if (b) add(b[1], cat, 'b');
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  function scan(textNLP, opts) {
+    const res = scanBase(textNLP);
+    try { return applyOwnerObservations(res, textNLP, opts); } catch (err) { console.error('[TrustPrompt/PATH_C] owner observations error:', err && err.message); return res; }
+  }
+
+  function scanBase(textNLP) {
     G_SUPPRESSED = [];
     const prep = t => repairHyphenatedNameSplit(maskSalutationFragments(t));
     G3_WHOLE = false;
@@ -7215,7 +7578,8 @@ const TrustLinguisticDetector = (() => {
         // (The path normalizer capitalises the first character of the prompt,
         // so a prompt that begins with this phrase always arrives as "My name is".)
         new RegExp(String.raw`\b[Mm]y\s+[Nn]ame\s+[Ii]s\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
-        new RegExp(String.raw`\b(?:i\s+)?(?:am|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
+        // "I Am <Name>": ALL CAPS text arrives Title-Cased ("I Am Fatima Ali"), so "I" and "Am" may be capitalised; the name run itself stays Title Case
+        new RegExp(String.raw`\b(?:[Ii]\s+)?(?:[Aa]m|'m)\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\b[Cc]all\s+me\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         new RegExp(String.raw`\bi['’]m\s+called\s+(${NAME_RUN1})${NAME_RB}`, 'gu'),
         // Small item 3: "this is X" / "it's X" / "it is X" introduces the speaker. A bare first name is accepted only when the self-introduction
@@ -7844,6 +8208,8 @@ const TrustLinguisticDetector = (() => {
       { const orgKept = refineOrganizationFindings(findings, textNLP); findings.length = 0; findings.push(...orgKept); }
       // Cause A: a "<name> <business noun>" run is not a person (the organization, if there is evidence, comes from the structural pass).
       { const kept = dropPersonsEndingInBusinessHead(findings, textNLP); findings.length = 0; findings.push(...kept); }
+      { const kept = dropAgencyPersons(findings); findings.length = 0; findings.push(...kept); }
+      { const kept = dropGenericDepartments(findings); findings.length = 0; findings.push(...kept); }
       addAppositiveOrganizations(findings, textNLP);
       addFramedSingleBrands(findings, textNLP);
       trimLeadingRoleNoun(findings);
@@ -8351,7 +8717,20 @@ const TrustLinguisticDetector = (() => {
   // Expose a wait function that returns immediately (for backwards compatibility)
   const waitForCSVInit = () => Promise.resolve(true);
 
-  return { scan, waitForCSVInit, getSuppressed: () => G_SUPPRESSED.slice() };
+  // Build stamp: a short hash of the code that decides a scan (the source text of its main functions), so a console line shows which
+  // detector a browser is really running (a stale extension build has a different hash).
+  let _buildId = null;
+  function buildId() {
+    if (_buildId) return _buildId;
+    let h = 0x811c9dc5;
+    for (const fn of [scan, scanBase, scanCore, applyOwnerObservations, obNamingTopic, extractAppositiveRoleConstruct, refinePersonCandidates, findOrganizationsStructural]) {
+      const src = String(fn);
+      for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    }
+    return (_buildId = h.toString(16).padStart(8, '0'));
+  }
+
+  return { scan, waitForCSVInit, buildId, getSuppressed: () => G_SUPPRESSED.slice() };
 
 })();
 

@@ -1,32 +1,20 @@
 // trust-worker.js
-// TrustPrompt — Web Worker (Background Thread).
+// TrustPrompt — Web Worker host for the scanner.
 //
-// Receives a "SCAN" message from the content script, runs the full
-// detection engine (Path A + Path B + risk scoring), and posts back results.
+// This worker runs the same engine as the content script: scanner.js
+// (TrustScanner.scan). It loads the same detection and scoring scripts, in the
+// same order as the content-script entry in manifest.json, so the worker and the
+// main-thread fallback always produce identical results. Do not copy scoring or
+// detection logic into this file. Change scanner.js (or the scripts it loads)
+// and both paths pick up the change.
 //
-// SCORING MODEL: Implements the same RAE 5-step model as scanner.js.
-// Both paths (worker and main-thread fallback) are now consistent —
-// identical inputs produce identical risk classifications.
-//
-// Flow (RAE 5-step):
-//   Step 1: Base score per distinct entity type
-//   Step 2: Distinct entity-type multiplier (×1.00 – ×2.00)
-//   Step 3: Preliminary classification (low / moderate / high)
-//   Step 4: Governance rule evaluation (3 rules only)
-//   Step 5: Final risk = min[max(preliminary, escalation), ceiling]
-//
-// Task #4 additions:
-//   TASK-4.4: suppressPlaceholders() — same logic as scanner.js
-//   TASK-4.5: Entropy pre-check in runPathA()
-//   TASK-4.6: structuralValidate hook — sets validated:true for vendor-prefix
-//             API key matches, enabling governance Rule 1 escalation to HIGH
-//   TASK-4.3: Worker-side JWT validation delegated to validator-wrapper-worker.js
-//             _isJWT() now does full structural decode check
+// Scripts that need the DOM or the extension runtime (ui.js, consent-state.js,
+// dom-claude.js, dom-chatgpt.js, worker-bridge.js) are not loaded here.
 //
 // Message in:
 //   { type: "SCAN", rawText: string, scanId: number }
-//
 // Message out:
+<<<<<<< HEAD
 //   { type: "RESULT", scanId: number,
 //     findings: Array, riskLevel: string, score: number,
 //     governance: string, normalisedText: string,
@@ -51,20 +39,45 @@
 //   - Debounce: 400ms (unchanged)
 //   - Worker pipeline: 50–100ms (from ~700ms on main thread)
 //   - UI update: 5–10ms
+=======
+//   { type: "RESULT", scanId, findings, riskLevel, score, governance,
+//     normalisedText, wasCapsConverted, elapsedMs }
+//   { type: "ERROR", scanId, message }
+
+// The scanner scripts read the global object as `window` (for example
+// window.nlp, the Compromise NLP library). In a worker the global object is
+// `self`, so alias it. This matches the content-script scope, where window is
+// the global object. Without it the POS checks are skipped and results differ.
+if (typeof window === "undefined") self.window = self;
+>>>>>>> c27645219dc2cb3a1217598842940224945a1e9f
 
 const _base = (typeof self !== "undefined" && self.EXTENSION_BASE) ? self.EXTENSION_BASE : "";
-const _url  = (f) => _base ? _base + f : f;
+const _url  = (f) => _base + f;
 
+// Same order as the content-script list in manifest.json (minus DOM/UI files).
 importScripts(
+  _url("lib/validator.min.js"),
+  _url("lib/compromise.min.js"),
+  _url("ph-address-db.js"),
+  _url("terms-identity.js"),
   _url("normalizer.js"),
   _url("patterns.js"),
-  _url("validator-wrapper-worker.js"),
+  _url("terms-medical.js"),
+  _url("terms-financial.js"),
+  _url("terms-organizations.js"),
+  _url("terms-occupations.js"),
+  _url("terms-names.js"),
+  _url("terms-names-extra.js"),
+  _url("context-attribution.js"),
   _url("gazetteer.js"),
-  _url("ph-address-db.js"),
+  _url("organization-loader.js"),
+  _url("organization-detector-enhanced.js"),
   _url("linguistic-detector.js"),
-  _url("context-attribution.js")
+  _url("validator-wrapper.js"),
+  _url("scanner.js")
 );
 
+<<<<<<< HEAD
 // ── NER Model Caching (Performance Optimization) ──────────────────────────────
 // The NER model (transformer) is loaded once on first scan and cached in worker memory.
 // This eliminates 600-1000ms model loading time on subsequent scans.
@@ -898,10 +911,14 @@ function shouldRunPathC(rawText, pathAFindings, pathBFindings) {
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
+=======
+>>>>>>> c27645219dc2cb3a1217598842940224945a1e9f
 self.onmessage = async function (e) {
-  const { type, rawText, scanId } = e.data;
+  const { type, rawText, scanId, debug } = e.data || {};
   if (type !== "SCAN") return;
+  self.TP_DEBUG = debug === true;
 
+<<<<<<< HEAD
   const t0 = performance.now();
 
   // NER model is pre-warming in background. For short prompts where we might
@@ -954,24 +971,22 @@ self.onmessage = async function (e) {
       // Silent error handling — no logging
       pathCFindings = [];
     }
+=======
+  try {
+    const r = await TrustScanner.scan(rawText);
+    self.postMessage({
+      type:             "RESULT",
+      scanId,
+      findings:         r.findings,
+      riskLevel:        r.riskLevel,
+      score:            r.score,
+      governance:       r.governance,
+      normalisedText:   r.normalisedText,
+      wasCapsConverted: r.wasCapsConverted,
+      elapsedMs:        r.elapsedMs,
+    });
+  } catch (err) {
+    self.postMessage({ type: "ERROR", scanId, message: String((err && err.message) || err) });
+>>>>>>> c27645219dc2cb3a1217598842940224945a1e9f
   }
-  
-  const merged        = resolveContextOnly(mergeAndDedupe(pathAFindings, pathBFindings, pathCFindings, []), textGazetteer);
-  const findings      = suppressPlaceholders(merged);  // TASK-4.4
-
-  const { score, riskLevel, governance } = computeRiskScore(findings, rawText);
-
-  const elapsedMs = Math.round(performance.now() - t0);
-
-  self.postMessage({
-    type:            "RESULT",
-    scanId,
-    findings,
-    riskLevel,
-    score,
-    governance,
-    normalisedText:  masked,
-    wasCapsConverted: false,
-    elapsedMs
-  });
 };

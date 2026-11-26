@@ -25,7 +25,7 @@ const TrustIdentityTerms = (() => {
     "aglipayan", "baptist", "lds",
     // Phrases
     "iglesia ni cristo", "inc member", "seventh-day adventist",
-    "born again christian", "roman catholic", "born again", "born-again",
+    "born again christian", "born-again christian", "roman catholic", "born again", "born-again",
     "jehovah's witness", "jehovahs witness", "jehovah witness",
     "latter-day saint", "latter day saint",
     "non-catholic christian", "non-catholic",

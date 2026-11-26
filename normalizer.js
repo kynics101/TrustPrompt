@@ -231,6 +231,12 @@ const TrustNormalizer = (() => {
     // Step 2: Convert smart quotes/dashes to ASCII
     text = asciiPunctuation(text);
     
+    // Record the line breaks before they are collapsed: the detector must not let an organization span cross a line.
+    // Each pair is (last word of a line, first word of the next line), lowercased and stripped of edge punctuation.
+    const _brkPairs = new Set();
+    const _brkTok = w => w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    for (const bm of text.matchAll(/(\S+)[ \t]*\n\s*(?=(\S+))/g)) _brkPairs.add(_brkTok(bm[1]) + "\u0001" + _brkTok(bm[2]));
+
     // Step 3: Collapse ALL whitespace to single space (Compromise needs flat text)
     text = text.replace(/\s+/g, " ").trim();
     
@@ -264,9 +270,10 @@ const TrustNormalizer = (() => {
     // Step 8: ALL-CAPS guard
     const { text: guardedText } = capsGuard(text);
     text = guardedText;
-    
+
     text = text.trim();
-    
+
+    normalizePath_C.lastBreaks = { out: text, pairs: _brkPairs };
     return text;
   }
 
@@ -294,12 +301,37 @@ const TrustNormalizer = (() => {
     return { masked, textRegex, textGazetteer, textNLP };
   }
 
-  return { 
-    normalize, 
-    sharedLayer, 
-    normalizePath_A, 
-    normalizePath_B, 
-    normalizePath_C 
+  // The (last word of a line, first word of the next line) pairs of a raw text, computed the same way normalizePath_C sees them. The
+  // scanner passes them to the detector with the text, so no state is shared between two scans.
+  function pathCBreakPairs(raw) {
+    const pairs = new Set();
+    if (!raw || typeof raw !== "string") return pairs;
+    let text = sharedLayer(raw);
+    text = text.replace(CODE_BLOCK_RE, () => "\n[CODE]\n");
+    text = asciiPunctuation(text);
+    const tok = w => w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    for (const bm of text.matchAll(/(\S+)[ \t]*\n\s*(?=(\S+))/g)) pairs.add(tok(bm[1]) + "\u0001" + tok(bm[2]));
+    return pairs;
+  }
+
+  // Build stamp: a short hash of the normalizer functions, for the console line printed at scan start.
+  function buildId() {
+    let h = 0x811c9dc5;
+    for (const fn of [sharedLayer, normalizePath_A, normalizePath_B, normalizePath_C, pathCBreakPairs]) {
+      const src = String(fn);
+      for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+
+  return {
+    normalize,
+    sharedLayer,
+    normalizePath_A,
+    normalizePath_B,
+    normalizePath_C,
+    pathCBreakPairs,
+    buildId
   };
 
 })();

@@ -1273,7 +1273,8 @@ const TrustScanner = (() => {
   //
   // Scope by context category (approved codebook):
   //   medical     -> medical anchor in the same sentence, or a trigger in the prompt
-  //   financial   -> a trigger in the SAME sentence only; anchors do not apply
+  //   financial   -> a figure-bearing first-person disclosure in the same sentence
+  //                  (Financial Disclosure Anchor), or a trigger in the SAME sentence
   //   nationality -> a trigger or a nationality anchor in the same sentence
   // Suppression never removes findings or changes base scores.
   // Gazetteer context-only candidates are kept only when a Rule 2 identifier
@@ -1543,7 +1544,7 @@ const TrustScanner = (() => {
   const ATTR_MAX_TAIL_WORDS = 6;
   const ATTR_LEAD_RE = /\b(?:i['’]?m|i\s+am|i\s+was|i['’]ll\s+be|i\s+will\s+be|i\s+(?:just\s+)?turn(?:ed|ing|s)?|i['’]ll\s+turn|i\s+will\s+turn|i\s+weigh(?:ed)?|i\s+stand|i\s+measure[ds]?)\b/gi;
   const ATTR_LEAD_HAVE_RE = /\b(?:i\s+have|i['’]ve(?:\s+got)?|i\s+had|i\s+got)\b/gi;
-  const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|eye\s*colou?r|eyes?|sex|gender)\b/gi;
+  const ATTR_POSSESSIVE_RE = /\bmy\s+(?:own\s+)?(?:age|height|weight|blood\s*(?:type|group)|rh(?:\s+factor)?|eye\s*colou?r|eyes?|sex|gender)\b/gi;
   const ATTR_NON_SELF_WORDS = new Set([
     "my", "his", "her", "hers", "their", "our", "your", "he", "she", "they", "we", "you",
     "the", "this", "that", "these", "those", "its", "it", "who", "whom", "whose", "which",
@@ -1901,7 +1902,7 @@ const TrustScanner = (() => {
     // Street") carries a residence/delivery cue, treat it as a real disclosure.
     if (patternId === 'ph_address') {
       const cueWindow = (fullText.slice(Math.max(0, matchIndex - 60), matchIndex) + " " + rawMatch).toLowerCase();
-      if (/\b(?:i\s+(?:live|stay|reside)|we\s+(?:live|stay|reside)|my\s+(?:home\s+|office\s+|work\s+|current\s+|permanent\s+)?address|address\s*(?:is|:)|residing\s+(?:at|in)|located\s+at|deliver(?:\s+it)?\s+to|ship(?:\s+it)?\s+to|send\s+it\s+to|mail\s+(?:it\s+)?to|my\s+(?:house|home|apartment|condo|office)\s+is\s+(?:at|in))\b/.test(cueWindow)) {
+      if (/\b(?:i\s+(?:live|stay|reside)|we\s+(?:live|stay|reside)|(?:living|staying|residing)\s+(?:at|in)|my\s+(?:home\s+|office\s+|work\s+|current\s+|permanent\s+)?address|address\s*(?:is|:)|residing\s+(?:at|in)|located\s+at|deliver(?:\s+it)?\s+to|ship(?:\s+it)?\s+to|send\s+it\s+to|mail\s+(?:it\s+)?to|my\s+(?:house|home|apartment|condo|office)\s+is\s+(?:at|in))\b/.test(cueWindow)) {
         return false;  // do NOT filter
       }
     }
@@ -4740,6 +4741,15 @@ const TrustScanner = (() => {
     return (async () => {
     try {
       console.log("[TrustPrompt/scanner] SCAN START - input:", rawText.substring(0, 50));
+      // Build stamp (permanent, one line): which code this context is running. ctx = worker or main thread.
+      try {
+        console.log("[TrustPrompt/build] det=" + (TrustLinguisticDetector.buildId ? TrustLinguisticDetector.buildId() : "none") +
+          " norm=" + (TrustNormalizer.buildId ? TrustNormalizer.buildId() : "none") + " ctx=" + (typeof importScripts === "function" ? "worker" : "main"));
+      } catch (_) { /* stamp only */ }
+      // Debug mode (localStorage "tp-debug" = "1", or self.TP_DEBUG): the raw text exactly as received, before normalization, as JSON
+      // so a line break shows as \n.
+      const _tpDebug = (typeof self !== "undefined" && self.TP_DEBUG === true) || (typeof localStorage !== "undefined" && (() => { try { return localStorage.getItem("tp-debug") === "1"; } catch (_) { return false; } })());
+      if (_tpDebug) console.log("[TrustPrompt/raw] " + JSON.stringify(rawText));
       
       if (!rawText || !rawText.trim()) {
         console.log("[TrustPrompt/scanner] Empty text - returning empty findings");
@@ -4879,7 +4889,7 @@ const TrustScanner = (() => {
           // Run linguistic detector (compromise.js only)
           // TrustLinguisticDetector.scan() returns findings array directly
           console.log(`[TrustPrompt/scanner] DEBUG: TrustLinguisticDetector.scan is available, calling it...`);
-          pathCFindings = TrustLinguisticDetector.scan(textNLP);
+          pathCFindings = TrustLinguisticDetector.scan(textNLP, { breaks: (TrustNormalizer.pathCBreakPairs ? TrustNormalizer.pathCBreakPairs(rawText) : null) });
           
           // Mark all PATH C findings with origin
           pathCFindings.forEach(f => { f.origin = 'pathC'; });

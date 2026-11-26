@@ -171,8 +171,17 @@ const TP_CLAUDE = (() => {
 
   // ── 2. TEXT HELPERS ───────────────────────────────────────────────────────
 
+  // Reads the composer with innerText (a textarea: value). In a rich-text composer every line is a block element, so innerText returns
+  // "\n" for a soft break and "\n\n" between paragraphs: the line breaks survive, and normalizePath_C collapses them later.
+  // Debug mode (localStorage "tp-debug" = "1") logs what was read, with the element structure, as JSON.
   function extractText(el) {
-    return (!el ? "" : (el.tagName === "TEXTAREA" ? el.value : el.innerText)) || "";
+    const t = (!el ? "" : (el.tagName === "TEXTAREA" ? el.value : el.innerText)) || "";
+    try {
+      if (el && localStorage.getItem("tp-debug") === "1") {
+        console.log("[TrustPrompt/composer] " + JSON.stringify({ tag: el.tagName, innerText: t, textContent: el.textContent, p: el.querySelectorAll("p").length, br: el.querySelectorAll("br").length, div: el.querySelectorAll("div").length }));
+      }
+    } catch (_) { /* debug only */ }
+    return t;
   }
 
   function buildSafeText(orig, findings) {
@@ -331,7 +340,7 @@ const TP_CLAUDE = (() => {
     // scroll/resize repositioner no-ops. The driver re-establishes the badge on
     // the next input/scan via its listeners.
     TrustUI.teardown();
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
   }
 
   // ── PROMPT BOX CONTROL ─────────────────────────────────────────────────
@@ -412,7 +421,7 @@ const TP_CLAUDE = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(getComposerWrapper());
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -607,7 +616,7 @@ const TP_CLAUDE = (() => {
       if (!rawText.trim()) {
         scanState = STATE.IDLE;
         TrustUI.reset(getComposerWrapper());
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
         lastScannedText = ""; 
         return;
       }
@@ -773,7 +782,7 @@ const TP_CLAUDE = (() => {
     TrustUI.teardown();
     TrustUI.setScanning(getComposerWrapper());
     attachListeners(promptBox);
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "none" });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
     console.log("[TP/claude] prompt box adopted:", el.tagName,
       el.getAttribute("aria-label") || el.className.slice(0, 40));
   }
@@ -875,6 +884,8 @@ const TP_CLAUDE = (() => {
     tpActive = active;
     if (active) {
       console.log("[TP/claude] TrustPrompt active — starting");
+      // Show the grey "ON" badge right away, without waiting for a page refresh.
+      chrome.runtime.sendMessage({ type: "UPDATE_BADGE", riskLevel: "active" });
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
       else setTimeout(init, 600);
     } else {

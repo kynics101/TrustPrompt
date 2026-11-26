@@ -18130,6 +18130,11 @@ const OCCUPATIONS_EXTRA = [
   "Remote Customer Service Representative", "Work From Home Agent", "Home-Based Agent", "Dropshipper", "Copywriter", "Videographer",
   // small item 5 follow-up: the bare noun was missing (only Claim / Insurance / Patent / Tax / Title Attorney existed); single word, cue-gated
   "Attorney",
+  // academic staff ("I'm a faculty member at ..."): Faculty Member / Staff Member are multi-word, Faculty is a cue-gated single word
+  "Faculty Member", "Staff Member", "Faculty",
+  // common resume / professional titles that were missing (found while checking resume-style lines)
+  "Project Engineer", "Audit Associate", "Audit Manager", "Audit Senior", "Tax Associate", "Senior Associate", "Medical Director", "Department Chair",
+  "Department Chairman", "Department Chairperson", "Program Director",
   // audit of common titles (ISCO-08 major-group structure), category 1-managers-government
   "Mayor", "Governor", "Senator", "Congressman", "Congresswoman", "Councilor", "Councillor", "Chairwoman", "Executive Director", "Managing Director", "Marketing Manager", "HR Manager", "Finance Manager", "Restaurant Manager", "Hotel Manager", "Farm Manager", "Headmaster", "Headmistress", "Dean", "Ambassador", "Consul", "Commissioner", "Undersecretary", "Cabinet Secretary", "Comptroller", "Controller", "Bank Manager", "Property Manager", "Fleet Manager", "Logistics Manager",
   // audit of common titles (ISCO-08 major-group structure), category 2-professionals

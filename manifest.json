@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "TrustPrompt (dev test)",
+  "name": "TrustPrompt",
   "version": "0.0.4",
   "description": "Screens user prompts for sensitive data before submission to AI assistants.",
 
   "permissions": [
     "storage",
-    "scripting",
     "sidePanel"
   ],
 
@@ -124,7 +123,9 @@
         "organization-detector-enhanced.js",
         "linguistic-detector.js",
         "ph-address-db.js",
+        "validator-wrapper.js",
         "validator-wrapper-worker.js",
+        "scanner.js",
         "worker-data-bundle.js",
         "trust-worker.js"
       ],

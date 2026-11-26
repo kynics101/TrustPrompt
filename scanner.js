@@ -1061,6 +1061,7 @@ const TrustScanner = (() => {
     ph_id_prc:                 10,  // PRC (Professional Regulation Commission)
     ph_id_philhealth:          10,  // PhilHealth (Health Insurance)
     ph_id_postal:              10,  // Postal ID (PHLPost)
+    ph_id_drivers_license:     10,  // Driver's License Number
     ph_id_pwd:                 10,  // PWD ID (Persons with Disability)
     ph_id_senior_citizen:      10,  // Digital National Senior Citizen ID
 
@@ -1121,6 +1122,7 @@ const TrustScanner = (() => {
     ph_id_prc:                 "critical",
     ph_id_philhealth:          "critical",
     ph_id_postal:              "critical",
+    ph_id_drivers_license:     "critical",
     ph_id_pwd:                 "critical",
     ph_id_senior_citizen:      "critical",
 
@@ -1859,8 +1861,8 @@ const TrustScanner = (() => {
       'birthday_date',                 // Calendar dates (can appear in "today is October 26, 2026" references)
       'ph_address',                    // Street address can appear in song/book/movie titles, directions, lyrics
       'mac_address',                   // MAC addresses can appear as hex color tokens in design contexts
-      // REMOVED: 'height_mention' - Uses pattern-level contextFilter only
-      // REMOVED: 'weight_mention' - Uses pattern-level contextFilter only
+      'height_mention',                // Height - Uses pattern-level contextFilter
+      'weight_mention',                // Weight - Uses pattern-level contextFilter
       // REMOVED: 'ph_mobile' - PII that must ALWAYS be flagged
       // REMOVED: 'ipv6' - Network PII that must ALWAYS be flagged
       // NOTE: ALL Philippine ID patterns are NOT in this list
@@ -1923,11 +1925,19 @@ const TrustScanner = (() => {
     // ── SAFE CONTEXT MARKERS ──────────────────────────────────────────────────
     
     // Critical sensitive data that should NEVER be filtered by context markers
+    // This includes direct personal identifiers and payment credentials that are always PII
     // birthday_date is included because it's a direct personal identifier (RA 10173)
     // that should only be filtered by temporal markers, not by validation/example/educational contexts
     // email is included because even in example contexts (example.com), real emails are PII
     // and should be detected (not suppressed just because the domain name contains "example")
-    const criticalPatterns = ['credit_card', 'api_key', 'jwt', 'birthday_date', 'email'];
+    // All Philippine government IDs are CRITICAL (BASE_SCORES[x] === 10) and should never be filtered
+    const criticalPatterns = [
+      'credit_card', 'api_key', 'jwt', 'birthday_date', 'email',
+      // Philippine Government IDs (all CRITICAL tier)
+      'ph_id_philid', 'ph_id_umid', 'ph_id_passport', 'ph_id_prc', 
+      'ph_id_philhealth', 'ph_id_postal', 'ph_id_drivers_license', 
+      'ph_id_pwd', 'ph_id_senior_citizen', 'ph_id_sss'
+    ];
     
     // 1. Educational/How-To contexts
     // IMPORTANT: credit_card, api_key, jwt must NOT be filtered by educational context
@@ -2323,12 +2333,27 @@ const TrustScanner = (() => {
     });
     
     const count = matches.length;
-    const score = count >= 1 ? 3 : 0;
+    
+    // ── OPTION A: BOOST SCORE FOR DECLARATION KEYWORDS ──────────────────────
+    // Check if text contains const/let/var declarations (REAL CODE)
+    // These should score higher than plain assignments or simple keywords
+    const declarationPattern = /\b(?:const|let|var)\s+[\w$]+\s*=\s*["'][^"']*["']/;
+    const hasDeclaration = declarationPattern.test(text);
+    
+    // Calculate score:
+    // - If has const/let/var declaration: +3 base + +2 bonus = 5 points (strong evidence of real code)
+    // - If has keywords but no declaration: +3 points (possible code)
+    // - If no keywords: 0 points
+    const baseScore = count >= 1 ? 3 : 0;
+    const declarationBonus = hasDeclaration ? 2 : 0;
+    const score = baseScore + declarationBonus;
     
     // TASK 17.6: Debug logging for keyword detection
     if (count > 0 && text.includes('generate')) {
       console.log('[TrustPrompt/DEBUG] detectCodeKeywords found matches in "' + text.substring(0, 50) + '"');
       console.log('  Matches:', matches);
+      console.log('  Has declaration:', hasDeclaration);
+      console.log('  Score breakdown: base=' + baseScore + ', bonus=' + declarationBonus + ', total=' + score);
     }
     
     // Log when prose context is detected
@@ -2336,10 +2361,16 @@ const TrustScanner = (() => {
       console.log('[TrustPrompt/CodeDetection] Prose context detected for "as" keyword - excluded from scoring');
     }
     
+    // Log declaration detection
+    if (hasDeclaration) {
+      console.log('[TrustPrompt/CodeDetection] Declaration keyword detected (+2 bonus): const/let/var with assignment');
+    }
+    
     return {
       score,
       count,
-      keywordMatches: matches
+      keywordMatches: matches,
+      hasDeclaration
     };
   }
 
@@ -2803,7 +2834,21 @@ const TrustScanner = (() => {
     }
 
     // ── TASK 14.0: Early prose detection to prevent false positives ─────────
-    const proseDetection = detectProseMarkers(text);
+    // CRITICAL FIX: Skip prose detection for single-line code
+    // This allows code embedded in prose questions to be detected
+    // Examples: const x = "value"; or password = "secret"
+    const lineCount = (text.match(/\n/g) || []).length + 1;
+    const isSingleLine = lineCount === 1;
+    
+    // Only apply prose detection to multi-line blocks
+    // Single lines go straight to code feature detection
+    let proseDetection;
+    if (isSingleLine) {
+      proseDetection = { isProse: false, reasons: [] };
+    } else {
+      proseDetection = detectProseMarkers(text);
+    }
+    
     if (proseDetection.isProse) {
       return {
         classification: 'prose',
@@ -3317,7 +3362,11 @@ const TrustScanner = (() => {
       /^\s*from\s+[\w.]+\s+import\s+\S/,                                     // from x import y
       /^\s*(?:async\s+)?function\s*\*?\s*[\w$]*\s*\(/,                       // function foo(
       /^\s*(?:const|let|var)\s+(?:[\w$]+\s*(?:=|;|:\s*[\w<>\[\]]+\s*=)|[{\[])/, // const x = / let x; / const {
-      /^\s*async\s+(?:def\s|\(|[\w$]+\s*=>)/                                 // async def / async () / async x =>
+      /^\s*async\s+(?:def\s|\(|[\w$]+\s*=>)/,                                // async def / async () / async x =>
+      // ── NEW: Simple variable assignments (critical for detecting embedded code) ──
+      /^\s*(?:const|let|var)\s+[\w$]+\s*=\s*["'][^"']*["']\s*;?\s*$/,        // const x = "value";
+      /^\s*[\w$]+\s*=\s*\{[^}]*\}\s*;?\s*$/,                                 // x = {...};
+      /^\s*[\w$]+\s*=\s*\[[^\]]*\]\s*;?\s*$/                                 // x = [...];
     ];
     // Weak signal: bare "name = ...". Accepted unless the line reads as a prose
     // attribute list such as "Religion = Catholic, Ethnicity = Ilocano".
@@ -4010,16 +4059,32 @@ const TrustScanner = (() => {
         // Hard-block failsafe removed - it was too broad and matching "generally" in
         // "generally healthy", causing false negatives. Using contextFilter only.
 
-        findings.push({
+        // AFTER all validation passes, extract display version for ph_address
+        // Strip the residence cue from the output but keep the full match for validation
+        let displayMatch = effectiveMatch;
+        if (pattern.id === "ph_address" && match[1]) {
+          displayMatch = match[1].trim(); // Use only the address part for display
+        }
+
+        // Apply pattern-specific post-processing (e.g., strip verbs from weight_mention)
+        const finding = {
           patternId:   pattern.id,
           label:       pattern.label,
           risk:        pattern.risk,
-          rawMatch:    effectiveMatch,
-          safeVersion: pattern.sanitize ? pattern.sanitize(effectiveMatch) : "[REDACTED]",
+          rawMatch:    displayMatch,
+          safeVersion: pattern.sanitize ? pattern.sanitize(displayMatch) : "[REDACTED]",
           validated:   isValidated,  // TASK-7.2: Set validated:true if structuralValidate passed
           source:      "A_regex",
           isTriggerOnly: pattern.isTriggerOnly || false  // TASK-4.8: Mark trigger-only patterns
-        });
+        };
+        
+        // Apply pattern-specific post-processing (e.g., strip verbs from weight_mention)
+        if (pattern.postProcess && typeof pattern.postProcess === 'function') {
+          const processed = pattern.postProcess(finding);
+          findings.push(processed);
+        } else {
+          findings.push(finding);
+        }
       }
     }
 
@@ -4263,6 +4328,206 @@ const TrustScanner = (() => {
   }
 
   // ── TASK 12.3: Extract and run source code detection in parallel ─────────────────
+  // ── HYBRID CODE EXTRACTION: Sentence Boundary + Code Density Analysis ────
+  // Extracts pure code from mixed prose+code text
+  // Used when sentences are not enclosed in code fences (backticks)
+
+  function extractCodeFromProseContext(text) {
+    if (!text || typeof text !== 'string') return null;
+    
+    console.log(`[Code Extraction] Starting extraction on: "${text.substring(0, 70)}..."`);
+    
+    // Find the start of code (first occurrence of code keywords)
+    const codeStartPatterns = [
+      { pattern: /\bconst\s+[\w$]+\s*=/i, name: 'const' },
+      { pattern: /\blet\s+[\w$]+\s*=/i, name: 'let' },
+      { pattern: /\bvar\s+[\w$]+\s*=/i, name: 'var' },
+      { pattern: /\bfunction\s+\w+\s*\(/i, name: 'function' },
+      { pattern: /\bclass\s+\w+/i, name: 'class' },
+      { pattern: /\basync\s+function/i, name: 'async function' },
+      { pattern: /\bimport\s+/i, name: 'import' },
+      { pattern: /\bexport\s+/i, name: 'export' },
+      { pattern: /\bif\s*\(/i, name: 'if' },
+      { pattern: /\bfor\s*\(/i, name: 'for' },
+      { pattern: /\bwhile\s*\(/i, name: 'while' },
+      { pattern: /\w+\s*\([^)]*\)\s*;/i, name: 'function call' }
+    ];
+    
+    for (const { pattern, name } of codeStartPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const codeStart = text.indexOf(match[0]);
+        const codeSection = text.substring(codeStart);
+        
+        console.log(`[Code Extraction] Found ${name} at position ${codeStart}, text from there: "${codeSection.substring(0, 70)}..."`);
+        
+        // ── STRATEGY: Find code ending by looking for natural boundaries ──
+        // Priority 1: Semicolon (statement terminator) - most reliable for single statements
+        // Priority 2: Newline (line terminator) - for multi-line code or when no semicolon
+        // Priority 3: End of text
+        
+        // Look for semicolon (anywhere, not just followed by newline/end)
+        const semiIndex = codeSection.indexOf(';');
+        if (semiIndex !== -1) {
+          const extracted = codeSection.substring(0, semiIndex + 1).trim();
+          console.log(`[Code Extraction] ✓ Found semicolon at ${semiIndex}, extracted: "${extracted.substring(0, 60)}..."`);
+          return extracted;
+        }
+        
+        // Try newline (for multi-line code or code without semicolon)
+        const newlineIndex = codeSection.indexOf('\n');
+        if (newlineIndex !== -1) {
+          const extracted = codeSection.substring(0, newlineIndex).trim();
+          if (extracted.length > 0) {
+            console.log(`[Code Extraction] ✓ Found newline at ${newlineIndex}, extracted: "${extracted.substring(0, 60)}..."`);
+            return extracted;
+          }
+        }
+        
+        // Return entire section if no boundaries found
+        const extracted = codeSection.trim();
+        console.log(`[Code Extraction] ✓ Using end of text, extracted: "${extracted.substring(0, 60)}..."`);
+        return extracted;
+      }
+    }
+    
+    console.log(`[Code Extraction] ✗ No code keywords found`);
+    return null;
+  }
+
+  function isCodeSegment(text) {
+    if (!text || typeof text !== 'string') return false;
+    
+    // Count code indicators
+    const indicators = {
+      hasAssignment: /\s*=\s*/.test(text),
+      hasCodeKeyword: /(const|let|var|function|class|if|for|while|async|await|import|export)/.test(text),
+      hasBrackets: /[\{\}\[\]\(\)]/.test(text),
+      hasOperators: /[+\-*/%&|^<>!]=?/.test(text),
+      hasSemicolon: /;$/.test(text),
+      hasQuotedString: /["'`][^"'`]*["'`]/.test(text),
+      hasComma: /,/.test(text),
+      hasCodeSyntax: /[\{\};=,()]/.test(text)
+    };
+    
+    const codeScore = Object.values(indicators).filter(Boolean).length;
+    // Lower threshold: >= 2 indicators (was 3)
+    // This catches: "const x = "value"" (hasCodeKeyword + hasAssignment)
+    const isCode = codeScore >= 2;
+    
+    if (codeScore > 0) {
+      console.log(`[Code Density] Text: "${text.substring(0, 50)}..." - Score: ${codeScore}/8 - Indicators: ${Object.entries(indicators).filter(([k,v]) => v).map(([k]) => k).join(', ')} - IsCode: ${isCode}`);
+    }
+    
+    return isCode;
+  }
+
+  function extractCodeFromMixedText(text) {
+    if (!text || typeof text !== 'string') return text;
+    
+    console.log(`[Code Extraction] Processing mixed text: "${text.substring(0, 70)}..."`);
+    
+    // ════════════════════════════════════════════════════════════════════════════
+    // MULTI-LEVEL APPROACH TO EXTRACT CODE FROM PROSE
+    // ════════════════════════════════════════════════════════════════════════════
+    
+    // ── LEVEL 1: Direct Declaration Patterns (const/let/var) ──
+    // These are ALWAYS code, highest confidence
+    const declarationPatterns = [
+      /\bconst\s+[\w$]+\s*=\s*["']([^"']*?)["']\s*;?/i,     // const x = "value";
+      /\blet\s+[\w$]+\s*=\s*["']([^"']*?)["']\s*;?/i,       // let x = "value";
+      /\bvar\s+[\w$]+\s*=\s*["']([^"']*?)["']\s*;?/i,       // var x = "value";
+      /\bconst\s+[\w$]+\s*=\s*\{[^}]*\};?/i,                // const x = {...};
+      /\blet\s+[\w$]+\s*=\s*\[[^\]]*\];?/i,                 // let x = [...];
+      /\bfunction\s+\w+\s*\([^)]*\)\s*\{[^}]*\}/i,          // function foo() {}
+      /\bimport\s+.*?\s+from\s+["'][^"']*["'];?/i,          // import x from "y";
+    ];
+    
+    for (const pattern of declarationPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        console.log(`[Code Extraction] ✓ LEVEL 1 (Declaration): "${match[0].substring(0, 60)}..."`);
+        return match[0].trim();
+      }
+    }
+    
+    // ── LEVEL 2: Assignment After Punctuation (Question Mark / Colon / Period) ──
+    // Pattern: "question? var = value" or "text: var = value"
+    // The punctuation BEFORE the assignment strongly suggests code follows
+    const postPunctuationPattern = /[?:\.]\s*(\w+\s*=\s*["'][^"']*["']\s*;?)/i;
+    const postPuncMatch = text.match(postPunctuationPattern);
+    if (postPuncMatch) {
+      const extracted = postPuncMatch[1].trim();
+      console.log(`[Code Extraction] ✓ LEVEL 2 (Post-Punctuation): "${extracted.substring(0, 60)}..."`);
+      return extracted;
+    }
+    
+    // ── LEVEL 3: Assignment at End of Sentence ──
+    // Pattern: Text ends with "var = value;"
+    // High confidence because it's isolated at the end
+    const endAssignmentPattern = /(\w+\s*=\s*["'][^"']*["']\s*;?)\s*$/i;
+    const endMatch = text.match(endAssignmentPattern);
+    if (endMatch) {
+      const extracted = endMatch[1].trim();
+      console.log(`[Code Extraction] ✓ LEVEL 3 (End Assignment): "${extracted.substring(0, 60)}..."`);
+      return extracted;
+    }
+    
+    // ── LEVEL 4: Assignment After Question Keyword ──
+    // Pattern: "is this correct? var = value" or "how about: var = value"
+    // Question words often precede code examples
+    const questionCodePattern = /(?:is\s+this|can\s+you|how\s+do|what\s+is|does\s+this|should\s+i|please\s+show|try\s+this|here'?s?)[^?]*[?:]\s*(\w+\s*=\s*["'][^"']*["']\s*;?)/i;
+    const questionMatch = text.match(questionCodePattern);
+    if (questionMatch) {
+      const extracted = questionMatch[1].trim();
+      console.log(`[Code Extraction] ✓ LEVEL 4 (Question+Code): "${extracted.substring(0, 60)}..."`);
+      return extracted;
+    }
+    
+    // ── LEVEL 5: Bare Assignment (Fallback) ──
+    // Pattern: Just "var = value" - could be code, could be prose
+    // Check CONTEXT: is there OTHER code-like content?
+    const bareAssignmentPattern = /(\w+\s*=\s*["'][^"']*["']\s*;?)/i;
+    const bareMatch = text.match(bareAssignmentPattern);
+    if (bareMatch) {
+      // Check if this looks like code context (has other code indicators)
+      const indicators = {
+        hasCodeKeyword: /(const|let|var|function|class|if|for|while)/.test(text),
+        hasMultipleEquals: (text.match(/=/g) || []).length >= 1,
+        hasSemicolon: /;/.test(text),
+        hasQuotedString: /["'][^"']*["']/.test(text),
+        hasFunctionCall: /\w+\s*\([^)]*\)/.test(text),
+        hasBrackets: /[\{\}\[\]]/.test(text)
+      };
+      
+      const contextScore = Object.values(indicators).filter(Boolean).length;
+      
+      // If multiple code indicators, treat as code
+      if (contextScore >= 2) {
+        const extracted = bareMatch[1].trim();
+        console.log(`[Code Extraction] ✓ LEVEL 5 (Bare Assignment + Context Score ${contextScore}): "${extracted.substring(0, 60)}..."`);
+        return extracted;
+      }
+    }
+    
+    // ── FALLBACK: Use boundary extraction if still no match ──
+    const boundaryExtracted = extractCodeFromProseContext(text);
+    if (boundaryExtracted && boundaryExtracted.length > 5) {
+      console.log(`[Code Extraction] ✓ Boundary method successful: "${boundaryExtracted.substring(0, 60)}..."`);
+      return boundaryExtracted;
+    }
+    
+    // ── FINAL FALLBACK: Code density analysis ──
+    if (isCodeSegment(text)) {
+      console.log(`[Code Extraction] ✓ Code density confirmed - keeping original`);
+      return text;
+    }
+    
+    // ── DEFAULT: Keep original but flag low confidence ──
+    console.log(`[Code Extraction] ⚠ No pattern matched - keeping original: "${text.substring(0, 60)}..."`);
+    return text;
+  }
+
   // Source code detection runs independently on normalisedText, parallel with all paths.
   // Returns findings array with source_code pattern and proper risk escalation.
 
@@ -4286,16 +4551,102 @@ const TrustScanner = (() => {
     
     for (const block of unformattedBlocks) {
       console.log(`[TrustPrompt/scanner] Processing block: "${block.rawMatch.substring(0, 30)}..." classification=${block.scoreObj.classification}`);
+      
+      // ── TRIM PROSE: Extract only code lines, removing surrounding prose ──
+      // If the block contains both code and prose (e.g., "is this the right syntax? var = ..."),
+      // keep only the actual code lines. Code lines are those matching code patterns,
+      // not plain English questions or statements.
+      const blockTrimmed = block.rawMatch.trim();
+      let lines = blockTrimmed.split('\n');
+      
+      // Define code-like patterns
+      const codeLinePatterns = [
+        /^\s*\w+\.\w+\s*\([^)]*\)\s*;?\s*$/,                                   // method calls
+        /^\s*(?:SELECT|INSERT|UPDATE|DELETE)\s+/i,                             // SQL
+        /^\s*const\s+\w+\s*=|^\s*let\s+\w+\s*=|^\s*var\s+\w+\s*=/,             // const/let/var
+        /^\s*[\w$]+\s*=\s*\{|^\s*[\w$]+\s*=\s*\[/,                             // object/array literal assignment
+        /^\s*[\w$]+\s*=\s*["'][^"']*["']\s*;?\s*$/,                            // variable assignment
+        /^\s*function\s+|^\s*class\s+|^\s*async\s+|^\s*await\s+/,              // keywords
+        /^\s*import\s+|^\s*export\s+|^\s*from\s+/,                             // module keywords
+        /^\s*if\s*\(|^\s*for\s*\(|^\s*while\s*\(|^\s*try\s*\{|^\s*catch\s*\(/, // control flow
+        /^\s*\}/,                                                               // closing brace
+        /^\s*\/\/|^\s*\/\*|^\s*\*|^\s*#/,                                      // comments
+      ];
+      
+      // Define prose-only patterns (lines that are NOT code)
+      const proseOnlyPatterns = [
+        /^[a-z\s?.,!'"()-]*$/i,  // Plain English text without code syntax
+        /^is\s+this|^can\s+you|^what\s+is|^how\s+do|^why\s+is|^does\s+this/i,  // Question starters
+      ];
+      
+      const isCodeLine = (l) => {
+        const t = l.trim();
+        if (!t) return false;  // Empty lines are not code
+        
+        // PRIORITY 1: Check if line HAS code syntax (const/let/var, assignment, etc.)
+        // If it has ACTUAL code keywords/patterns, it's code (even with prose)
+        if (codeLinePatterns.some(p => p.test(t))) {
+          return true;
+        }
+        
+        // PRIORITY 2: Check if line contains code-like syntax characters
+        // If it has operators, brackets, assignment, it's likely code
+        if (/[\{\}\[\]\(\);,=:]/.test(t)) {
+          return true;
+        }
+        
+        // PRIORITY 3: If NO code syntax detected, check if it's pure prose
+        // Only filter out if it matches PROSE-ONLY patterns (no code keywords)
+        if (proseOnlyPatterns.some(p => p.test(t))) {
+          return false;
+        }
+        
+        // Otherwise, it's uncertain - keep it
+        return true;
+      };
+      
+      // Extract only code lines, skip prose
+      let codeLines = lines.filter(isCodeLine);
+      
+      // If all lines were filtered (all prose), skip this block
+      if (codeLines.length === 0) {
+        console.log(`[TrustPrompt/scanner] No code lines found in block, skipping`);
+        continue; // All lines were prose, skip
+      }
+      
+      // Reconstruct cleanedMatch from code lines only
+      let cleanedMatch = codeLines.join('\n').trim();
+      console.log(`[TrustPrompt/scanner] Cleaned block: removed ${lines.length - codeLines.length} prose lines, kept ${codeLines.length} code lines`);
+      
+      // ── EXTRACT PURE CODE FROM MIXED PROSE + CODE ──
+      // If the cleaned match still contains prose mixed with code, extract only the code part
+      // Examples: "is this code? const x = 5;" → "const x = 5;"
+      const furtherExtracted = extractCodeFromMixedText(cleanedMatch);
+      if (furtherExtracted && furtherExtracted.length > 0 && furtherExtracted !== cleanedMatch) {
+        console.log(`[TrustPrompt/scanner] Further extracted: "${furtherExtracted.substring(0, 50)}..."`);
+        cleanedMatch = furtherExtracted;
+      }
+      
+      // ── SKIP: If block contains ONLY a variable assignment with an ID ──
+      // Pattern: check if the block is essentially just "var = "id"" 
+      const singleLineVarAssignmentPattern = /^\s*[\w$]+\s*=\s*["'][^"']*["']\s*;?\s*$/;
+      
+      // If the ONLY code-like line is a variable assignment, skip source_code detection
+      if (codeLines.length === 1 && singleLineVarAssignmentPattern.test(codeLines[0].trim())) {
+        console.log(`[TrustPrompt/scanner] Skipping source_code detection for single-line variable assignment: ${codeLines[0]}`);
+        continue; // Skip to next block - don't create source_code finding
+      }
+      
       const escalationResult = evaluateCodeRiskEscalation(block.scoreObj, "low");
       
       // ★ ALWAYS extract credentials from code, regardless of escalationResult
       // Don't wait for credentialsDetected - just extract directly
       console.log(`[TrustPrompt/scanner] ★★★ EXTRACTING credentials from block START`);
-      const credentialFindings = extractCredentialsFromCode(block.rawMatch, "source_code");
+      const credentialFindings = extractCredentialsFromCode(cleanedMatch, "source_code");
       console.log(`[TrustPrompt/scanner] ★★★ EXTRACTING credentials from block: found ${credentialFindings.length} credentials`);
       
       let escalatedRisk = escalationResult.escalatedRisk;
-      const isContextual = isCodeContextual(block.rawMatch, normalisedText, block.startIndex);
+      const isContextual = isCodeContextual(cleanedMatch, normalisedText, block.startIndex);
       let contextElevation = false;
       
       if (isContextual && escalatedRisk === "low") {
@@ -4308,11 +4659,42 @@ const TrustScanner = (() => {
         console.log(`[TrustPrompt/code] code block + ${escalationResult.credentialTypes.join(', ')} detected → ${escalatedRisk.toUpperCase()} risk`);
       }
 
+      // ═══════════════════════════════════════════════════════════════════════════════
+      // RECOMPUTE CODE METRICS FOR EXTRACTED CODE (not original block)
+      // ═══════════════════════════════════════════════════════════════════════════════
+      // The extracted code may be different from the original block, so we need to
+      // recompute strong_evidence based on what was actually extracted
+      
+      const extractedCodeMetrics = {
+        hasCodeKeyword: /(const|let|var|function|class|if|for|while|async|await|import|export)/.test(cleanedMatch),
+        hasAssignment: /\s*=\s*/.test(cleanedMatch),
+        hasBrackets: /[\{\}\[\]\(\)]/.test(cleanedMatch),
+        hasOperators: /[+\-*/%&|^<>!]=?/.test(cleanedMatch),
+        hasSemicolon: /;$/.test(cleanedMatch),
+        hasQuotedString: /["'`][^"'`]*["'`]/.test(cleanedMatch),
+        hasComma: /,/.test(cleanedMatch),
+        hasCodeSyntax: /[\{\};=,()]/.test(cleanedMatch)
+      };
+      
+      const extractedCodeScore = Object.values(extractedCodeMetrics).filter(Boolean).length;
+      
+      // ── DETERMINE STRONG EVIDENCE FOR EXTRACTED CODE ──
+      // Set to TRUE if:
+      //   1. Code contains explicit code keywords (const, let, var, function, etc.) [high confidence]
+      //   2. Code has multiple code indicators (score >= 2) [reasonable confidence]
+      //   3. Original block had strong_evidence (maintain original classification)
+      const extractedStrongEvidence = 
+        extractedCodeMetrics.hasCodeKeyword ||          // Level 1-2 extraction (keywords present)
+        extractedCodeScore >= 2 ||                      // Multiple code indicators
+        block.scoreObj.strong_evidence;                 // Original block was strong evidence
+      
+      console.log(`[Code Metrics] Extracted: ${cleanedMatch.substring(0, 50)}... | hasKeyword: ${extractedCodeMetrics.hasCodeKeyword} | score: ${extractedCodeScore} | strong_evidence: ${extractedStrongEvidence}`);
+      
       const finding = {
         patternId: "source_code",
         label: "Source Code Block",
         risk: escalatedRisk,
-        rawMatch: block.rawMatch,
+        rawMatch: cleanedMatch,
         safeVersion: "[CODE BLOCK REMOVED]",
         validated: true,
         source: "source_code_detection",
@@ -4321,11 +4703,11 @@ const TrustScanner = (() => {
         credentialTypes: escalationResult.credentialTypes,
         contextElevation: contextElevation,
         codeMetrics: {
-          score: block.scoreObj.score,
-          strong_evidence: block.scoreObj.strong_evidence,
+          score: extractedCodeScore,
+          strong_evidence: extractedStrongEvidence,
           classification: block.scoreObj.classification,
-          reason: block.scoreObj.reason,
-          features: block.scoreObj.features
+          reason: `Extracted from mixed prose+code: ${extractedCodeMetrics.hasCodeKeyword ? 'contains code keywords' : 'code indicators present'}`,
+          features: extractedCodeMetrics
         }
       };
       

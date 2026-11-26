@@ -1,4 +1,4 @@
-// patterns.js
+﻿// patterns.js
 // All detection patterns for TrustPrompt.
 // Each entry defines:
 //   id                - machine-readable key
@@ -931,30 +931,91 @@ const PH_AREA_FOLLOW_STOPWORDS = [
   // roles / officials
   "captain", "chairman", "chairperson", "kapitan", "councilor", "kagawad",
   "official", "officials", "secretary", "treasurer", "tanod", "worker", "workers",
-  "staff", "resident", "residents", "folk", "people",
+  "staff", "resident", "residents", "folk", "people", "chief", "head", "leader",
+  "mayor", "governor", "president", "vice", "deputy", "director", "officer",
+  
   // facilities / generic nouns
   "hall", "health", "center", "centre", "office", "clinic", "school", "unit",
   "level", "system", "program", "programs", "project", "projects", "council",
-  "assembly", "meeting", "fiesta", "event", "election", "elections",
+  "assembly", "meeting", "fiesta", "event", "election", "elections", "station",
+  "facility", "facility", "library", "gym", "gymnasium", "building", "compound",
+  "headquarters", "post", "camp", "base", "church", "chapel", "temple",
+  
   // connectors / function words
   "in", "of", "and", "or", "but", "the", "a", "an", "with", "for", "to", "near",
   "is", "was", "where", "here", "there", "that", "this", "my", "our", "their",
+  "on", "at", "by", "as", "so", "if", "it", "its", "be", "being",
+  
   // action verbs - barangay + verb is NOT an address
   "needs", "need", "needed", "wanting", "wanted", "want", "asked", "ask", "required", "require",
   "help", "helps", "helping", "helped", "supports", "support", "serve", "serves",
   "provide", "provides", "give", "gives", "organize", "organizes", "run", "runs",
   "manage", "manages", "confirm", "confirming", "confirmed", "confirms",
-  // document words
+  "accept", "accepts", "accepts", "accept", "collect", "collects", "collect",
+  "conduct", "conducts", "conduct", "coordinate", "coordinates", "coordinate",
+  "develop", "develops", "develop", "establish", "establishes", "establish",
+  "implement", "implements", "implement", "monitor", "monitors", "monitor",
+  "organize", "organizes", "organize", "plan", "plans", "plan",
+  "receive", "receives", "receive", "schedule", "schedules", "schedule",
+  "submit", "submits", "submit", "supervise", "supervises", "supervise",
+  
+  // descriptive adjectives that never name a place
+  "new", "old", "good", "bad", "great", "small", "large", "big", "tiny",
+  "public", "private", "modern", "ancient", "first", "second", "third",
+  "main", "back", "front", "upper", "lower", "inner", "outer",
+  "general", "special", "local", "national", "international",
+  "temporary", "permanent", "temporary", "current", "recent",
+  "primary", "secondary", "elementary", "higher", "lower",
+  
+  // administrative / governmental nouns
+  "extension", "sector", "phase", "zone", "area", "district", "ward",
+  "chapter", "branch", "station", "post", "camp", "base", "garrison",
+  "region", "province", "city", "municipality", "municipality",
+  "government", "administration", "department", "bureau", "agency",
+  "division", "section", "sub", "subsection", "unit", "squad",
+  
+  // tagalog / cebuano descriptors
+  "bagong", "lumad", "lumpia", "baguan", "bagay", "bagay",
+  "hindi", "ang", "mga", "pa", "na", "ng", "ay", "o",
+  
+  // document / administrative words
   "permit", "permits", "clearance", "certificate", "license", "document", "documents",
-  "form", "forms",
-  // ordinary nouns that follow "barangay" in prose ("barangay budget", "barangay
-  // ordinance"), and a brand/team name that is not a locality ("Barangay Ginebra").
-  "budget", "ordinance", "ordinances", "fund", "funds", "road", "roads", "ginebra",
-  // verbs / auxiliaries / function words. These also stop the name run: without
-  // them "Sitio Maligaya is a beautiful place" swallowed "is a".
+  "form", "forms", "report", "reports", "record", "records", "data",
+  "file", "files", "memo", "memos", "notice", "notices",
+  
+  // ordinary nouns that follow "barangay" in prose
+  "budget", "ordinance", "ordinances", "fund", "funds", "road", "roads",
+  "ginebra", "fiesta", "fiesta", "feast", "celebration", "event",
+  "competition", "tournament", "game", "match", "sport",
+  "policy", "policy", "rule", "law", "regulation",
+  
+  // common verbs / auxiliaries / function words
   "has", "have", "had", "are", "were", "been", "will", "would", "does", "did",
   "play", "plays", "played", "win", "wins", "won", "also", "just", "very",
-  "from", "after", "before", "when", "who", "which", "because", "while", "then", "than"
+  "from", "after", "before", "when", "who", "which", "because", "while", "then", "than",
+  "can", "could", "should", "may", "might", "must", "do", "done",
+  "come", "comes", "came", "coming", "go", "goes", "went", "going",
+  "see", "sees", "saw", "seen", "think", "thinks", "thought",
+  
+  // more action verbs common after "barangay"
+  "begin", "begins", "began", "beginning", "start", "starts", "started",
+  "continue", "continues", "continued", "continuing", "end", "ends", "ended",
+  "stop", "stops", "stopped", "stopping", "join", "joins", "joined",
+  "include", "includes", "included", "open", "opens", "opened",
+  "close", "closes", "closed", "meet", "meets", "met", "meet",
+  "hold", "holds", "held", "take", "takes", "took", "taking",
+  "set", "sets", "setup", "prepare", "prepares", "prepared",
+  
+  // common modifiers
+  "only", "both", "each", "every", "other", "such", "same",
+  "all", "any", "some", "many", "few", "several", "various",
+  "more", "most", "less", "least", "much", "enough",
+  "too", "so", "as", "than", "then",
+  
+  // more pronouns & determiners
+  "i", "me", "we", "us", "you", "he", "him", "she", "her",
+  "it", "they", "them", "him", "himself", "herself", "itself",
+  "myself", "yourself", "ourselves", "yourselves", "themselves"
 ];
 
 
@@ -1030,6 +1091,11 @@ function structuralValidatePHStreetAddress(raw) {
   // 5. Residence cue + street name + street-type (no number)
   const cueAlt = PH_ADDRESS_CUES.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   if (new RegExp(`\\b(?:${cueAlt})\\b[\\s\\S]{0,40}?\\b[A-Z][a-zA-Z]+\\s+${streetType}`, "i").test(s)) {
+    return true;
+  }
+  // 5b. Street name + street-type only (bare "Rizal Avenue" after cue was stripped)
+  //     This is now acceptable because the regex ensured it was preceded by a cue
+  if (new RegExp(`^[A-Z][a-zA-Z]+\\s+${streetType}(?:\\b|$)`, "i").test(s)) {
     return true;
   }
   return false;
@@ -1318,7 +1384,7 @@ const TRUSTPROMPT_PATTERNS = [
     id: "source_code",
     label: "Source Code Block",
     reason: "Code blocks may contain hardcoded credentials, internal logic, proprietary algorithms, or configuration details that should not be shared externally. Even seemingly harmless code can reveal system architecture or security assumptions.",
-    regex: /```[\s\S]*?```|`[^`\n]{10,}`/g,
+    regex: /```[\s\S]*?```|`[^`\n]{10,}`|(?:^|\n)\s*(?:const|let|var)\s+\w+\s*=\s*["'][^"']*["'];?/gm,
     risk: "low",
     validate: null,
     sanitize: (_m) => "[CODE BLOCK REMOVED]"
@@ -1481,7 +1547,8 @@ const TRUSTPROMPT_PATTERNS = [
           "[A-Za-z0-9][^.!?\\n]{2,80}" +
           "|" +
           // E. residence cue + street name + street-type (no number) (+ continuation)
-          "\\b(?:I\\s+live\\s+(?:at|in)|I\\s+reside\\s+(?:at|in)|my\\s+(?:home\\s+)?address\\s+is|located\\s+at|residing\\s+at)\\s+(?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT +
+          // Uses capture group to extract only the address part (without the cue)
+          "\\b(?:I\\s+live\\s+(?:at|in)|I\\s+reside\\s+(?:at|in)|my\\s+(?:home\\s+)?address\\s+is|located\\s+at|residing\\s+at)\\s+((?:[A-Za-z][\\w.-]*\\s+){1,3}" + STREET + "\\b\\.?" + CONT + ")" +
         ")",
         "gi"
       );
@@ -1582,6 +1649,30 @@ const TRUSTPROMPT_PATTERNS = [
       const contextStart = Math.max(0, matchIndex - 150);
       const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 150);
       const context = fullText.substring(contextStart, contextEnd).toLowerCase();
+      const beforeMatch = fullText.substring(matchIndex - 10, matchIndex);
+      const afterMatch = fullText.substring(matchIndex + rawMatch.length, matchIndex + rawMatch.length + 10);
+      
+      // CRITICAL: Check if this date fragment is part of a longer dash-separated reference number
+      // Examples: "07-12-3456-789" (claim ref), "02-1234-567-1234567" (PWD ID)
+      // Look for dash immediately before or after the matched date
+      const surroundedByDashes = /\d-/.test(beforeMatch) || /-\d/.test(afterMatch);
+      if (surroundedByDashes) {
+        return false; // Suppress - this is part of a reference/ID number, not a standalone date
+      }
+      
+      // CRITICAL: Check if this is IMMEDIATELY part of a driver's license number
+      // Format: Letter-2digits-2digits-6digits (e.g., C51-23-016208)
+      // Only suppress if the matched date is actually adjacent to or within the DL pattern
+      // NOT if the DL appears elsewhere in the text
+      const beforeContext = fullText.substring(Math.max(0, matchIndex - 20), matchIndex);
+      const afterContext = fullText.substring(matchIndex + rawMatch.length, Math.min(fullText.length, matchIndex + rawMatch.length + 20));
+      const immediateContext = beforeContext + rawMatch + afterContext;
+      
+      // Check if this date is immediately part of a DL pattern (not just nearby)
+      const driverLicensePattern = /[A-Z]\d{2}-\d{2}-\d{6}/i;
+      if (driverLicensePattern.test(immediateContext)) {
+        return false; // Suppress - this is part of a driver's license number
+      }
       
       // Check if this date is part of an IPv4 address (digits.digits.digits.digits pattern)
       const ipv4Pattern = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
@@ -1740,7 +1831,43 @@ const TRUSTPROMPT_PATTERNS = [
       const contextEnd = Math.min(fullText.length, matchIndex + rawMatch.length + 300);
       const context = fullText.substring(contextStart, contextEnd).toLowerCase();
       
-      // LOYALTY CARD CONTEXT: Check FIRST (highest priority suppression)
+      // ── SOURCE CODE CONTEXT (Highest Priority - ALLOW) ───────────────────────
+      // If the number appears in source code with ID-related variable names,
+      // it's clearly a test value for PhilID, not a loyalty card
+      const sourceCodeIdPatterns = [
+        // Variable/constant assignments with ID keywords (const/let/var)
+        /(?:const|let|var)\s+(?:\w*)?(?:national)?id\s*=\s*/i,  // const nationalId = ...
+        /(?:const|let|var)\s+(?:\w*)?philid\s*=\s*/i,            // const philId = ...
+        /(?:const|let|var)\s+(?:\w*)?id\s*=\s*/i,                // const id = ...
+        /(?:const|let|var)\s+(?:\w*)?(?:government|govt)\s*id\s*=\s*/i,
+        
+        // Simple variable assignments WITHOUT const/let/var (critical fix)
+        /(?:^|\s)(?:\w*)?(?:national)?id\s*=\s*["']/i,           // nationalId = "..."
+        /(?:^|\s)(?:\w*)?philid\s*=\s*["']/i,                    // philId = "..."
+        /(?:^|\s)(?:\w*)?id\s*=\s*["']/i,                        // id = "..."
+        /(?:^|\s)(?:\w*)?(?:government|govt)\s*id\s*=\s*["']/i,  // government_id = "..."
+        
+        // JSON object properties with ID keywords
+        /(?:"|\')(?:national)?id(?:"|\')?\s*:\s*/i,              // "nationalId": ...
+        /(?:"|\')philid(?:"|\')?\s*:\s*/i,                       // "philId": ...
+        /(?:"|\')ph_?id(?:"|\')?\s*:\s*/i,                       // "ph_id": ...
+        
+        // Test/mock data indicators
+        /test.*?(?:national)?id|mock.*?(?:national)?id|sample.*?(?:national)?id|fake.*?(?:national)?id/i,
+        /(?:national)?id.*?(?:test|mock|sample|fake|example)/i,
+        
+        // Array/list of test values
+        /\[.*?(?:national)?id|test.*?data|mock.*?data/i
+      ];
+      
+      // Check if this is source code context - if so, ALLOW it
+      for (const pattern of sourceCodeIdPatterns) {
+        if (pattern.test(context)) {
+          return true; // ALLOW: This is source code with ID variable/property name
+        }
+      }
+      
+      // ── LOYALTY CARD CONTEXT (Second Priority - SUPPRESS) ───────────────────
       // These patterns indicate the number is definitely NOT a government ID
       const loyaltyPatterns = [
         // Membership/loyalty card labels (direct labels)
@@ -1764,17 +1891,21 @@ const TRUSTPROMPT_PATTERNS = [
         
         // Retailers/company copying style
         /(?:retailer|company|store|brand).*?(?:copy|styled|formatted)\s+(?:like|after|from)\s+(?:the\s+)?(?:national\s+)?id/i,
-        /(?:copy\s+that|familiar\s+style|their\s+own\s+card|same\s+format\s+as)/i
+        /(?:copy\s+that|familiar\s+style|their\s+own\s+card|same\s+format\s+as)/i,
+        
+        // Credit card or payment card context
+        /(?:credit\s+card|debit\s+card|payment\s+card|card\s+number|card\s+#)/i,
+        /(?:visa|mastercard|amex|diners|discover|unionpay|card\s+issuer)/i
       ];
       
       // Check if ANY loyalty pattern matches - if so, SUPPRESS immediately
       for (const pattern of loyaltyPatterns) {
         if (pattern.test(context)) {
-          return false; // SUPPRESS: This is a loyalty card, not a PhilID
+          return false; // SUPPRESS: This is a loyalty/payment card, not a PhilID
         }
       }
       
-      // GOVERNMENT ID CONTEXT: Only check if NO loyalty context was detected
+      // ── GOVERNMENT ID CONTEXT (Third Priority - ALLOW) ──────────────────────
       // These patterns indicate the number IS a government ID
       const governmentIdPatterns = [
         // Explicit government ID declarations with positive framing
@@ -1793,8 +1924,9 @@ const TRUSTPROMPT_PATTERNS = [
         }
       }
       
-      // Default: If unclear, be conservative and suppress 4-4-4-4 pattern
-      // (Most legitimate PhilIDs have explicit government ID context anyway)
+      // ── DEFAULT: Ambiguous Context ────────────────────────────────────────
+      // If context is unclear and NOT explicitly source code, be conservative
+      // and suppress the 4-4-4-4 pattern to avoid false positives on credit cards
       return false;
     },
     sanitize: (m) => {
@@ -1829,15 +1961,49 @@ const TRUSTPROMPT_PATTERNS = [
     id: "ph_id_passport",
     label: "Philippine Passport",
     reason: "Passport issued by the Bureau of Immigration (BI) is an international travel credential and critical identifier under RA 10173 and UNCHR standards. Philippine passports are recognized globally for travel and identity verification purposes.",
-    regex: /(?:passport\s+(?:number|no\.?|no|id|#)?:?\s*)?(?:^|[\s])(?:[A-Z]\d{7}[A-Z]|[A-Z]{2}\d{7})(?:\s|$|[^\w])|passport\s+(?:number|no\.?|no|id|#)?:?\s*(?:[A-Z]\d{7}[A-Z]|[A-Z]{2}\d{7})/gim,
+    regex: /(?:passport\s+(?:number|no\.?|no|id|#)?:?\s*)?(?:^|[\s])(?:[A-Za-z]\d{7}[A-Za-z]|[A-Za-z]{2}\d{7}|[A-Za-z]\d{7})(?:\s|$|[^\w])|passport\s+(?:number|no\.?|no|id|#)?:?\s*(?:[A-Za-z]\d{7}[A-Za-z]|[A-Za-z]{2}\d{7}|[A-Za-z]\d{7})/gim,
     risk: "high",
     validate: null,
     structuralValidate: structuralValidatePHID_Passport,
+    contextFilter: function(rawMatch, fullText, matchIndex) {
+      if (!fullText || typeof fullText !== "string") return true;
+      
+      // SUPPRESS: If this appears to be a product model/SKU code
+      // Product context keywords indicate this is commercial merchandise, not a government ID
+      const productContextPatterns = [
+        // Camera/lens model codes
+        /(?:lens|camera|lens\s+model|camera\s+model|model\s+code|sku|product\s+code|item\s+code|article\s+no|model\s+no|model\s+number)[\s:]*(?:[A-Z]{2}\d{7})?/i,
+        // Photography equipment
+        /(?:macro|telephoto|wide-?angle|zoom|prime|stabiliz|aperture|focal|depth|optics)/i,
+        // Generic product codes on boxes/packaging
+        /(?:box|packaging|carton|item|article|code)[\s:]*(?:[A-Z]{2}\d{7})?/i,
+        // Electronics/technology product codes
+        /(?:serial\s+number|s\/n|serial\s+no|part\s+no|part\s+number)[\s:]*(?:[A-Z]{2}\d{7})?/i,
+      ];
+      
+      // Extract context window around the match (100 chars before and after)
+      const start = Math.max(0, matchIndex - 100);
+      const end = Math.min(fullText.length, matchIndex + rawMatch.length + 100);
+      const contextWindow = fullText.substring(start, end);
+      
+      // Check if any product context pattern appears in the window
+      for (const pattern of productContextPatterns) {
+        if (pattern.test(contextWindow)) {
+          return false; // SUPPRESS: This is a product code, not a passport
+        }
+      }
+      
+      return true; // Allow: Likely a genuine passport number
+    },
     sanitize: (m) => {
-      const letters = m.replace(/[0-9\s\-.:]/g, "").toUpperCase();
+      const letters = m.replace(/[0-9\s\-.,;:]/g, "").toUpperCase();
       const digits = m.replace(/[^0-9]/g, "");
-      if (digits.length === 7 && letters.length >= 2) {
-        return letters.slice(0, 2) + digits.slice(0, 2) + "*".repeat(3) + digits.slice(-2);
+      if (digits.length === 7) {
+        if (letters.length >= 2) {
+          return letters.slice(0, 2) + digits.slice(0, 2) + "*".repeat(3) + digits.slice(-2);
+        } else if (letters.length === 1) {
+          return letters + digits.slice(0, 2) + "*".repeat(3) + digits.slice(-2);
+        }
       }
       return "[REDACTED-PASSPORT]";
     }
@@ -1924,6 +2090,23 @@ const TRUSTPROMPT_PATTERNS = [
         return alphanumeric.slice(0, 1) + "*".repeat(7) + "-****-" + alphanumeric.slice(-1);
       }
       return "[REDACTED-POSTAL]";
+    }
+  },
+
+  {
+    id: "ph_id_drivers_license",
+    label: "Driver's License Number",
+    reason: "Philippine driver's license numbers are government-issued credentials that uniquely identify individuals and contain personal information like birthdate and address under RA 10173. They are critical identifiers that can enable identity theft or fraud.",
+    regex: /\b[A-Z]\d{2}-\d{2}-\d{6}\b/gi,
+    risk: "high",
+    validate: null,
+    structuralValidate: null,
+    sanitize: (m) => {
+      const parts = m.match(/([A-Z])(\d{2})-(\d{2})-(\d{6})/i);
+      if (parts) {
+        return parts[1] + parts[2] + "-" + parts[3] + "-" + "*".repeat(6);
+      }
+      return "[REDACTED-DL]";
     }
   },
 
@@ -2068,7 +2251,8 @@ const TRUSTPROMPT_PATTERNS = [
         return digits.slice(0, 2) + "-" + "*".repeat(9) + "-" + digits.slice(-1);
       }
       return "[REDACTED-PHILHEALTH]";
-    }
+    },
+
   },
 
   // -- BLOOD TYPE MENTION
@@ -2208,7 +2392,8 @@ const TRUSTPROMPT_PATTERNS = [
       const afterStart = matchIndex + rawMatch.length;
       const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
       
-      const fullContext = beforeText + " [MATCH] " + afterText;
+      // ★ IMPORTANT: Include rawMatch in fullContext so patterns can find "cm", "height", etc.
+      const fullContext = beforeText + " " + rawMatch.toLowerCase() + " " + afterText;
       
       // Personal Attribute Context - ALLOW these (direct statements about self)
       const personalAttributeMarkers = [
@@ -2269,10 +2454,19 @@ const TRUSTPROMPT_PATTERNS = [
     id: "weight_mention",
     label: "Weight Mention",
     reason: "Weight is personal physical characteristic information under RA 10173. Only captured in ID/document contexts.",
-    regex: /\b(?:(?:weight|timbang|weighs?|heavy|mass)\s*(?:is|:)?\s*)?(?:(\d{1,3}(?:\.\d{1,2})?)\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?|stone))\s*(?:heavy|heavy|kilos?)?\b/gi,
+    regex: /\b(?:(?:weight|timbang|weighs?|heavy|mass)\s*(?:is|:)?\s*)?(?:(\d{1,4}(?:\.\d{1,2})?)\s*(?:kg|kilograms?|lbs?|pounds?|g|grams?|stone|oz|ounces?|ton|tonnes?))\b/gi,
     risk: "low",
     validate: null,
     sanitize: (_m) => "[WEIGHT REDACTED]",
+    // POST-PROCESS: Extract only the numeric value and unit portion
+    // So "weigh 154 lbs" becomes "154 lbs", "weight: 70 kg" becomes "70 kg"
+    postProcess: (finding) => {
+      const match = finding.rawMatch;
+      // Extract only the number + unit portion, removing any preceding verbs/labels
+      // Use word boundary to ensure we match complete words
+      const cleaned = match.replace(/^(?:weigh|weighs|weight|timbang|heavy|mass)\b\s*(?:is|:)?\s*/i, '').trim();
+      return { ...finding, rawMatch: cleaned };
+    },
     // CRITICAL: Only match weight in ID/personal document contexts
     // Do NOT match weight in product specs, shipping, recipes, or general measurements
     contextFilter: function(rawMatch, fullText, matchIndex) {
@@ -2285,7 +2479,8 @@ const TRUSTPROMPT_PATTERNS = [
       const afterStart = matchIndex + rawMatch.length;
       const afterText = fullText.slice(afterStart, Math.min(fullText.length, afterStart + 150)).toLowerCase();
       
-      const fullContext = beforeText + " [MATCH] " + afterText;
+      // ★ IMPORTANT: Include rawMatch in fullContext so patterns can find "kg", "weight", etc.
+      const fullContext = beforeText + " " + rawMatch.toLowerCase() + " " + afterText;
       
       // Personal Attribute Context - ALLOW these (direct statements about self)
       const personalAttributeMarkers = [
@@ -2307,17 +2502,12 @@ const TRUSTPROMPT_PATTERNS = [
       // Objects/Items that measurements apply to - SUPPRESS these
       // These are explicit markers that the measurement is of an object, not a person
       const objectSubjectMarkers = [
-        // Check if BEFORE text ends with packaging keywords
-        /\b(package|box|bag|shipping|container|item|product)\s*$/i,  // Applied to beforeText
-        /\b(box|boxes|bag|bags|package|packages|item|items|product|products?|container|carton)\b.*?(?:\d+)\s*(?:kg|g|lbs?|pounds?)\b/i,
-        /(?:\d+)\s*(?:kg|g|lbs?|pounds?)\s+(?:bag|bags|box|boxes|package|packages|item|items|of|dried|mangoes?|container|carton)\b/i,
-        /\b(weight)\s+(?:of\s+the|of\s+this|of\s+a)?\s*(?:box|bag|package|item|product|container|carton)\b/i,
-        /\b(mangoes?|flour|sugar|ingredients?|food|meal|dish|rice|salt|spice)\s+(?:weighs?|is)?\s+.*?(?:\d+)\s*(?:kg|g|lbs?|pounds?)\b/i,
-        /(?:\d+)\s*(?:kg|g|lbs?|pounds?)\s+(?:of\s+)?(?:dried|mangoes?|flour|sugar|ingredients?|food|rice)\b/i,
+        // Check if BEFORE text ends with packaging/object keywords
+        /\b(box|bag|package|container|parcel|item|carton|crate|case|mangoes?)\s*$/i,
+        /(?:mangoes?\s+package|dried\s+mangoes?)/i,
       ];
       
-      // Check beforeText specifically for packaging keywords
-      const beforeTextEndsWithPackaging = /\b(package|box|bag|shipping|container|item|product)\s*$/i.test(beforeText);
+      // Remove beforeTextEndsWithPackaging since it's now part of objectSubjectMarkers check
       
       // ID/Personal Document Context - ALLOW these
       const idContextMarkers = [
@@ -2338,7 +2528,7 @@ const TRUSTPROMPT_PATTERNS = [
       // A furniture measurement appearing with height/weight keywords could still be personal profile
       
       const hasPersonalAttribute = personalAttributeMarkers.some(m => m.test(fullContext));
-      const hasObjectSubject = objectSubjectMarkers.some(m => m.test(fullContext)) || beforeTextEndsWithPackaging;
+      const hasObjectSubject = objectSubjectMarkers.some(m => m.test(beforeText));  // ★ Check BEFORE text only for object detection
       const hasIdMarker = idContextMarkers.some(m => m.test(fullContext));
       const hasNonIdMarker = nonIdContextMarkers.some(m => m.test(fullContext));
       

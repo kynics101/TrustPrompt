@@ -258,14 +258,21 @@ function scanText(text) {
       
       if (!TrustValidator.validate(pattern.validate, raw)) continue;
       const safeVersion = pattern.sanitize ? pattern.sanitize(raw) : "[REDACTED]";
-      findings.push({
+      let finding = {
         patternId:   pattern.id,
         label:       pattern.label,
         risk:        pattern.risk,
         reason:      pattern.reason || "",
         rawMatch:    raw,
         safeVersion: safeVersion
-      });
+      };
+      
+      // Apply pattern-specific post-processing (e.g., strip verbs from weight_mention)
+      if (pattern.postProcess && typeof pattern.postProcess === 'function') {
+        finding = pattern.postProcess(finding);
+      }
+      
+      findings.push(finding);
     }
   }
 
@@ -522,6 +529,67 @@ function sendToBackground(message) {
 
 // ── 7. MAIN SCAN PIPELINE ────────────────────────────────────────────────────
 
+// ── Worker-based scanning (Nov 2026 optimization) ──────────────────────────────
+let workerScanIdCounter = 0;
+let workerPendingScans = new Map();
+
+function sendScanToWorker(rawText) {
+  return new Promise((resolve, reject) => {
+    const scanId = ++workerScanIdCounter;
+    
+    // Store the resolver
+    workerPendingScans.set(scanId, { resolve, reject, timestamp: performance.now() });
+    
+    // Send to worker via background page
+    chrome.runtime.sendMessage({
+      type: "WORKER_SCAN",
+      data: { type: "SCAN", rawText, scanId }
+    }).catch(err => {
+      console.error("[TrustPrompt/ChatGPT] Failed to send scan to worker:", err);
+      workerPendingScans.delete(scanId);
+      reject(err);
+    });
+    
+    // Timeout: if no response in 5 seconds, reject
+    setTimeout(() => {
+      if (workerPendingScans.has(scanId)) {
+        workerPendingScans.delete(scanId);
+        console.error(`[TrustPrompt/ChatGPT] Scan ${scanId} timed out after 5000ms`);
+        reject(new Error("Worker scan timeout"));
+      }
+    }, 5000);
+  });
+}
+
+// Message handler for worker responses
+function handleWorkerResult(message) {
+  if (message.type !== "RESULT") return;
+  
+  const { scanId, findings, riskLevel, score, governance, elapsedMs } = message;
+  const pending = workerPendingScans.get(scanId);
+  
+  if (!pending) {
+    console.warn("[TrustPrompt/ChatGPT] received result for unknown scanId:", scanId);
+    return;
+  }
+  
+  workerPendingScans.delete(scanId);
+  
+  console.log(
+    `[TrustPrompt/ChatGPT] worker result received (${elapsedMs}ms) - risk: ${riskLevel}, findings: ${findings.length}`
+  );
+  
+  lastScanResult = { findings, riskLevel };
+  pending.resolve({ findings, riskLevel });
+}
+
+// Listen for worker messages via runtime (from background page)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "WORKER_RESULT") {
+    handleWorkerResult(message.data);
+  }
+});
+
 function runScan() {
   markStart('scan-total');
   
@@ -551,42 +619,54 @@ function runScan() {
   lastScannedText = rawText;
   scanState = "SCANNING";
 
-  markStart('scan-pattern-match');
-  const findings  = scanText(rawText);
-  markEnd('scan-pattern-match');
-
-  markStart('scan-scoring');
-  const riskLevel = scoreRisk(findings);
-  markEnd('scan-scoring');
-
-  console.log("[TrustPrompt/Claude] scan — risk:", riskLevel, "| findings:", findings.length);
-
-  lastScanResult = { findings, riskLevel };
+  markStart('scan-bridge');
   
-  markStart('scan-badge-update');
-  updateFloatingBadge(riskLevel);
-  showInlineAlert(riskLevel, findings.length);
-  markEnd('scan-badge-update');
+  // Use TrustWorkerBridge for direct worker communication (no chrome.runtime overhead)
+  TrustWorkerBridge.scan(rawText).then(result => {
+    markEnd('scan-bridge');
+    
+    const { findings, riskLevel } = result;
 
-  markStart('scan-background-msg');
-  sendToBackground({
-    type:      "SCAN_RESULT",
-    riskLevel: riskLevel,
-    findings:  findings,
-    rawText:   rawText
+    lastScanResult = { findings, riskLevel };
+    
+    markStart('scan-badge-update');
+    updateFloatingBadge(riskLevel);
+    showInlineAlert(riskLevel, findings.length);
+    markEnd('scan-badge-update');
+
+    markStart('scan-background-msg');
+    sendToBackground({
+      type:      "SCAN_RESULT",
+      riskLevel: riskLevel,
+      findings:  findings,
+      rawText:   rawText
+    });
+    markEnd('scan-background-msg');
+    
+    scanState = "DONE";
+    markEnd('scan-total');
+    reportScanTiming();
+    
+    // If submit was blocked waiting for scan, notify it
+    if (pendingSubmitResolver) {
+      const resolve = pendingSubmitResolver;
+      pendingSubmitResolver = null;
+      resolve({ findings, riskLevel });
+    }
+  }).catch(error => {
+    console.error("[TrustPrompt/ChatGPT] Worker scan failed:", error);
+    
+    // Fallback: show error state but don't block submission
+    scanState = "DONE";
+    updateFloatingBadge("none");
+    markEnd('scan-total');
+    
+    if (pendingSubmitResolver) {
+      const resolve = pendingSubmitResolver;
+      pendingSubmitResolver = null;
+      resolve({ findings: [], riskLevel: "none" });
+    }
   });
-  markEnd('scan-background-msg');
-  
-  scanState = "DONE";
-  markEnd('scan-total');
-  reportScanTiming();
-  
-  // If submit was blocked waiting for scan, notify it
-  if (pendingSubmitResolver) {
-    const resolve = pendingSubmitResolver;
-    pendingSubmitResolver = null;
-    resolve({ findings, riskLevel });
-  }
 }
 
 // ── 8. INPUT LISTENER ────────────────────────────────────────────────────────

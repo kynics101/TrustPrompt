@@ -6755,6 +6755,9 @@ const TrustLinguisticDetector = (() => {
         const affil = occs.some(([s]) => /\b(?:i|we)\s*(?:work|worked|am\s+employed|['’]m\s+employed|am\s+a\s+\w+|['’]m\s+a\s+\w+)\s+(?:\w+\s+){0,2}?(?:at|for|with)\s+(?:the\s+)?$/i.test(text.slice(Math.max(0, s - 40), s)));
         if (!affil || (raw === raw.toLowerCase() && /^visa$/.test(raw))) { drop.set(idx, 'payment_brand_not_organization'); return; }
       }
+      // a consumer service the writer only uses ("my subscription with netflix") is not an organization finding, unless they say they work/study there
+      if (f.patternId === 'nlp_organization' && /^(?:netflix|spotify|youtube|disney\+?|hulu|hbo(?:\s+max)?|prime\s+video|amazon\s+prime|apple\s+music|icloud|dropbox|canva|chatgpt|openai|zoom)$/i.test(raw) &&
+          !G4_FIRST_PERSON_ORG_RE.test(text) && !G4_AFFIL_RE.some(re => re.test(text))) { drop.set(idx, 'consumer_service_not_organization'); return; }
       if (f.patternId === 'nlp_organization' && lw.some(w => G_PLACEHOLDER_ONLY.has(w))) { drop.set(idx, 'placeholder_organization'); return; }
       if (f.patternId !== 'nlp_person_name' || !occs.length) return;
       if (lw.some(w => G_PLACEHOLDER_ONLY.has(w))) { drop.set(idx, 'placeholder_name'); return; }
